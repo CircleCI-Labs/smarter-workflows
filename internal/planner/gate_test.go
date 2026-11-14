@@ -111,7 +111,7 @@ func TestInertJobsAreRemovedWithTheirChain(t *testing.T) {
 	}
 }
 
-func TestMandatoryJobBehindFiltersKeepsItsAncestors(t *testing.T) {
+func TestMandatoryJobThatCannotRunOnTheBranchIsLeftOutNotForced(t *testing.T) {
 	const cfg = `version: 2.1
 jobs:
   prep: {docker: [{image: x}], steps: [checkout]}
@@ -143,25 +143,37 @@ workflows:
 		t.Fatalf("emitted jobs = %v", got)
 	}
 
-	// Mandatory means the job stays in the plan, and so do the jobs it needs,
-	// so that the config is never left with a requirement it cannot meet. It
-	// still does not run on this branch, so the gate does not wait for it.
+	// Mandatory does not change that. CircleCI does not start scan on this
+	// branch, and the planner does not force a job to run: scan is left out, and
+	// so is prep, which only scan wanted. The report says so.
 	o.Mandatory = []string{"scan"}
 	res = plan(t, in, o)
-	if got := emittedJobs(t, res, "w"); !slices.Equal(got, []string{"prep", "scan", "other", "smarter-gate"}) {
+	if got := emittedJobs(t, res, "w"); !slices.Equal(got, []string{"other", "smarter-gate"}) {
 		t.Fatalf("emitted jobs = %v", got)
 	}
-	if got := res.Report.Gate.Requires; !slices.Equal(got, []string{"prep", "other"}) {
+	if got := res.Report.Gate.Requires; !slices.Equal(got, []string{"other"}) {
 		t.Fatalf("gate requires %v", got)
 	}
-	if got := reasons(t, res, "scan"); !strings.Contains(got[0], "does not run") || got[1] != "mandatory job" {
+	if got := reasons(t, res, "scan"); !slices.Equal(got, []string{"does not run: its filters leave out branch feature"}) {
 		t.Fatalf("scan reasons = %v", got)
 	}
-	if got := reasons(t, res, "prep"); got[0] != "required by scan" {
+	if got := reasons(t, res, "prep"); !slices.Equal(got, []string{"inputs unchanged"}) {
 		t.Fatalf("prep reasons = %v", got)
 	}
-	if got := running(res); !sameSet(got, []string{"prep", "other"}) {
+	if got := running(res); !sameSet(got, []string{"other"}) {
 		t.Fatalf("running = %v", got)
+	}
+	want := "mandatory job scan does not run: its filters leave out branch feature; the plan leaves it out and does not force it"
+	if !slices.Contains(res.Report.Warnings, want) {
+		t.Fatalf("warnings = %v, want %q", res.Report.Warnings, want)
+	}
+
+	// On main, scan runs: it is mandatory, and prep comes with it.
+	o.Branch = "main"
+	o.Base = ""
+	res = plan(t, in, o)
+	if got := emittedJobs(t, res, "w"); got[0] != "prep" || got[1] != "scan" {
+		t.Fatalf("emitted jobs on main = %v", got)
 	}
 }
 
