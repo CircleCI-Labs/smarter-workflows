@@ -1,9 +1,12 @@
 package tracescript
 
 import (
+	"os"
 	"regexp"
 	"strings"
 	"testing"
+
+	"go.yaml.in/yaml/v3"
 )
 
 // The planner inlines both scripts as the command of a CircleCI run step. These
@@ -42,6 +45,54 @@ func TestEmbeddedScriptsAreSafeToInline(t *testing.T) {
 			}
 			if !strings.Contains(s, "\nexit 0\n") {
 				t.Error("must end by exiting 0: it never fails the job")
+			}
+		})
+	}
+}
+
+// The orb is one file, so its commands carry a copy of each script. They must
+// stay the same as the embedded ones, and run the way the planner runs them.
+func TestOrbInlinesTheScripts(t *testing.T) {
+	data, err := os.ReadFile("../../orb/orb.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var orb struct {
+		Commands map[string]struct {
+			Steps []map[string]any `yaml:"steps"`
+		} `yaml:"commands"`
+	}
+	if err := yaml.Unmarshal(data, &orb); err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct {
+		command, file, script, name, when string
+	}{
+		{"reset-atime", "reset-atime.sh", Reset, "smarter: reset atime", ""},
+		{"collect-trace", "collect-trace.sh", Script, "smarter: collect trace", "always"},
+	}
+	for _, c := range cases {
+		t.Run(c.command, func(t *testing.T) {
+			steps := orb.Commands[c.command].Steps
+			if len(steps) == 0 {
+				t.Fatalf("orb command %s has no steps", c.command)
+			}
+			run, _ := steps[0]["run"].(map[string]any)
+			if run == nil {
+				t.Fatalf("the first step of %s is not a run step", c.command)
+			}
+			if got, _ := run["command"].(string); got != c.script {
+				t.Errorf("the command of %s differs from internal/tracescript/%s: "+
+					"copy the script into the run step, indented by 12 spaces", c.command, c.file)
+			}
+			if run["name"] != c.name {
+				t.Errorf("name = %v, want %q", run["name"], c.name)
+			}
+			if run["shell"] != "/bin/sh" {
+				t.Errorf("shell = %v, want /bin/sh", run["shell"])
+			}
+			if got, _ := run["when"].(string); got != c.when {
+				t.Errorf("when = %q, want %q", got, c.when)
 			}
 		})
 	}

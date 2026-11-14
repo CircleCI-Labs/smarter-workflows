@@ -1,0 +1,686 @@
+version: 2.1
+
+description: >
+  Smarter Workflows. A setup workflow runs the circleci-smarter planner, which
+  prunes the pipeline of .circleci/continue.yml to the jobs a change can reach,
+  checks the result against your guardrails and continues the pipeline. On the
+  default branch it runs everything, traces which repo files each job reads and
+  rebuilds the impact map. Start with mode shadow, which plans and reports but
+  still runs every job.
+
+executors:
+  default:
+    description: Linux with git, curl and the shell tools the planner needs.
+    docker:
+      - image: cimg/base:2026.11@sha256:4e57f523172e8f5bbf9cb57393b80c964ac0e6c75ee70ebd8c980d11bb503c01
+    resource_class: small
+  go:
+    description: The same with a Go toolchain, for source build.
+    docker:
+      - image: cimg/go:1.27.3@sha256:21bc418e37dd1b5a0019dac909ed2cf08fd09f7ca5823256dd1a497741cc8a4f
+    resource_class: medium
+
+commands:
+  install:
+    description: >
+      Put circleci-smarter at /tmp/smarter/bin/circleci-smarter and on PATH.
+      Source build compiles it from the current checkout (this repo's own
+      pipeline). Source release downloads a release; none is published yet, so
+      it fails. Both write .smarter-version (the planner version and a newline)
+      and cache the binary under the key smarter-bin-v1-CHECKSUM-ARCH, where CHECKSUM is the
+      checksum of .smarter-version; the generated smarter-impact-map job restores it.
+    parameters:
+      version:
+        type: string
+        default: ""
+        description: The release tag to install for source release, for example v0.1.0. Ignored for source build.
+      source:
+        type: enum
+        enum: [release, build]
+        default: release
+        description: Where the binary comes from.
+    steps:
+      - run:
+          name: "smarter: pick the version"
+          environment:
+            SMARTER_ARG_SOURCE: "<< parameters.source >>"
+            SMARTER_ARG_VERSION: "<< parameters.version >>"
+          command: |
+            set -eu
+            mkdir -p /tmp/smarter/bin
+            if [ "$SMARTER_ARG_SOURCE" = build ]; then
+              printf 'dev-%s\n' "$CIRCLE_SHA1" > .smarter-version
+            else
+              if [ -z "$SMARTER_ARG_VERSION" ]; then
+                echo "smarter: set version to a release tag" >&2
+                exit 1
+              fi
+              printf '%s\n' "$SMARTER_ARG_VERSION" > .smarter-version
+            fi
+      - restore_cache:
+          keys:
+            - smarter-bin-v1-{{ checksum ".smarter-version" }}-{{ arch }}
+      - run:
+          name: "smarter: build or download"
+          environment:
+            SMARTER_ARG_SOURCE: "<< parameters.source >>"
+          command: |
+            set -eu
+            bin=/tmp/smarter/bin/circleci-smarter
+            if [ -x "$bin" ]; then
+              echo "smarter: using the cached binary"
+              exit 0
+            fi
+            if [ "$SMARTER_ARG_SOURCE" = build ]; then
+              if ! command -v go > /dev/null 2>&1; then
+                echo "smarter: source build needs Go; run this job on the go executor" >&2
+                exit 1
+              fi
+              CGO_ENABLED=0 go build -ldflags "-X main.version=dev-$CIRCLE_SHA1" -o /tmp/smarter/bin/circleci-smarter ./cmd/circleci-smarter
+            else
+              echo "smarter: release binaries are not published yet; use source build" >&2
+              exit 1
+            fi
+      - save_cache:
+          key: smarter-bin-v1-{{ checksum ".smarter-version" }}-{{ arch }}
+          paths:
+            - /tmp/smarter/bin
+      - run:
+          name: "smarter: put it on PATH"
+          command: |
+            set -eu
+            printf 'export PATH=/tmp/smarter/bin:"$PATH"\n' | tee -a "$BASH_ENV" > /dev/null
+            /tmp/smarter/bin/circleci-smarter version
+
+  reset-atime:
+    description: >
+      Run this right after checkout in a job you want traced. Checkout reads
+      every file, so this puts every atime back to the epoch and records
+      whether atime works on this filesystem, so that collect-trace can tell
+      what the job read. The planner adds the same step itself to the jobs it
+      traces. It needs GNU touch and find (a cimg image); elsewhere the trace
+      says it is unsupported and the job always runs.
+    steps:
+      - run:
+          name: "smarter: reset atime"
+          shell: /bin/sh
+          command: |
+            #!/bin/sh
+            # reset-atime.sh: the post-checkout step of Smarter Workflows tracing
+            # (docs/adr/0003, docs/spec/v0.1.md "The algorithm" step 8).
+            #
+            # Why: `checkout` reads every file (git's racy-index check), so right after it
+            # every atime is newer than its mtime and a trace would list the whole repo.
+            # This step puts every atime back to the epoch (0) and stops git from reading
+            # files again, so from here on an atime above 0 means "the job read it".
+            #
+            # What it does, in order:
+            #   1. Probes that atime works on this filesystem: a file and a directory under
+            #      .git/ get atime 0 and mtime 1, are read, and atime must move.
+            #   2. Waits one second, refreshes git's index and stops git trusting ctime, so
+            #      `git status` and `git diff` read nothing but .gitignore files.
+            #   3. Sets atime to 0 on every tracked file and on every directory (mtimes stay
+            #      as they are).
+            #   4. Writes .git/smarter-trace-ready (ok) or .git/smarter-trace-unsupported
+            #      (one line, the reason). collect-trace.sh reads these markers.
+            #
+            # It runs in $CIRCLE_WORKING_DIRECTORY (a leading ~ is expanded), or in the
+            # current directory. It needs GNU touch (-d @0) and GNU find (-printf); busybox
+            # and macOS lack them and are reported as unsupported. It never fails the job:
+            # every path ends in exit 0, and it prints one line.
+            set +e
+
+            say() { printf 'smarter: %s\n' "$*"; }
+
+            gitdir=
+            tmp=
+            reason=
+            at=
+            mt=
+
+            cleanup() {
+              if [ -n "$gitdir" ]; then
+                rm -rf "$gitdir/smarter-atime-probe" "$gitdir/smarter-atime-probe.d"
+              fi
+              if [ -n "$tmp" ]; then
+                rm -rf "$tmp"
+              fi
+              return 0
+            }
+
+            # unsupported REASON: record that tracing cannot work here, and say why.
+            unsupported() {
+              if [ -n "$gitdir" ]; then
+                rm -f "$gitdir/smarter-trace-ready"
+                printf '%s\n' "$1" > "$gitdir/smarter-trace-unsupported" 2>/dev/null
+              fi
+              cleanup
+              say "atime tracing is not available here: $1"
+            }
+
+            # stat_times PATH: set at and mt to the atime and mtime of PATH, in seconds
+            # since the epoch with a fraction (GNU find -printf). Fails if find cannot.
+            stat_times() {
+              st=$(find "$1" -maxdepth 0 -printf '%A@ %T@\n' 2>/dev/null) || return 1
+              case $st in
+                *" "*" "*) return 1 ;;
+                *" "*) ;;
+                *) return 1 ;;
+              esac
+              at=${st%% *}
+              mt=${st#* }
+              case $at in '' | *[!0-9.]*) return 1 ;; esac
+              case $mt in '' | *[!0-9.]*) return 1 ;; esac
+              return 0
+            }
+
+            # is_zero N: true if the time N is the epoch (only zeros and a dot).
+            is_zero() {
+              case $1 in '' | *[!0.]*) return 1 ;; esac
+              return 0
+            }
+
+            # probe: check that this filesystem updates atime on reads and on directory
+            # listings, and that touch and find do what the reset needs. Sets reason.
+            probe() {
+              pfile=$gitdir/smarter-atime-probe
+              pdir=$gitdir/smarter-atime-probe.d
+              rm -rf "$pfile" "$pdir"
+              if ! { printf 'probe\n' > "$pfile" && mkdir "$pdir"; } 2>/dev/null; then
+                reason="cannot create files under the git directory"
+                return 1
+              fi
+              if ! touch -m -d @1 "$pfile" "$pdir" 2>/dev/null; then
+                reason="touch does not support -d @0 (GNU touch is needed)"
+                return 1
+              fi
+              if ! stat_times "$pfile"; then
+                reason="find does not support -printf (GNU find is needed)"
+                return 1
+              fi
+              mt1=$mt
+              if ! touch -a -d @0 "$pfile" "$pdir" 2>/dev/null; then
+                reason="touch does not support -d @0 (GNU touch is needed)"
+                return 1
+              fi
+              if ! stat_times "$pfile" || ! is_zero "$at" || [ "$mt" != "$mt1" ]; then
+                reason="touch -a -d @0 does not reset atime alone here (GNU touch is needed)"
+                return 1
+              fi
+              if ! stat_times "$pdir" || ! is_zero "$at"; then
+                reason="atime of a directory cannot be reset on this filesystem"
+                return 1
+              fi
+              cat "$pfile" > /dev/null 2>&1
+              ls "$pdir" > /dev/null 2>&1
+              if ! stat_times "$pfile" || is_zero "$at" || [ "${at%%.*}" -le "${mt%%.*}" ]; then
+                reason="reading a file does not update its atime (noatime mount?)"
+                return 1
+              fi
+              if ! stat_times "$pdir" || is_zero "$at" || [ "${at%%.*}" -le "${mt%%.*}" ]; then
+                reason="listing a directory does not update its atime (nodiratime mount?)"
+                return 1
+              fi
+              return 0
+            }
+
+            run_reset() {
+              dir=${CIRCLE_WORKING_DIRECTORY:-.}
+              # shellcheck disable=SC2088
+              case $dir in
+                "~") dir=${HOME:-.} ;;
+                "~/"*) dir=${HOME:-.}/${dir#"~/"} ;;
+              esac
+              if ! cd "$dir" 2>/dev/null; then
+                say "no working directory to reset"
+                return 0
+              fi
+              if [ ! -e .git ]; then
+                say "no git checkout here, nothing to reset"
+                return 0
+              fi
+              gitdir=$(git rev-parse --git-dir 2>/dev/null)
+              if [ -z "$gitdir" ] || [ ! -d "$gitdir" ]; then
+                gitdir=
+                say "git cannot read this checkout, nothing to reset"
+                return 0
+              fi
+              rm -f "$gitdir/smarter-trace-ready" "$gitdir/smarter-trace-unsupported"
+
+              for tool in find touch xargs mktemp cat ls sleep tr wc; do
+                if ! command -v "$tool" > /dev/null 2>&1; then
+                  unsupported "$tool not found"
+                  return 0
+                fi
+              done
+              if ! probe; then
+                unsupported "$reason"
+                return 0
+              fi
+
+              sleep 1
+              git update-index -q --refresh > /dev/null 2>&1
+              if ! git config core.trustctime false > /dev/null 2>&1; then
+                unsupported "cannot set core.trustctime"
+                return 0
+              fi
+              tmp=$(mktemp -d "$gitdir/smarter-reset.XXXXXX" 2>/dev/null)
+              if [ -z "$tmp" ]; then
+                unsupported "cannot create a temp dir under the git directory"
+                return 0
+              fi
+              if ! git ls-files -z > "$tmp/files" 2>/dev/null; then
+                unsupported "git ls-files failed"
+                return 0
+              fi
+              # List every directory first, then reset them: listing reads them.
+              if ! find . -path ./.git -prune -o -type d -print0 > "$tmp/dirs" 2>/dev/null; then
+                unsupported "find could not list the directories"
+                return 0
+              fi
+              if [ -s "$tmp/files" ]; then
+                if ! xargs -0 touch -c -h -a -d @0 -- < "$tmp/files" 2>/dev/null; then
+                  unsupported "touch could not reset the tracked files"
+                  return 0
+                fi
+              fi
+              if ! xargs -0 touch -a -d @0 -- < "$tmp/dirs" 2>/dev/null; then
+                unsupported "touch could not reset the directories"
+                return 0
+              fi
+
+              nfiles=$(tr -cd '\0' < "$tmp/files" | wc -c | tr -d ' ')
+              ndirs=$(tr -cd '\0' < "$tmp/dirs" | wc -c | tr -d ' ')
+              if ! printf 'ok\n' > "$gitdir/smarter-trace-ready" 2>/dev/null; then
+                unsupported "cannot write the ready marker"
+                return 0
+              fi
+              cleanup
+              say "atime reset done ($nfiles files, $ndirs dirs); this job is traced"
+              return 0
+            }
+
+            run_reset
+            exit 0
+
+  collect-trace:
+    description: >
+      Run this last in a traced job: it writes the job's trace to
+      /tmp/smarter/traces and persists it to the workspace. The planner adds
+      the same post-step itself to the jobs it traces on the default branch.
+    steps:
+      - run:
+          name: "smarter: collect trace"
+          when: always
+          shell: /bin/sh
+          command: |
+            #!/bin/sh
+            # collect-trace.sh: the post-step of Smarter Workflows tracing
+            # (docs/adr/0003, docs/spec/v0.1.md "File formats" and "The algorithm" step 8).
+            #
+            # It writes the trace of this job node to
+            #   ${SMARTER_TRACE_DIR:-/tmp/smarter/traces}/<16 hex of sha256($CIRCLE_JOB)>.<node>.tsv
+            # in the "smarter-trace v1" format: a header, `supported true|false`, a reason
+            # when unsupported, then one F line per tracked file the job read and one D
+            # line per directory it listed ("." is the root).
+            #
+            # Run it once, last: its own traversal reads every directory, so a second run
+            # would report them all as listed (a safe over-report, but useless).
+            #
+            # The trace is `supported false` when reset-atime.sh did not run or found atime
+            # unusable (no .git/smarter-trace-ready marker), when there is no git checkout,
+            # or when GNU find -printf is missing. A job with such a trace always runs.
+            #
+            # Read means "atime is not 0": reset-atime.sh set every atime to the epoch, so
+            # any later read moved it. That includes the spec's "atime > mtime", and it also
+            # keeps what the job read and then wrote (a write moves mtime past atime) and
+            # the directories it listed and then added files to.
+            #   - Files: git-tracked files, from `git ls-files`.
+            #   - Dirs: directories above a tracked file, from the same single find
+            #     traversal, which prints each directory before it reads it.
+            #
+            # It never prints environment variables, prints one summary line, and never
+            # fails the job: every path ends in exit 0.
+            set +e
+            LC_ALL=C
+            export LC_ALL
+
+            say() { printf 'smarter: %s\n' "$*"; }
+
+            tmp=
+            reason=
+            nfiles=0
+            ndirs=0
+
+            cleanup() {
+              if [ -n "$tmp" ]; then
+                rm -rf "$tmp"
+              fi
+              return 0
+            }
+
+            # one_line TEXT: TEXT with tabs and line breaks turned into spaces.
+            one_line() { printf '%s' "$1" | tr '\t\r\n' '   '; }
+
+            # sha16 TEXT: the first 16 hex digits of the sha256 of TEXT.
+            sha16() {
+              if command -v sha256sum > /dev/null 2>&1; then
+                printf '%s' "$1" | sha256sum | cut -c1-16
+              elif command -v shasum > /dev/null 2>&1; then
+                printf '%s' "$1" | shasum -a 256 | cut -c1-16
+              fi
+            }
+
+            # take_trace: leave the F and D lines in $tmp/body. On failure, set reason and
+            # return 1.
+            take_trace() {
+              dir=${CIRCLE_WORKING_DIRECTORY:-.}
+              # shellcheck disable=SC2088
+              case $dir in
+                "~") dir=${HOME:-.} ;;
+                "~/"*) dir=${HOME:-.}/${dir#"~/"} ;;
+              esac
+              if ! cd "$dir" 2>/dev/null; then
+                reason="the working directory does not exist"
+                return 1
+              fi
+              if [ ! -e .git ]; then
+                reason="no git checkout in the working directory"
+                return 1
+              fi
+              gitdir=$(git rev-parse --git-dir 2>/dev/null)
+              if [ -z "$gitdir" ] || [ ! -d "$gitdir" ]; then
+                reason="git cannot read the checkout"
+                return 1
+              fi
+              if [ ! -f "$gitdir/smarter-trace-ready" ]; then
+                reason=
+                if [ -f "$gitdir/smarter-trace-unsupported" ]; then
+                  IFS= read -r reason < "$gitdir/smarter-trace-unsupported"
+                fi
+                if [ -z "$reason" ]; then
+                  reason="the atime reset step did not run"
+                fi
+                return 1
+              fi
+              for tool in awk cut find grep mktemp sort tr wc; do
+                if ! command -v "$tool" > /dev/null 2>&1; then
+                  reason="$tool not found"
+                  return 1
+                fi
+              done
+              if [ "$(find "$gitdir/smarter-trace-ready" -maxdepth 0 -printf '%y' 2>/dev/null)" != f ]; then
+                reason="find does not support -printf (GNU find is needed)"
+                return 1
+              fi
+              tmp=$(mktemp -d "$gitdir/smarter-trace.XXXXXX" 2>/dev/null)
+              if [ -z "$tmp" ]; then
+                reason="cannot create a temp dir under the git directory"
+                return 1
+              fi
+
+              # The one traversal. Nothing may list a directory before it.
+              if ! find . -path ./.git -prune -o -printf '%y\t%A@\t%T@\t%P\n' > "$tmp/found" 2> "$tmp/found.err"; then
+                msg=
+                IFS= read -r msg < "$tmp/found.err"
+                reason="find failed: $msg"
+                return 1
+              fi
+              if ! git ls-files -z > "$tmp/tracked0" 2>/dev/null; then
+                reason="git ls-files failed"
+                return 1
+              fi
+              if [ "$(tr -cd '\t\n\r' < "$tmp/tracked0" | wc -c | tr -d ' ')" != 0 ]; then
+                reason="a tracked path contains a tab or a line break"
+                return 1
+              fi
+              tr '\0' '\n' < "$tmp/tracked0" > "$tmp/tracked"
+
+              # found: type, atime, mtime and path, tab separated. tracked: one path a line.
+              # Output: "1F<tab>path" or "2D<tab>path", so a sort puts files before dirs.
+              if ! awk '
+                BEGIN { FS = "\t" }
+                FILENAME == ARGV[1] {
+                  tracked[$0] = 1
+                  n = split($0, part, "/")
+                  d = ""
+                  for (i = 1; i < n; i++) {
+                    d = (i == 1) ? part[1] : (d "/" part[i])
+                    hasfile[d] = 1
+                  }
+                  hasfile["."] = 1
+                  next
+                }
+                {
+                  ty = $1; at = $2; mt = $3
+                  if (ty !~ /^[a-z]$/ || at !~ /^[0-9]+(\.[0-9]+)?$/ || mt !~ /^[0-9]+(\.[0-9]+)?$/) next
+                  if (at !~ /[1-9]/) next
+                  path = substr($0, length(ty) + length(at) + length(mt) + 4)
+                  if (path == "") path = "."
+                  if (ty == "d") {
+                    if (path in hasfile) print "2D\t" path
+                  } else if (path in tracked) {
+                    print "1F\t" path
+                  }
+                }
+              ' "$tmp/tracked" "$tmp/found" > "$tmp/lines" 2>/dev/null; then
+                reason="awk failed"
+                return 1
+              fi
+              sort "$tmp/lines" | cut -c2- > "$tmp/body"
+              nfiles=$(grep -c '^F' "$tmp/body")
+              ndirs=$(grep -c '^D' "$tmp/body")
+              return 0
+            }
+
+            # write_trace: write the TSV to $out, through a temp file.
+            write_trace() {
+              {
+                printf '# smarter-trace v1\n'
+                printf 'job\t%s\n' "$job"
+                printf 'node\t%s\n' "$node"
+                printf 'method\tatime\n'
+                if [ "$supported" = true ]; then
+                  printf 'supported\ttrue\n'
+                  cat "$tmp/body"
+                else
+                  printf 'supported\tfalse\n'
+                  printf 'reason\t%s\n' "$(one_line "$reason")"
+                fi
+              } > "$out.tmp" && mv -f "$out.tmp" "$out"
+            }
+
+            run_collect() {
+              job=$(one_line "${CIRCLE_JOB:-}")
+              node=${CIRCLE_NODE_INDEX:-0}
+              case $node in '' | *[!0-9]*) node=0 ;; esac
+              dest=${SMARTER_TRACE_DIR:-/tmp/smarter/traces}
+              case $dest in /*) ;; *) dest=$(pwd)/$dest ;; esac
+              if ! mkdir -p "$dest" 2>/dev/null; then
+                say "cannot create the trace directory, trace not written"
+                return 0
+              fi
+              hash=$(sha16 "${CIRCLE_JOB:-}")
+              if [ -z "$hash" ]; then
+                say "no sha256 tool found, trace not written"
+                return 0
+              fi
+              out=$dest/$hash.$node.tsv
+
+              supported=false
+              if take_trace; then
+                supported=true
+              fi
+              if ! write_trace; then
+                rm -f "$out.tmp"
+                cleanup
+                say "cannot write the trace file, trace not written"
+                return 0
+              fi
+              cleanup
+              name=${out##*/}
+              if [ "$supported" = true ]; then
+                say "trace $name written ($nfiles files read, $ndirs dirs listed)"
+              else
+                say "trace $name written (not supported here: $(one_line "$reason"))"
+              fi
+              return 0
+            }
+
+            run_collect
+            exit 0
+      - persist_to_workspace:
+          root: /tmp/smarter
+          paths:
+            - traces
+
+jobs:
+  plan:
+    description: >
+      The setup job. It installs the planner, finds the diff base, restores the
+      impact map, plans, stores the plan report and continues the pipeline with
+      the planned config.
+    parameters:
+      executor:
+        type: executor
+        default: default
+        description: Where the job runs. Use the go executor with source build.
+      source:
+        type: enum
+        enum: [release, build]
+        default: release
+        description: Where the planner binary comes from, see the install command.
+      version:
+        type: string
+        default: ""
+        description: The release tag to install for source release.
+      config:
+        type: string
+        default: .circleci/continue.yml
+        description: The full continuation config, the catalog the planner picks from (plan --config).
+      workflow:
+        type: string
+        default: ""
+        description: The workflow to plan; needed when the config has several (plan --workflow).
+      default-branch:
+        type: string
+        default: main
+        description: The default branch (plan --default-branch).
+      trigger-type:
+        type: string
+        default: ""
+        description: The pipeline trigger type, from the pipeline.trigger.type value; schedule means a full run (plan --trigger-type).
+      mode:
+        type: enum
+        enum: [shadow, select]
+        default: shadow
+        description: shadow plans and reports but runs every job; select runs only the planned jobs (plan --mode).
+      mandatory:
+        type: string
+        default: ""
+        description: Comma-separated names of jobs that always run (plan --mandatory).
+      full-run-paths:
+        type: string
+        default: .circleci/**
+        description: Comma-separated globs; a change to any of them means a full run (plan --full-run-paths).
+      extra-inputs:
+        type: string
+        default: ""
+        description: Inputs the trace cannot see, as job=glob|glob,job2=glob (plan --extra-inputs).
+      ignore-paths:
+        type: string
+        default: ""
+        description: Comma-separated globs that never select a job (plan --ignore-paths).
+      force-full:
+        type: boolean
+        default: false
+        description: Always plan a full run (plan --force-full).
+      trace:
+        type: enum
+        enum: [auto, "on", "off"]
+        default: auto
+        description: Trace the jobs; auto means on for full runs on the default branch (plan --trace).
+      trace-orb-jobs:
+        type: boolean
+        default: false
+        description: Also trace jobs that come from orbs (plan --trace-orb-jobs).
+      gate-job:
+        type: string
+        default: smarter-gate
+        description: The name of the gate job (plan --gate-job).
+      gate-image:
+        type: string
+        default: ""
+        description: The image of the gate job; empty keeps the planner's pinned default (plan --gate-image).
+      policy-bundle:
+        type: string
+        default: ""
+        description: A directory of Rego guardrails; set it to check the plan before continuing (plan --policy-bundle).
+      policy-meta:
+        type: string
+        default: ""
+        description: JSON for data.meta of the guardrails; empty builds it from the environment (plan --policy-meta).
+    executor: << parameters.executor >>
+    steps:
+      - checkout
+      - install:
+          version: << parameters.version >>
+          source: << parameters.source >>
+      - run:
+          name: "smarter: base"
+          environment:
+            SMARTER_ARG_DEFAULT_BRANCH: "<< parameters.default-branch >>"
+          command: |
+            set -eu
+            /tmp/smarter/bin/circleci-smarter base --default-branch "$SMARTER_ARG_DEFAULT_BRANCH" > .smarter-key
+      - restore_cache:
+          keys:
+            - smarter-impact-v1-{{ checksum ".smarter-key" }}
+            - smarter-impact-v1-
+      - run:
+          name: "smarter: plan"
+          environment:
+            SMARTER_ARG_CONFIG: "<< parameters.config >>"
+            SMARTER_ARG_WORKFLOW: "<< parameters.workflow >>"
+            SMARTER_ARG_DEFAULT_BRANCH: "<< parameters.default-branch >>"
+            SMARTER_ARG_TRIGGER_TYPE: "<< parameters.trigger-type >>"
+            SMARTER_ARG_MODE: "<< parameters.mode >>"
+            SMARTER_ARG_MANDATORY: "<< parameters.mandatory >>"
+            SMARTER_ARG_FULL_RUN_PATHS: "<< parameters.full-run-paths >>"
+            SMARTER_ARG_EXTRA_INPUTS: "<< parameters.extra-inputs >>"
+            SMARTER_ARG_IGNORE_PATHS: "<< parameters.ignore-paths >>"
+            SMARTER_ARG_FORCE_FULL: "force-full=<< parameters.force-full >>"
+            SMARTER_ARG_TRACE: "<< parameters.trace >>"
+            SMARTER_ARG_TRACE_ORB_JOBS: "trace-orb-jobs=<< parameters.trace-orb-jobs >>"
+            SMARTER_ARG_GATE_JOB: "<< parameters.gate-job >>"
+            SMARTER_ARG_GATE_IMAGE: "<< parameters.gate-image >>"
+            SMARTER_ARG_POLICY_BUNDLE: "<< parameters.policy-bundle >>"
+            SMARTER_ARG_POLICY_META: "<< parameters.policy-meta >>"
+          command: |
+            set -eu
+            set -- plan \
+              --config "$SMARTER_ARG_CONFIG" \
+              --default-branch "$SMARTER_ARG_DEFAULT_BRANCH" \
+              --mode "$SMARTER_ARG_MODE" \
+              --full-run-paths "$SMARTER_ARG_FULL_RUN_PATHS" \
+              --trace "$SMARTER_ARG_TRACE" \
+              --gate-job "$SMARTER_ARG_GATE_JOB"
+            [ -z "$SMARTER_ARG_WORKFLOW" ] || set -- "$@" --workflow "$SMARTER_ARG_WORKFLOW"
+            [ -z "$SMARTER_ARG_TRIGGER_TYPE" ] || set -- "$@" --trigger-type "$SMARTER_ARG_TRIGGER_TYPE"
+            [ -z "$SMARTER_ARG_MANDATORY" ] || set -- "$@" --mandatory "$SMARTER_ARG_MANDATORY"
+            [ -z "$SMARTER_ARG_EXTRA_INPUTS" ] || set -- "$@" --extra-inputs "$SMARTER_ARG_EXTRA_INPUTS"
+            [ -z "$SMARTER_ARG_IGNORE_PATHS" ] || set -- "$@" --ignore-paths "$SMARTER_ARG_IGNORE_PATHS"
+            [ -z "$SMARTER_ARG_GATE_IMAGE" ] || set -- "$@" --gate-image "$SMARTER_ARG_GATE_IMAGE"
+            [ -z "$SMARTER_ARG_POLICY_BUNDLE" ] || set -- "$@" --policy-bundle "$SMARTER_ARG_POLICY_BUNDLE"
+            [ -z "$SMARTER_ARG_POLICY_META" ] || set -- "$@" --policy-meta "$SMARTER_ARG_POLICY_META"
+            case $SMARTER_ARG_FORCE_FULL in *=true | *=1) set -- "$@" --force-full ;; esac
+            case $SMARTER_ARG_TRACE_ORB_JOBS in *=true | *=1) set -- "$@" --trace-orb-jobs ;; esac
+            /tmp/smarter/bin/circleci-smarter "$@"
+      - store_artifacts:
+          path: /tmp/smarter/plan
+          destination: smarter-plan
+      - run:
+          name: "smarter: continue"
+          command: |
+            set -eu
+            /tmp/smarter/bin/circleci-smarter continue --config /tmp/smarter/continue.yml
