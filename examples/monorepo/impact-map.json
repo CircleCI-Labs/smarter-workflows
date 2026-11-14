@@ -1,0 +1,134 @@
+{
+  "version": 1,
+  "revision": "3f7a1c9e5b2d4a60b8e1f2a3c4d5e6f708192a3b",
+  "created_at": "2026-11-12T18:30:00Z",
+  "method": "atime",
+  "jobs": {
+    "api-test": {
+      "files": [
+        "Makefile",
+        "go.mod",
+        "go.sum",
+        "libs/shared/errors.json",
+        "libs/shared/schema.json",
+        "services/api/handler.go",
+        "services/api/handler_test.go",
+        "services/api/main.go"
+      ],
+      "dirs": [
+        "libs/shared",
+        "services/api"
+      ],
+      "complete": true,
+      "nodes": 1
+    },
+    "build": {
+      "files": [
+        "Makefile",
+        "go.mod",
+        "go.sum",
+        "libs/shared/errors.json",
+        "libs/shared/schema.json",
+        "package-lock.json",
+        "package.json",
+        "services/api/handler.go",
+        "services/api/main.go",
+        "services/web/package.json",
+        "services/web/src/index.ts"
+      ],
+      "dirs": [
+        "libs/shared",
+        "services",
+        "services/api",
+        "services/web",
+        "services/web/src"
+      ],
+      "complete": true,
+      "nodes": 1
+    },
+    "docs": {
+      "files": [
+        "docs/guide.md",
+        "docs/index.md",
+        "mkdocs.yml"
+      ],
+      "dirs": [
+        "docs"
+      ],
+      "complete": true,
+      "nodes": 1
+    },
+    "e2e": {
+      "files": [
+        "e2e/smoke.test.ts",
+        "package-lock.json",
+        "package.json"
+      ],
+      "dirs": [
+        "e2e"
+      ],
+      "complete": true,
+      "nodes": 1
+    },
+    "lint": {
+      "files": [
+        "Makefile",
+        "README.md",
+        "docs/guide.md",
+        "docs/index.md",
+        "e2e/smoke.test.ts",
+        "go.mod",
+        "libs/shared/errors.json",
+        "libs/shared/schema.json",
+        "services/api/handler.go",
+        "services/api/handler_test.go",
+        "services/api/main.go",
+        "services/web/package.json",
+        "services/web/src/index.test.ts",
+        "services/web/src/index.ts"
+      ],
+      "dirs": [
+        ".",
+        "docs",
+        "e2e",
+        "libs",
+        "libs/shared",
+        "services",
+        "services/api",
+        "services/web",
+        "services/web/src"
+      ],
+      "complete": true,
+      "nodes": 1
+    },
+    "security-scan": {
+      "files": [
+        "go.mod",
+        "go.sum",
+        "package-lock.json"
+      ],
+      "dirs": [
+        "."
+      ],
+      "complete": true,
+      "nodes": 1
+    },
+    "web-test": {
+      "files": [
+        "libs/shared/schema.json",
+        "package-lock.json",
+        "package.json",
+        "services/web/package.json",
+        "services/web/src/index.test.ts",
+        "services/web/src/index.ts"
+      ],
+      "dirs": [
+        "libs/shared",
+        "services/web",
+        "services/web/src"
+      ],
+      "complete": true,
+      "nodes": 1
+    }
+  }
+}
