@@ -36,7 +36,13 @@ The words this project uses, and what each one means. There are no implementatio
 : A job that runs in every pipeline, whatever the change, such as a security scan.
 
 **Gate job**
-: The last job of the workflow, which waits for every selected job. It always runs, so a branch protection rule can require it alone, even when other jobs are skipped.
+: The last job of the workflow, which waits for every selected job. It always runs, so a branch protection rule can require it alone, even when other jobs are skipped. It is a no-op job: no executor, no steps, no credits.
+
+**No-op job**
+: A job defined with `type: no-op`. It runs nothing and costs no credits. It succeeds when the jobs it requires succeed.
+
+**Layout**
+: How the jobs of one workflow wait for each other (`requires`, approvals, filters), as opposed to what each job does. `layout check` reports what is wrong with it.
 
 **Guardrail**
 : A config policy that every generated config must pass. Examples: mandatory jobs, contexts allowed only on certain jobs and branches, an approval before a deploy.
