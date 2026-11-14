@@ -35,22 +35,6 @@ func lookup(m *yaml.Node, key string) *yaml.Node {
 	return nil
 }
 
-// setOwn sets a key, replacing its value or appending the pair.
-func setOwn(m *yaml.Node, key string, v *yaml.Node) {
-	if i := keyIndex(m, key); i >= 0 {
-		m.Content[i+1] = v
-		return
-	}
-	m.Content = append(m.Content, Str(key), v)
-}
-
-// delOwn removes a key.
-func delOwn(m *yaml.Node, key string) {
-	if i := keyIndex(m, key); i >= 0 {
-		m.Content = append(m.Content[:i], m.Content[i+2:]...)
-	}
-}
-
 // scalarValue returns the text of a scalar node.
 func scalarValue(n *yaml.Node) (string, bool) {
 	if n == nil || n.Kind != yaml.ScalarNode {

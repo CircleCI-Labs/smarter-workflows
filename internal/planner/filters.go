@@ -100,9 +100,14 @@ func matchRef(patterns []string, name string) (match, ok bool) {
 	return false, true
 }
 
-// willRun is step 5 for the whole workflow: the verdict of every entry,
-// taking into account that CircleCI ignores a requirement on a job that does
-// not run, and does not run a job whose requirements were all filtered out.
+// willRun is step 5 for the whole workflow: the verdict of every entry.
+//
+// An entry runs only if its own filters allow it and every entry it requires
+// runs. A job whose required job does not run (a filter leaves it out) is not
+// started either, so the verdict is the least of the entry's own and of the
+// entries it requires, all the way up. The planner never drops a requirement to
+// make a job runnable: that could start a job that would not run, such as one
+// behind an approval that the branch filters out.
 func willRun(entries []*config.Entry, deps [][]int, unresolved []bool, branch, tag string) []tri {
 	out := make([]tri, len(entries))
 	done := make([]bool, len(entries))
@@ -120,20 +125,14 @@ func willRun(entries []*config.Entry, deps [][]int, unresolved []bool, branch, t
 
 		e := entries[i]
 		v := filterVerdict(e.Filters, branch, tag)
-		if v != triNo && (len(e.Requires) > 0) {
-			switch {
-			case e.StatusRequires || unresolved[i]:
-				// A requirement on a status ("build: failed") can start the job
-				// when the other job did not run; an unresolved name could be
-				// anything. Either way the job may or may not run.
-				v = min(v, triUnknown)
-			default:
-				best := triNo
-				for _, d := range deps[i] {
-					best = max(best, eval(d))
-				}
-				v = min(v, best)
-			}
+		if e.StatusRequires || unresolved[i] {
+			// A requirement on a status ("build: failed") can start the job when
+			// the other job did not succeed, and an unresolved name could be
+			// anything. Either way the job may or may not run.
+			v = min(v, triUnknown)
+		}
+		for _, d := range deps[i] {
+			v = min(v, eval(d))
 		}
 		out[i], done[i] = v, true
 		return v

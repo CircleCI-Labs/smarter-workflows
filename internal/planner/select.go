@@ -281,19 +281,18 @@ func capped(items []string, prefix, what string) []string {
 	return out
 }
 
-// selectJobs runs steps 3 and 4. Entries that cannot run on this branch (step
-// 5 says no) are not selected on their own, so a deploy filtered to main does
-// not keep its whole upstream chain alive on every branch. A mandatory or
-// guardrail-forced entry is selected anyway, with its ancestors.
+// selectJobs runs steps 3 and 4. An entry that does not run on this branch
+// (step 5 says no) is never selected: not on its own inputs, not as a mandatory
+// or guardrail-forced job, and not by the closure. So a deploy filtered to main
+// does not keep its whole upstream chain alive on every branch, and a job is
+// never kept without an ancestor it needs. Step 5 gives every job a verdict
+// that is no better than that of the jobs it requires, so everything a selected
+// job requires can be selected too.
 func (p *planner) selectJobs(an *analysis, cs *changeSet, forced map[string]bool) *selection {
 	n := len(an.entries)
 	sel := &selection{selected: make([]bool, n), reasons: make([][]string, n)}
 	mandatory := toSet(p.o.Mandatory)
-	override := func(i int) bool {
-		name := an.entries[i].Name
-		return mandatory[name] || forced[name]
-	}
-	eligible := func(i int) bool { return an.will[i] != triNo || override(i) }
+	eligible := func(i int) bool { return an.will[i] != triNo }
 	pick := func(i int, why string) bool {
 		if sel.selected[i] || !eligible(i) {
 			return false
@@ -347,7 +346,8 @@ func (an *analysis) skipReason(i int, branch, tag string) string {
 	return "inputs unchanged"
 }
 
-// inertReason says why an entry does not run on this branch or tag.
+// inertReason says why an entry does not run on this branch or tag: its own
+// filters, or a job it requires that does not run.
 func (an *analysis) inertReason(i int, branch, tag string) string {
 	e := an.entries[i]
 	if filterVerdict(e.Filters, branch, tag) == triNo {
@@ -356,7 +356,12 @@ func (an *analysis) inertReason(i int, branch, tag string) string {
 		}
 		return "does not run: its filters leave out branch " + branch
 	}
-	return "does not run: every job it requires is filtered out"
+	for _, d := range an.deps[i] {
+		if an.will[d] == triNo {
+			return fmt.Sprintf("does not run: it requires %s, which does not run", an.entries[d].Name)
+		}
+	}
+	return "does not run"
 }
 
 func toSet(list []string) map[string]bool {

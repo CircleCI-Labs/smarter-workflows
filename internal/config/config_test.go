@@ -383,8 +383,8 @@ workflows:
 		want   string
 	}{
 		{
-			name:   "remove a sibling: the requires of the others are scrubbed",
-			remove: []string{"api"},
+			name:   "remove an entry that nothing requires: the others are not edited",
+			remove: []string{"web"},
 			want: `version: 2.1
 jobs:
   a:
@@ -394,11 +394,9 @@ workflows:
   w:
     jobs:
       - lint
-      - web:
-          requires: [lint]
-          filters:
-            branches:
-              only: main
+      - api: # the api
+          requires:
+            - lint
       # docs sits last
       - docs:
           requires:
@@ -410,8 +408,8 @@ workflows:
 `,
 		},
 		{
-			name:   "an entry that loses all its requires keeps its other keys; one with only requires becomes a bare name",
-			remove: []string{"lint", "web"},
+			name:   "remove a chain: an entry and what requires it",
+			remove: []string{"api", "web"},
 			want: `version: 2.1
 jobs:
   a:
@@ -420,9 +418,11 @@ jobs:
 workflows:
   w:
     jobs:
-      - api # the api
+      - lint
       # docs sits last
-      - docs
+      - docs:
+          requires:
+            - lint
   other:
     jobs:
       - lint
@@ -447,19 +447,22 @@ workflows:
 `,
 		},
 	}
+	removing := func(w *config.Workflow, names ...string) map[int]bool {
+		remove := map[int]bool{}
+		for i, e := range w.Entries {
+			for _, n := range names {
+				if e.Name == n {
+					remove[i] = true
+				}
+			}
+		}
+		return remove
+	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			c := mustParse(t, src)
 			w := mustWorkflow(t, c, "w")
-			remove := map[int]bool{}
-			for i, e := range w.Entries {
-				for _, n := range tc.remove {
-					if e.Name == n {
-						remove[i] = true
-					}
-				}
-			}
-			if err := w.Prune(remove); err != nil {
+			if err := w.Prune(removing(w, tc.remove...)); err != nil {
 				t.Fatal(err)
 			}
 			if got := mustMarshal(t, c); got != tc.want {
@@ -473,6 +476,26 @@ workflows:
 						}
 					}
 				}
+			}
+		})
+	}
+
+	// Dropping a requirement could make a job run that CircleCI would not run:
+	// Prune refuses, and leaves the workflow alone.
+	for _, remove := range [][]string{{"lint"}, {"api"}, {"lint", "web"}} {
+		t.Run("refuses to leave a requirement behind: remove "+strings.Join(remove, ", "), func(t *testing.T) {
+			c := mustParse(t, src)
+			before := mustMarshal(t, c)
+			w := mustWorkflow(t, c, "w")
+			err := w.Prune(removing(w, remove...))
+			if err == nil || !strings.Contains(err.Error(), "which would be removed") {
+				t.Fatalf("error = %v, want a refusal", err)
+			}
+			if after := mustMarshal(t, c); after != before {
+				t.Errorf("a refused prune changed the config:\n--- before\n%s\n--- after\n%s", before, after)
+			}
+			if got := names(w); !reflect.DeepEqual(got, []string{"lint", "api", "web", "docs"}) {
+				t.Errorf("entries after a refused prune = %v", got)
 			}
 		})
 	}
@@ -594,7 +617,7 @@ workflows:
 		}
 	})
 
-	t.Run("requires that come from a merge key are scrubbed like the others", func(t *testing.T) {
+	t.Run("requires that come from a merge key count: the entry they name cannot go", func(t *testing.T) {
 		c := mustParse(t, `version: 2.1
 shared: &shared
   requires: [lint]
@@ -609,27 +632,16 @@ workflows:
           context: c
 `)
 		w := mustWorkflow(t, c, "w")
-		if err := w.Prune(map[int]bool{0: true}); err != nil {
-			t.Fatal(err)
-		}
-		got := mustMarshal(t, c)
-		want := `version: 2.1
-shared:
-  requires: [lint]
-workflows:
-  w:
-    jobs:
-      - a
-      - b:
-          context: c
-`
-		if got != want {
-			t.Fatalf("--- want\n%s\n--- got\n%s", want, got)
-		}
-		for _, e := range w.Entries {
-			if len(e.Requires) != 0 {
-				t.Errorf("%s: Requires = %v, want none", e.Name, e.Requires)
+		for _, e := range w.Entries[1:] {
+			if !reflect.DeepEqual(e.Requires, []string{"lint"}) {
+				t.Fatalf("%s: Requires = %v, want [lint]", e.Name, e.Requires)
 			}
+		}
+		if err := w.Prune(map[int]bool{0: true}); err == nil {
+			t.Fatal("Prune dropped the requirement that a and b take from the merge key")
+		}
+		if err := w.Prune(map[int]bool{0: true, 1: true, 2: true}); err != nil {
+			t.Fatal(err)
 		}
 	})
 }

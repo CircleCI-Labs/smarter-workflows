@@ -320,16 +320,20 @@ func (w *Workflow) HasName(name string) bool {
 	return false
 }
 
-// Prune removes the entries at the given indexes and drops their names from
-// the requires of the entries that stay. It re-reads Entries, so the entry
-// pointers from before the call must not be used afterwards.
+// Prune removes the entries at the given indexes. It re-reads Entries, so the
+// entry pointers from before the call must not be used afterwards.
+//
+// Prune never edits an entry that stays. If one of them requires an entry that
+// goes, Prune returns an error and leaves the workflow as it was: dropping the
+// name would change what the entry waits for, and could make it run when
+// CircleCI would not have run it (a job without its approval, or one whose
+// required job is filtered out). The caller removes whole chains.
 func (w *Workflow) Prune(remove map[int]bool) error {
 	if len(remove) == 0 {
 		return nil
 	}
 	var kept []*yaml.Node
-	gone := map[string]bool{}
-	keptNames := map[string]bool{}
+	gone, keptNames := map[string]bool{}, map[string]bool{}
 	for i, item := range w.jobs.Content {
 		if remove[i] {
 			for _, n := range w.Entries[i].Names() {
@@ -345,69 +349,18 @@ func (w *Workflow) Prune(remove map[int]bool) error {
 	for n := range keptNames {
 		delete(gone, n)
 	}
-	w.jobs.Content = kept
-	if err := w.reload(); err != nil {
-		return err
-	}
-	for _, e := range w.Entries {
-		if err := w.scrubRequires(e, gone); err != nil {
-			return err
-		}
-	}
-	return w.reload()
-}
-
-func (w *Workflow) scrubRequires(e *Entry, gone map[string]bool) error {
-	hit := false
-	for _, r := range e.Requires {
-		if gone[r] {
-			hit = true
-		}
-	}
-	if !hit {
-		return nil
-	}
-	seq := lookup(e.args, "requires")
-	var remain []*yaml.Node
-	for _, it := range seq.Content {
-		if name, _, ok := requireItem(it); ok && gone[name] {
+	for i, e := range w.Entries {
+		if remove[i] {
 			continue
 		}
-		remain = append(remain, it)
+		for _, r := range e.Requires {
+			if gone[r] {
+				return fmt.Errorf("job %s stays and requires %s, which would be removed", e.Name, r)
+			}
+		}
 	}
-	args, err := w.ownArgs(e)
-	if err != nil {
-		return err
-	}
-	if len(remain) > 0 {
-		ns := *seq
-		ns.Content = remain
-		setOwn(args, "requires", &ns)
-	} else {
-		delOwn(args, "requires")
-	}
-	if len(args.Content) == 0 { // nothing but the name is left
-		w.collapse(e)
-	}
-	return nil
-}
-
-// collapse turns an entry whose argument mapping is empty back into a bare name.
-func (w *Workflow) collapse(e *Entry) {
-	item := e.item
-	if item.Kind != yaml.MappingNode || len(item.Content) != 2 {
-		return
-	}
-	key := item.Content[0]
-	item.Kind, item.Tag, item.Style = yaml.ScalarNode, "!!str", 0
-	item.Value = key.Value
-	if key.LineComment != "" {
-		item.LineComment = key.LineComment
-	}
-	if item.HeadComment == "" {
-		item.HeadComment = key.HeadComment
-	}
-	item.Content = nil
+	w.jobs.Content = kept
+	return w.reload()
 }
 
 // ownArgs makes the entry's arguments a mapping and returns it. A bare name
@@ -468,6 +421,8 @@ func (w *Workflow) AddPostSteps(e *Entry, steps ...*yaml.Node) error {
 	return w.addSteps(e, "post-steps", false, steps)
 }
 
+// addSteps edits the entry only if it can finish: a key that is not a list
+// leaves the entry as it was.
 func (w *Workflow) addSteps(e *Entry, key string, prepend bool, steps []*yaml.Node) error {
 	if err := stepsProblem(e, key); err != nil {
 		return err

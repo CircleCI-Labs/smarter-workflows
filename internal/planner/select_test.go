@@ -257,16 +257,24 @@ func without(base map[string]bool, drop ...string) map[string]bool {
 	return out
 }
 
-func TestSelectionRequiresAreScrubbed(t *testing.T) {
+func TestSelectionLeavesNoRequirementOnARemovedJob(t *testing.T) {
 	repo := &fakeRepo{changes: changes("M docs/index.md"), dirs: map[string]map[string]bool{"base1": sourceDirs(), "head1": sourceDirs()}}
 	res := plan(t, input(repo), opts())
-	// Nothing in the plan may require a job that was removed.
+	// Nothing in the plan may require a job that was removed, and the planner
+	// never edits a requirement to get there: what it keeps, it keeps as it was.
 	have := emittedJobs(t, res, "ci")
 	for _, name := range have {
-		for _, r := range emittedEntry(t, res, "ci", name).Requires {
+		got := emittedEntry(t, res, "ci", name).Requires
+		for _, r := range got {
 			if !slices.Contains(have, r) {
 				t.Errorf("%s requires %s, which is gone", name, r)
 			}
+		}
+		if name == "smarter-gate" {
+			continue
+		}
+		if want := entryOf(t, monorepo, name).Requires; !slices.Equal(got, want) {
+			t.Errorf("%s requires %v, want %v: the planner does not edit a requirement", name, got, want)
 		}
 	}
 }

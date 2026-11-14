@@ -646,10 +646,14 @@ func TestRobustness_ApprovalInTheMiddle(t *testing.T) {
 	})
 }
 
-// Expected: a mandatory job keeps the requirements the branch filters removed, so it still does not run on the branch.
-func TestRobustness_MandatoryJobKeepsItsFilteredRequirement(t *testing.T) {
+// A job runs only if every job it requires runs (spec step 5), and the planner
+// never drops a requirement to make a job runnable. A mandatory job whose
+// requirement the branch filters out does not run on the branch, so the plan
+// leaves it out with what it requires, warns, and does not force it. Dropping
+// an approval's edge instead would run the job without its approval.
+func TestRobustness_MandatoryJobWithAFilteredRequirementIsLeftOutWithAWarning(t *testing.T) {
 	t.Run("a job whose requirement is filtered out", func(t *testing.T) {
-		rbRun(t, rbCase{
+		res := rbRun(t, rbCase{
 			cfg:    rbFixture(t, "mandatory_filtered.yml"),
 			base:   map[string]string{"services/api/main.go": "package api\n", "release/notes.md": "# notes\n", "release/publish.sh": "#!/bin/sh\n"},
 			change: rbEdit("services/api/main.go", "package api\n\n// changed\n"),
@@ -659,11 +663,17 @@ func TestRobustness_MandatoryJobKeepsItsFilteredRequirement(t *testing.T) {
 				"publish":      {files: []string{"release/publish.sh"}, dirs: []string{"release"}},
 			},
 			mandatory: []string{"publish"},
-			want:      rbWant{running: []string{"lint"}, emitted: []string{"lint", "release-prep", "publish", "smarter-gate"}, gate: []string{"lint"}},
+			want:      rbWant{running: []string{"lint"}, emitted: []string{"lint", "smarter-gate"}, gate: []string{"lint"}},
 		})
+		if !rbWarned(res, "mandatory job publish", "requires release-prep, which does not run", "does not force it") {
+			t.Errorf("warnings = %v, want one about the mandatory job publish", res.Report.Warnings)
+		}
+		if got := reasons(t, res, "publish"); len(got) != 1 || got[0] != "does not run: it requires release-prep, which does not run" {
+			t.Errorf("publish reasons = %v", got)
+		}
 	})
 	t.Run("an approval that the branch filters out", func(t *testing.T) {
-		rbRun(t, rbCase{
+		res := rbRun(t, rbCase{
 			cfg:    rbFixture(t, "mandatory_filtered_approval.yml"),
 			base:   map[string]string{"services/api/main.go": "package api\n", "deploy/run.sh": "#!/bin/sh\n"},
 			change: rbEdit("services/api/main.go", "package api\n\n// changed\n"),
@@ -672,14 +682,38 @@ func TestRobustness_MandatoryJobKeepsItsFilteredRequirement(t *testing.T) {
 				"deploy": {files: []string{"deploy/run.sh"}, dirs: []string{"deploy"}},
 			},
 			mandatory: []string{"deploy"},
-			want:      rbWant{running: []string{"lint"}, emitted: []string{"lint", "hold", "deploy", "smarter-gate"}, gate: []string{"lint"}},
+			want:      rbWant{running: []string{"lint"}, emitted: []string{"lint", "smarter-gate"}, gate: []string{"lint"}},
 		})
+		if !rbWarned(res, "mandatory job deploy", "requires hold, which does not run", "does not force it") {
+			t.Errorf("warnings = %v, want one about the mandatory job deploy", res.Report.Warnings)
+		}
+	})
+	t.Run("a mandatory job whose own filters leave out the branch", func(t *testing.T) {
+		res := rbRun(t, rbCase{
+			cfg:    rbFixture(t, "mandatory_filtered.yml"),
+			base:   map[string]string{"services/api/main.go": "package api\n", "release/notes.md": "# notes\n", "release/publish.sh": "#!/bin/sh\n"},
+			change: rbEdit("services/api/main.go", "package api\n\n// changed\n"),
+			reads: map[string]rbReads{
+				"lint":         {files: []string{"services/api/main.go"}, dirs: []string{"services/api"}},
+				"release-prep": {files: []string{"release/notes.md"}, dirs: []string{"release"}},
+				"publish":      {files: []string{"release/publish.sh"}, dirs: []string{"release"}},
+			},
+			mandatory: []string{"release-prep"},
+			want:      rbWant{running: []string{"lint"}, emitted: []string{"lint", "smarter-gate"}, gate: []string{"lint"}},
+		})
+		if !rbWarned(res, "mandatory job release-prep", "its filters leave out branch feature", "does not force it") {
+			t.Errorf("warnings = %v, want one about the mandatory job release-prep", res.Report.Warnings)
+		}
 	})
 }
 
-// Expected: a selected job keeps its requirement on a job the branch filters out, as spec step 4 says.
-func TestRobustness_SelectedJobKeepsItsFilteredRequirement(t *testing.T) {
-	rbRun(t, rbCase{
+// A job whose required job is filtered out does not run, whatever else it
+// requires and whatever changed in its inputs: it is not selected, and it leaves
+// the plan with the job it requires. The gate does not wait for it. (CircleCI's
+// reference ignores a filtered-out requirement while another one runs; the
+// planner takes the stricter rule of spec step 5.)
+func TestRobustness_JobWithAFilteredRequirementIsNotSelected(t *testing.T) {
+	res := rbRun(t, rbCase{
 		cfg:    rbFixture(t, "filtered_mixed.yml"),
 		base:   map[string]string{"app/main.go": "package app\n", "build/main.sh": "#!/bin/sh\n"},
 		change: rbEdit("app/main.go", "package app\n\n// changed\n"),
@@ -688,8 +722,11 @@ func TestRobustness_SelectedJobKeepsItsFilteredRequirement(t *testing.T) {
 			"test":       {files: []string{"app/main.go"}, dirs: []string{"app"}},
 			"ship":       {files: []string{"app/main.go"}, dirs: []string{"app"}},
 		},
-		want: rbWant{running: []string{"test", "ship"}, emitted: []string{"build-main", "test", "ship", "smarter-gate"}, gate: []string{"test", "ship"}},
+		want: rbWant{running: []string{"test"}, emitted: []string{"test", "smarter-gate"}, gate: []string{"test"}},
 	})
+	if got := reasons(t, res, "ship"); len(got) != 1 || got[0] != "does not run: it requires build-main, which does not run" {
+		t.Errorf("ship reasons = %v", got)
+	}
 }
 
 // Case 2, the removal case: a job the change does not reach, whose only
@@ -1209,6 +1246,31 @@ func TestRobustness_PolicyBundleStillPasses(t *testing.T) {
 				emitted: []string{"security-scan", "lint", "build", "hold", "deploy", "smarter-impact-map", "smarter-gate"},
 				gate:    []string{"security-scan", "lint", "build"}}})
 	})
+}
+
+// Policy: the bundle requires a job that the project's own filters keep off the
+// branch. The planner cannot make it run (it does not force a job), so the plan
+// without it breaks the bundle, the repair does not take, and the planner falls
+// back to a full run, which keeps every entry and so passes.
+func TestRobustness_PolicyRequiredJobThatCannotRunGivesAFullRun(t *testing.T) {
+	res := rbRun(t, rbCase{
+		cfg:       rbFixture(t, "policy_scan_filtered.yml"),
+		base:      map[string]string{"services/api/main.go": "package api\n"},
+		change:    rbEdit("services/api/main.go", "package api\n\n// changed\n"),
+		reads:     map[string]rbReads{"security-scan": {files: []string{"go.mod"}}, "lint": {files: []string{"services/api/main.go"}, dirs: []string{"services/api"}}},
+		mandatory: []string{"security-scan"},
+		checker:   rbBundle(t),
+		want:      rbWant{full: true, running: []string{"lint"}, emitted: []string{"security-scan", "lint", "smarter-gate"}, gate: []string{"lint"}},
+	})
+	if !strings.Contains(res.Report.FullReason, "the guardrails reject the plan and it cannot be repaired") {
+		t.Errorf("full-run reason = %q", res.Report.FullReason)
+	}
+	if res.GuardrailsFailed || res.Report.Guardrails.Status != "PASS" {
+		t.Errorf("guardrails failed = %v, status = %s: the full run keeps the job, so it passes", res.GuardrailsFailed, res.Report.Guardrails.Status)
+	}
+	if got := reasons(t, res, "security-scan"); len(got) != 2 || got[0] != "does not run: its filters leave out branch feature" {
+		t.Errorf("security-scan reasons = %v: the report says why it does not run", got)
+	}
 }
 
 // Every fixture is valid CircleCI config, so a failing case is the planner's doing.
