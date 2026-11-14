@@ -110,39 +110,7 @@ func (c *Config) HasJob(name string) bool {
 }
 
 func (c *Config) jobDef(name string) *yaml.Node {
-	jobs := c.section("jobs")
-	if jobs == nil {
-		return nil
-	}
-	v := lookup(jobs, name)
-	if v == nil || v.Kind != yaml.MappingNode {
-		return nil
-	}
-	return v
-}
-
-func (c *Config) commandDef(name string) *yaml.Node {
-	cmds := c.section("commands")
-	if cmds == nil {
-		return nil
-	}
-	v := lookup(cmds, name)
-	if v == nil || v.Kind != yaml.MappingNode {
-		return nil
-	}
-	return v
-}
-
-func (c *Config) executorDef(name string) *yaml.Node {
-	ex := c.section("executors")
-	if ex == nil {
-		return nil
-	}
-	v := lookup(ex, name)
-	if v == nil || v.Kind != yaml.MappingNode {
-		return nil
-	}
-	return v
+	return c.rootScope().job(name)
 }
 
 // AddJob defines a new job. It is an error if the name is taken.
@@ -195,10 +163,10 @@ func (c *Config) JobPlatform(job string) Platform {
 	if def == nil {
 		return PlatformUnknown
 	}
-	return c.platformOf(def, 0)
+	return c.rootScope().platformOf(def, 0)
 }
 
-func (c *Config) platformOf(def *yaml.Node, depth int) Platform {
+func (s scope) platformOf(def *yaml.Node, depth int) Platform {
 	if lookup(def, "docker") != nil {
 		return PlatformLinux
 	}
@@ -216,8 +184,8 @@ func (c *Config) platformOf(def *yaml.Node, depth int) Platform {
 		if !ok || strings.Contains(name, "<<") {
 			return PlatformUnknown
 		}
-		if ed := c.executorDef(name); ed != nil {
-			return c.platformOf(ed, depth+1)
+		if ed := s.executor(name); ed != nil {
+			return s.platformOf(ed, depth+1)
 		}
 	}
 	return PlatformUnknown
@@ -249,44 +217,8 @@ func (c *Config) Workspace(job string) (persists, attaches bool) {
 	if def == nil {
 		return false, false
 	}
-	seen := map[string]bool{}
-	var scan func(n *yaml.Node, depth int)
-	scan = func(n *yaml.Node, depth int) {
-		if n == nil || depth > maxDepth {
-			return
-		}
-		visit := func(id string) {
-			switch id {
-			case "persist_to_workspace":
-				persists = true
-			case "attach_workspace":
-				attaches = true
-			default:
-				if cmd := c.commandDef(id); cmd != nil && !seen[id] {
-					seen[id] = true
-					scan(cmd, depth+1)
-				}
-			}
-		}
-		switch n.Kind {
-		case yaml.MappingNode:
-			for i := 0; i+1 < len(n.Content); i += 2 {
-				if k := n.Content[i]; k.Kind == yaml.ScalarNode {
-					visit(k.Value)
-				}
-				scan(n.Content[i+1], depth+1)
-			}
-		case yaml.SequenceNode:
-			for _, item := range n.Content {
-				if item.Kind == yaml.ScalarNode {
-					visit(item.Value)
-				}
-				scan(item, depth+1)
-			}
-		}
-	}
-	scan(def, 0)
-	return persists, attaches
+	use := c.rootScope().workspace(def)
+	return use.persists, use.attaches
 }
 
 // InsertAfterCheckout inserts step right after the first `checkout` step in
