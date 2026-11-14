@@ -1,0 +1,121 @@
+# Deploy layout: checks, a gate, then an approval, a serialized deploy, cleanup
+# and a failure notice.
+#
+# - The four checks start together. smarter-gate requires all of them and
+#   nothing behind the approval, so the pull request check reports without
+#   waiting for a person.
+# - hold-deploy (approval) requires the gate: it is the last thing before the
+#   deploy and vouches for every check. deploy requires the approval.
+# - hold-deploy, deploy, cleanup and notify-failure carry the same branch
+#   filter. If only the approval were filtered, CircleCI would ignore it on
+#   other branches and a job that also requires something else would run
+#   unapproved. If only the job were filtered, the approval would hold the
+#   workflow for nothing.
+# - deploy is the one job with the restricted context `deploy`. It sits behind
+#   the approval and is limited to main with filters.branches.only, as the
+#   guardrail bundle requires. Create the context first and give the approver
+#   access to it.
+# - serial-group lets one deploy run at a time across the organization.
+# - cleanup runs whatever the outcome of deploy (terminal). notify-failure runs
+#   only if deploy failed.
+version: 2.1
+
+executors:
+  base:
+    docker:
+      - image: cimg/base:2026.11
+    resource_class: small
+
+jobs:
+  lint:
+    executor: base
+    steps:
+      - checkout
+      - run: echo "lint"
+
+  unit-test:
+    executor: base
+    steps:
+      - checkout
+      - run: echo "unit tests"
+
+  security-scan:
+    executor: base
+    steps:
+      - checkout
+      - run: echo "security scan"
+
+  build:
+    executor: base
+    steps:
+      - checkout
+      - run:
+          name: Build
+          command: |
+            mkdir -p /tmp/workspace/dist
+            echo "build output" > /tmp/workspace/dist/app.txt
+      - persist_to_workspace:
+          root: /tmp/workspace
+          paths:
+            - dist
+
+  smarter-gate:
+    type: no-op
+
+  deploy:
+    executor: base
+    steps:
+      - attach_workspace:
+          at: /tmp/workspace
+      - run: echo "deploy /tmp/workspace/dist (stub)"
+
+  cleanup:
+    executor: base
+    steps:
+      - run: echo "release what the deploy held"
+
+  notify-failure:
+    executor: base
+    steps:
+      - run: echo "tell the team that the deploy failed"
+
+workflows:
+  release:
+    jobs:
+      - lint
+      - unit-test
+      - security-scan
+      - build
+      - smarter-gate:
+          requires:
+            - lint
+            - unit-test
+            - security-scan
+            - build
+      - hold-deploy:
+          type: approval
+          requires:
+            - smarter-gate
+          filters:
+            branches:
+              only: main
+      - deploy:
+          context: deploy
+          serial-group: << pipeline.project.slug >>/deploy
+          requires:
+            - hold-deploy
+          filters:
+            branches:
+              only: main
+      - cleanup:
+          requires:
+            - deploy: terminal
+          filters:
+            branches:
+              only: main
+      - notify-failure:
+          requires:
+            - deploy: failed
+          filters:
+            branches:
+              only: main
