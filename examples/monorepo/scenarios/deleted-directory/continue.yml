@@ -1,0 +1,103 @@
+# Example continuation config for a small monorepo.
+#
+# This is the "catalog" of docs/adr/0004: plain CircleCI config, with nothing
+# Smarter-specific in it. `circleci-smarter plan` prunes the `ci` workflow down
+# to the jobs a change can reach and adds a `smarter-gate` job that waits for
+# them; everything else here passes through untouched.
+version: 2.1
+executors:
+  go:
+    docker:
+      - image: cimg/go:1.26
+  node:
+    docker:
+      - image: cimg/node:24
+jobs:
+  # Repo-wide checks: reads nearly every file, so most changes select it.
+  lint:
+    executor: go
+    steps:
+      - checkout
+      - run:
+          name: Lint
+          command: make lint
+  # The two services read different directories, and both read libs/shared.
+  api-test:
+    executor: go
+    steps:
+      - checkout
+      - run:
+          name: Test the API
+          command: make -C services/api test
+  web-test:
+    executor: node
+    steps:
+      - checkout
+      - run:
+          name: Test the web app
+          command: npm --prefix services/web test
+  # build leaves its output in a workspace and e2e picks it up. A change that
+  # selects build also selects e2e, whatever e2e itself reads.
+  build:
+    executor: go
+    steps:
+      - checkout
+      - run:
+          name: Build
+          command: make build
+      - persist_to_workspace:
+          root: .
+          paths:
+            - dist
+  e2e:
+    executor: node
+    steps:
+      - checkout
+      - attach_workspace:
+          at: .
+      - run:
+          name: End-to-end tests
+          command: make e2e
+  docs:
+    executor: node
+    steps:
+      - checkout
+      - run:
+          name: Build the docs
+          command: make docs
+  # Mandatory: it runs in every pipeline (--mandatory security-scan), and the
+  # guardrail bundle requires it in every workflow.
+  security-scan:
+    executor: go
+    steps:
+      - checkout
+      - run:
+          name: Scan the dependencies
+          command: make scan
+  deploy:
+    executor: go
+    steps:
+      - checkout
+      - attach_workspace:
+          at: .
+      - run:
+          name: Deploy
+          command: ./scripts/deploy.sh
+  smarter-gate:
+    docker:
+      - image: cimg/base:2026.11
+    resource_class: small
+    steps:
+      - run:
+          name: gate
+          command: |
+            echo "every job this plan selected has passed"
+workflows:
+  ci:
+    jobs:
+      - lint
+      - security-scan
+      - smarter-gate:
+          requires:
+            - lint
+            - security-scan
