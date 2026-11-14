@@ -60,7 +60,7 @@ jobs:
               --config .circleci/continue.yml \
               --workflow ci \
               --default-branch main \
-              --mode shadow \
+              --mode select \
               --mandatory security-scan \
               --policy-bundle policies
             if [ -n "$SMARTER_ARG_TRIGGER_TYPE" ]; then
