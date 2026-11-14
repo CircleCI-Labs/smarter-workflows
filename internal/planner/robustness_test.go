@@ -1099,25 +1099,64 @@ func TestRobustness_EmptyPostStepsKeyIsTraced(t *testing.T) {
 	}
 }
 
-// Expected: an orb job gets no pre-step, since a reset before the orb's own checkout resets nothing.
-func TestRobustness_OrbJobTraceAddsNoPreStep(t *testing.T) {
+// With --trace-orb-jobs an orb entry gets the pre-steps [checkout, reset]: the
+// planner cannot reach the orb job's own checkout, so the entry checks out first
+// and resets the access times after it (spec step 8). Without the flag the orb
+// entries are not traced at all, and get no pre-steps and no post-steps.
+func TestRobustness_OrbJobTraceAddsCheckoutAndResetPreSteps(t *testing.T) {
 	cfg := rbFixture(t, "orb_overrides.yml")
-	res := rbRun(t, rbCase{
-		cfg:      cfg,
-		base:     map[string]string{"services/api/main.go": "package api\n", "deploy/run.sh": "#!/bin/sh\n"},
-		branch:   "main",
-		change:   rbEdit("services/api/main.go", "package api\n\n// changed\n"),
-		traceOrb: true,
-		want: rbWant{full: true, running: []string{"unit-tests", "integration-tests", "deploy"},
-			emitted: []string{"unit-tests", "integration-tests", "deploy", "smarter-impact-map", "smarter-gate"},
-			gate:    []string{"unit-tests", "integration-tests", "deploy"}},
-	})
-	doc := rbDoc(t, res.Config)
-	for _, name := range []string{"unit-tests", "integration-tests"} {
-		if pre := rbEntryBody(t, doc, "ci", name)["pre-steps"]; pre != nil {
-			t.Errorf("%s has pre-steps %v, want none", name, rbSteps(t, pre))
+	orbJobs := []string{"unit-tests", "integration-tests"}
+	run := func(t *testing.T, traceOrb bool) map[string]any {
+		res := rbRun(t, rbCase{
+			cfg:      cfg,
+			base:     map[string]string{"services/api/main.go": "package api\n", "deploy/run.sh": "#!/bin/sh\n"},
+			branch:   "main",
+			change:   rbEdit("services/api/main.go", "package api\n\n// changed\n"),
+			traceOrb: traceOrb,
+			want: rbWant{full: true, running: []string{"unit-tests", "integration-tests", "deploy"},
+				emitted: []string{"unit-tests", "integration-tests", "deploy", "smarter-impact-map", "smarter-gate"},
+				gate:    []string{"unit-tests", "integration-tests", "deploy"}},
+		})
+		wantTraced := []string{"deploy"}
+		if traceOrb {
+			wantTraced = []string{"unit-tests", "integration-tests", "deploy"}
 		}
+		if got := res.Report.Trace.Jobs; !slices.Equal(got, wantTraced) {
+			t.Errorf("traced jobs = %v, want %v", got, wantTraced)
+		}
+		if got := emittedEntry(t, res, "ci", planner.ImpactMapJob).Requires; !slices.Equal(got, wantTraced) {
+			t.Errorf("the map job requires %v, want %v", got, wantTraced)
+		}
+		return rbDoc(t, res.Config)
 	}
+	t.Run("with --trace-orb-jobs", func(t *testing.T) {
+		doc := run(t, true)
+		for _, name := range orbJobs {
+			body := rbEntryBody(t, doc, "ci", name)
+			if got, want := rbSteps(t, body["pre-steps"]), []string{"checkout", rbReset}; !slices.Equal(got, want) {
+				t.Errorf("%s pre-steps = %v, want %v", name, got, want)
+			}
+			if got, want := rbSteps(t, body["post-steps"]), []string{rbCollect, rbPersist}; !slices.Equal(got, want) {
+				t.Errorf("%s post-steps = %v, want %v", name, got, want)
+			}
+		}
+		// The local job has its reset in its definition, after its own checkout.
+		if pre := rbEntryBody(t, doc, "ci", "deploy")["pre-steps"]; pre != nil {
+			t.Errorf("deploy has pre-steps %v, want none", rbSteps(t, pre))
+		}
+		if got, want := rbSteps(t, rbJob(t, doc, "deploy")["steps"]), []string{"checkout", rbReset, "run"}; !slices.Equal(got, want) {
+			t.Errorf("deploy steps = %v, want %v", got, want)
+		}
+	})
+	t.Run("without --trace-orb-jobs", func(t *testing.T) {
+		doc := run(t, false)
+		for _, name := range orbJobs {
+			body := rbEntryBody(t, doc, "ci", name)
+			if body["pre-steps"] != nil || body["post-steps"] != nil {
+				t.Errorf("%s is not traced, but has pre-steps %v and post-steps %v", name, body["pre-steps"], body["post-steps"])
+			}
+		}
+	})
 }
 
 // Case 14: a job with `checkout: {path: x}` gets the reset after that checkout,
