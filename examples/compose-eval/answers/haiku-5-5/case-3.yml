@@ -1,0 +1,180 @@
+# Case 3 input: the demo jobs with a broken workflow (see case-3-repair.md).
+# The full pipeline of the demo monorepo: the catalog that the setup config
+# (config.yml) prunes. Plain CircleCI config, nothing Smarter-specific.
+#
+# checkout puts the whole repository in ~/project, so every job works in
+# examples/demo through the working_directory of its steps. The images are the
+# ones the org approves: exact tags, no digests for go, node and python.
+version: 2.1
+
+orbs:
+  node: circleci/node@7.2.1
+
+jobs:
+  # Reads the source of the three services and the shared schema, not docs.
+  lint:
+    docker:
+      - image: cimg/go:1.27.3
+    resource_class: small
+    steps:
+      - checkout
+      - run:
+          name: Lint the source
+          working_directory: examples/demo
+          command: scripts/lint.sh
+
+  api-test:
+    docker:
+      - image: cimg/go:1.27.3
+    resource_class: small
+    steps:
+      - checkout
+      - run:
+          name: go test
+          working_directory: examples/demo/services/api
+          command: go test ./...
+
+  web-test:
+    docker:
+      - image: cimg/node:24.22.1
+    resource_class: small
+    steps:
+      - checkout
+      - run:
+          name: node --test
+          working_directory: examples/demo/services/web
+          command: npm test
+
+  # One job per Python version of the matrix in the workflow.
+  worker-test:
+    parameters:
+      python:
+        type: string
+    docker:
+      - image: cimg/python:<< parameters.python >>
+    resource_class: small
+    steps:
+      - checkout
+      - run:
+          name: unittest
+          working_directory: examples/demo/services/worker
+          environment:
+            PYTHONDONTWRITEBYTECODE: "1"
+          command: python -m unittest discover -s tests -v
+
+  docs-check:
+    docker:
+      - image: cimg/base:2026.11
+    resource_class: small
+    steps:
+      - checkout
+      - run:
+          name: Check the docs
+          working_directory: examples/demo
+          command: scripts/check-docs.sh
+
+  infra-validate:
+    docker:
+      - image: cimg/base:2026.11
+    resource_class: small
+    steps:
+      - checkout
+      - run:
+          name: Check the Terraform files
+          working_directory: examples/demo
+          command: scripts/check-infra.sh
+
+  security-scan:
+    docker:
+      - image: cimg/base:2026.11
+    resource_class: small
+    steps:
+      - checkout
+      - run:
+          name: Scan for secrets
+          command: examples/demo/scripts/security-scan.sh
+
+  build:
+    docker:
+      - image: cimg/go:1.27.3
+    resource_class: small
+    steps:
+      - checkout
+      - run:
+          name: go build
+          working_directory: examples/demo/services/api
+          command: |
+            set -eu
+            mkdir -p /tmp/workspace
+            CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags "-X main.version=demo-$CIRCLE_SHA1" -o /tmp/workspace/api .
+            /tmp/workspace/api -version
+      - persist_to_workspace:
+          root: /tmp/workspace
+          paths:
+            - api
+
+  e2e:
+    docker:
+      - image: cimg/base:2026.11
+    resource_class: small
+    steps:
+      - checkout
+      - attach_workspace:
+          at: /tmp/workspace
+      - run:
+          name: Run the api binary and call it
+          working_directory: examples/demo
+          command: scripts/e2e.sh /tmp/workspace/api
+
+  # Stub: it stands for the release of the binary that build made.
+  deploy:
+    docker:
+      - image: cimg/base:2026.11
+    resource_class: small
+    steps:
+      - attach_workspace:
+          at: /tmp/workspace
+      - run:
+          name: Deploy (stub)
+          command: |
+            set -eu
+            sha256sum /tmp/workspace/api
+            echo "deploy stub: would release the binary above to production"
+
+  smarter-gate:
+    type: no-op
+
+workflows:
+  demo:
+    jobs:
+      - lint
+      - security-scan
+      - api-test
+      - web-test
+      - build
+      - e2e:
+          requires:
+            - build
+      - hold-deploy:
+          type: approval
+          requires:
+            - smarter-gate
+          filters:
+            branches:
+              only: main
+      - deploy:
+          context: deploy
+          serial-group: << pipeline.project.slug >>/deploy
+          requires:
+            - hold-deploy
+          filters:
+            branches:
+              only: main
+      - smarter-gate:
+          requires:
+            - lint
+            - security-scan
+            - api-test
+            - web-test
+            - build
+            - e2e

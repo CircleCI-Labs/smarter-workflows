@@ -8,7 +8,7 @@
 | Robustness | 27 unusual config shapes (approvals mid-graph, two workflows, matrices, orb jobs, status `requires`, anchors and merge keys, null steps, renames, unicode paths). Every emitted config must keep the job graph intact, pass the guardrails, and pass `circleci config validate` | pass (9 bugs found and fixed first) |
 | Guardrails | 53 Rego tests and Go fixture tests through CircleCI's policy engine | pass |
 | Trace scripts | 43 checks on ext4, tmpfs and the `cimg/base` image; the atime reset tested on CircleCI's docker and machine executors | pass |
-| End to end | `scripts/e2e/run-scenarios.sh`: real branches, real pipelines, and an exact comparison of the jobs that ran | 13 of 13, twice (before and after the fixes) |
+| End to end | `scripts/e2e/run-scenarios.sh`: real branches, real pipelines, and an exact comparison of the jobs that ran | 13 of 13, three times (v0.1; after the robustness fixes; after the no-op gate) |
 
 ## End-to-end scenarios
 
@@ -42,6 +42,22 @@ Job time is the sum of the jobs' run times in the planned workflow, a stand-in f
 - A fallback full run still gets the gate and tracing.
 - The gate says when it doesn't wait for a job with a status requirement.
 - In CI only: git's background maintenance made temp-repo cleanup flaky; the orb is now validated without an API token; an org config policy can require exact image tags.
+
+## Compose eval
+
+Can an agent assemble jobs into a correct workflow? With the [composer skill](../skills/circleci-workflow-composer/SKILL.md), the docs MCP and the CLI checks, Claude Haiku 5.5 was given three cases, and [`examples/compose-eval/check.sh`](../examples/compose-eval/check.sh) graded each answer with no model involved.
+
+| Case | Result | Check rounds |
+|---|---|---|
+| Compose the full demo workflow from bare job definitions | 18 of 18 checks | 1 |
+| Compose the smallest workflow for a set of selected jobs | 5 of 5 | 1 |
+| Repair a broken layout (10 findings: a cycle, a dangling requirement, a missing mandatory job, a restricted context without an approval, a gate that wasn't a no-op) | 8 of 8 | 2 |
+
+Its full layout matches the hand-written one, with a slightly cleaner shape:
+- every check fans into the no-op gate;
+- the approval waits on the gate;
+- the deploy keeps its restricted context and gains a `serial-group`.
+The answers are in [`examples/compose-eval/answers/haiku-5-5/`](../examples/compose-eval/answers/haiku-5-5/).
 
 ## Not validated yet
 
