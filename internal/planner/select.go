@@ -72,6 +72,9 @@ func analyse(cfg *config.Config, wf *config.Workflow, branch, tag string) (*anal
 			// they run no steps, so they neither persist nor attach
 		case config.KindJob:
 			an.producer[i], an.consumer[i] = cfg.Workspace(e.Ref)
+			// The entry's own pre-steps and post-steps run in the job too.
+			u := cfg.EntryWorkspace(e)
+			an.producer[i], an.consumer[i] = an.producer[i] || u.Persists, an.consumer[i] || u.Attaches
 		default: // an orb job or a job group: unknown inside, so assume both
 			an.producer[i], an.consumer[i] = true, true
 		}

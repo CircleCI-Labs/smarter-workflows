@@ -196,6 +196,45 @@ func TestOneJobInFull(t *testing.T) {
 	}
 }
 
+// The steps that an entry brings, its pre-steps and post-steps, run in the job
+// too, so what they do with workspaces is part of the entry.
+func TestWorkspaceOfAnEntryIncludesItsOwnSteps(t *testing.T) {
+	cfg, err := config.Parse([]byte(`
+version: 2.1
+jobs:
+  compile:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - persist_to_workspace:
+          root: .
+          paths: [bin]
+workflows:
+  ci:
+    jobs:
+      - compile:
+          pre-steps:
+            - attach_workspace:
+                at: .
+          post-steps:
+            - persist_to_workspace:
+                root: .
+                paths: [out, bin]
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cat, err := catalog.Build(cfg, "ci", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := catalog.Workspace{Persists: []string{"bin", "out"}, Attaches: boolp(true)}
+	if got := cat.Jobs[0].Workspace; !reflect.DeepEqual(got, want) {
+		t.Errorf("workspace = %+v, want %+v", got, want)
+	}
+}
+
 func TestEntriesThatRunNothingAndEntriesThatAreUnknown(t *testing.T) {
 	jobs := jobsByName(buildRich(t, nil))
 	noSteps := []string{"coordinator", "hold", "release-svc"}

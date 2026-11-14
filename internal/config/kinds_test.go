@@ -355,3 +355,46 @@ jobs:
 		})
 	}
 }
+
+func TestEntryWorkspace(t *testing.T) {
+	c := mustParse(t, `
+version: 2.1
+commands:
+  stash:
+    steps:
+      - persist_to_workspace:
+          root: .
+          paths: [c, a]
+jobs:
+  j:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+workflows:
+  w:
+    jobs:
+      - j:
+          pre-steps:
+            - attach_workspace:
+                at: .
+          post-steps:
+            - persist_to_workspace:
+                root: .
+                paths: [out, bin]
+            - stash
+      - j:
+          name: plain
+          requires: [j]
+`)
+	entries := mustWorkflow(t, c, "w").Entries
+	got := c.EntryWorkspace(entries[0])
+	want := config.WorkspaceUse{Persists: true, Attaches: true, Paths: []string{"a", "bin", "c", "out"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("EntryWorkspace = %+v, want %+v", got, want)
+	}
+	// The entry's own steps only: the job's definition is read by Workspace.
+	if got := c.EntryWorkspace(entries[1]); got.Persists || got.Attaches || len(got.Paths) != 0 {
+		t.Errorf("an entry with no steps of its own: %+v", got)
+	}
+}
