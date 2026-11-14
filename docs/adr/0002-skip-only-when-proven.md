@@ -22,7 +22,9 @@ A skipped job that would have failed (a miss) costs more than an extra job that 
    - when there is no impact map, the diff base can't be found, or the planner hits any error;
    - when the head commit asks for one.
 4. Every decision layer added later (history, models) can only *add* jobs.
-5. Every workflow the planner prunes ends in one gate job, `smarter-gate`, which requires every selected job that will run. Branch protection requires the gate alone.
+5. Every workflow the planner prunes ends in one gate job, `smarter-gate`, which requires every selected job that will run. So the workflow always exists and its check always reports:
+   - GitHub App projects report one check per workflow, and branch protection requires that check;
+   - with per-job statuses, branch protection requires the gate alone.
 
 ## Consequences
 

@@ -28,7 +28,10 @@ push to a branch ──► setup: plan job ◄── impact map for the merge-ba
 4. **Guardrails.** The planner checks the config it generated against the Rego bundle in `policies/`, using CircleCI's own policy engine (`circle-policy-agent`).
    - If a mandatory job is missing, it adds the job and checks again.
    - Any other hard violation turns the plan into a full run.
-5. **The gate.** Every planned workflow ends with `smarter-gate`, which waits for every selected job. Make it your only required status check, so a PR never waits on a skipped job.
+5. **The gate.** Every planned workflow ends with `smarter-gate`, which waits for every selected job. The workflow always runs, even when only the gate is left.
+   - CircleCI's GitHub App reports one check per workflow (e.g. `ci - <definition>`): make that check required.
+   - If you use per-job status checks, require `smarter-gate`.
+   Either way, a PR never waits on a skipped job.
 
 ## When it runs everything
 
