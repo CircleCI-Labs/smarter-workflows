@@ -1,0 +1,215 @@
+# The full pipeline of this repo: the catalog that the planner of
+# .circleci/config.yml prunes. Plain CircleCI config, nothing Smarter-specific.
+#
+# Every job pins its image (tag and digest, the tag at least a week old) and
+# sets its resource class. The workflow `ci` needs no pipeline parameters.
+version: 2.1
+
+commands:
+  # The CircleCI CLI, pinned: the release is checked against its sha256 (the
+  # digest GitHub publishes for the asset). The jobs use it to validate config
+  # and orbs and to run policy tests; no token is set in them.
+  install-circleci-cli:
+    steps:
+      - run:
+          name: Install the CircleCI CLI
+          command: |
+            set -eu
+            version=1.6.0
+            sha256=20296c88505342996693b657e7bd7fc7862e1779fc000b869fcc5b9870f4417e
+            archive="circleci-cli_${version}_linux_amd64.tar.gz"
+            curl -fsSL --retry 3 -o "/tmp/${archive}" "https://github.com/CircleCI-Public/circleci-cli/releases/download/v${version}/${archive}"
+            echo "${sha256}  /tmp/${archive}" | sha256sum -c -
+            mkdir -p "$HOME/bin"
+            tar -xzf "/tmp/${archive}" -C "$HOME/bin" circleci
+            circleci --version
+
+jobs:
+  go-test:
+    docker:
+      - image: cimg/go:1.27.3@sha256:21bc418e37dd1b5a0019dac909ed2cf08fd09f7ca5823256dd1a497741cc8a4f
+    resource_class: medium
+    steps:
+      - checkout
+      - install-circleci-cli
+      - run:
+          name: go test
+          # The planner's tests validate every config it emits with the CLI, so
+          # a missing CLI or an unreachable API must fail here, not skip.
+          environment:
+            REQUIRE_CIRCLECI_CLI: "1"
+          command: go test ./...
+
+  go-lint:
+    docker:
+      - image: cimg/go:1.27.3@sha256:21bc418e37dd1b5a0019dac909ed2cf08fd09f7ca5823256dd1a497741cc8a4f
+    resource_class: medium
+    steps:
+      - checkout
+      - run:
+          name: gofmt
+          command: |
+            unformatted="$(gofmt -l .)"
+            if [ -n "$unformatted" ]; then
+              echo "gofmt would change:" >&2
+              echo "$unformatted" >&2
+              exit 1
+            fi
+      - run:
+          name: go vet
+          command: go vet ./...
+
+  policy-test:
+    docker:
+      - image: cimg/go:1.27.3@sha256:21bc418e37dd1b5a0019dac909ed2cf08fd09f7ca5823256dd1a497741cc8a4f
+    resource_class: medium
+    steps:
+      - checkout
+      - install-circleci-cli
+      - run:
+          name: Go tests of the policy package
+          command: go test ./internal/policy/...
+      # The Rego tests need the helpers that CircleCI's policy runtime adds
+      # (data.circleci.utils), which plain OPA does not have: the CLI runs them.
+      - run:
+          name: Rego tests of the guardrail bundle
+          command: circleci policy test policies
+
+  script-test:
+    docker:
+      - image: cimg/base:2026.11@sha256:4e57f523172e8f5bbf9cb57393b80c964ac0e6c75ee70ebd8c980d11bb503c01
+    resource_class: small
+    steps:
+      - checkout
+      # The shellcheck of the image (an apt package, so pinned by the image).
+      - run:
+          name: shellcheck
+          command: |
+            shellcheck --version
+            shellcheck -s sh internal/tracescript/*.sh scripts/*.sh
+      # Atime must work here: the docker executor is the one the traces run on.
+      - run:
+          name: Tests of the trace scripts
+          environment:
+            REQUIRE_ATIME: "1"
+          command: scripts/test-trace.sh
+
+  orb-validate:
+    docker:
+      - image: cimg/base:2026.11@sha256:4e57f523172e8f5bbf9cb57393b80c964ac0e6c75ee70ebd8c980d11bb503c01
+    resource_class: small
+    steps:
+      - checkout
+      - install-circleci-cli
+      - run:
+          name: Validate the orb
+          command: circleci orb validate orb/orb.yml
+      - run:
+          name: Validate the setup config and the continuation config
+          command: |
+            circleci config validate .circleci/config.yml
+            circleci config validate .circleci/continue.yml
+
+  security-scan:
+    docker:
+      - image: cimg/go:1.27.3@sha256:21bc418e37dd1b5a0019dac909ed2cf08fd09f7ca5823256dd1a497741cc8a4f
+    resource_class: medium
+    steps:
+      - checkout
+      # go install checks the module against the checksum database.
+      - run:
+          name: Install govulncheck
+          command: go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+      - run:
+          name: govulncheck
+          command: |
+            "$(go env GOPATH)/bin/govulncheck" ./...
+
+  build:
+    docker:
+      - image: cimg/go:1.27.3@sha256:21bc418e37dd1b5a0019dac909ed2cf08fd09f7ca5823256dd1a497741cc8a4f
+    resource_class: medium
+    steps:
+      - checkout
+      - run:
+          name: go build
+          command: |
+            set -eu
+            mkdir -p /tmp/workspace
+            CGO_ENABLED=0 go build -trimpath -ldflags "-X main.version=dev-$CIRCLE_SHA1" -o /tmp/workspace/circleci-smarter ./cmd/circleci-smarter
+            /tmp/workspace/circleci-smarter version
+      - persist_to_workspace:
+          root: /tmp/workspace
+          paths:
+            - circleci-smarter
+
+  e2e-plan:
+    docker:
+      - image: cimg/base:2026.11@sha256:4e57f523172e8f5bbf9cb57393b80c964ac0e6c75ee70ebd8c980d11bb503c01
+    resource_class: small
+    steps:
+      - checkout
+      - attach_workspace:
+          at: /tmp/workspace
+      # Run the built binary on the example monorepo, as a full run with the
+      # trace steps, so the embedded scripts are in the output. Before the
+      # example exists, run `version`.
+      - run:
+          name: Plan the example
+          command: |
+            set -eu
+            bin=/tmp/workspace/circleci-smarter
+            mkdir -p /tmp/e2e
+            if [ -f examples/monorepo/continue.yml ]; then
+              "$bin" plan --config examples/monorepo/continue.yml --force-full --trace on --out /tmp/e2e/continue.yml --report-dir /tmp/e2e/plan
+              test -s /tmp/e2e/continue.yml
+              test -s /tmp/e2e/plan/plan.json
+              grep -q "smarter: collect trace" /tmp/e2e/continue.yml
+              grep -q "smarter-impact-map" /tmp/e2e/continue.yml
+            else
+              "$bin" version
+            fi
+      - store_artifacts:
+          path: /tmp/e2e
+          destination: e2e-plan
+
+  release:
+    docker:
+      - image: cimg/base:2026.11@sha256:4e57f523172e8f5bbf9cb57393b80c964ac0e6c75ee70ebd8c980d11bb503c01
+    resource_class: small
+    steps:
+      - run:
+          name: Release (stub)
+          command: |
+            echo "release stub: would publish ${CIRCLE_TAG}"
+
+workflows:
+  ci:
+    jobs:
+      - go-test
+      - go-lint
+      - policy-test
+      - script-test
+      - orb-validate
+      - security-scan
+      - build
+      - e2e-plan:
+          requires:
+            - build
+      # Tags only. The same commit passed the branch pipeline, so a tag pipeline
+      # holds for a person and releases: no job it requires needs a tag filter.
+      - hold-release:
+          type: approval
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v.*/
+      - release:
+          requires:
+            - hold-release
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v.*/
