@@ -57,6 +57,19 @@ func (e *Entry) Names() []string {
 	return names
 }
 
+// RequireName is the name another entry writes in `requires` to wait for this
+// one. It differs from Name for a matrix entry whose name is an expression: the
+// matrix is then required by its alias, or by its job name.
+func (e *Entry) RequireName() string {
+	switch {
+	case e.Matrix && e.Alias != "":
+		return e.Alias
+	case e.Matrix && strings.Contains(e.Name, "<<"):
+		return e.Ref
+	}
+	return e.Name
+}
+
 // Filters are the branch and tag filters of a workflow entry.
 type Filters struct {
 	// Present is set when the entry has a `filters` key.
@@ -119,15 +132,18 @@ func (c *Config) Workflow(name string) (*Workflow, error) {
 	return w, nil
 }
 
+// reload parses the job list again into a new Entries slice, so that a slice
+// handed out earlier keeps describing the list as it was.
 func (w *Workflow) reload() error {
-	w.Entries = w.Entries[:0]
+	entries := make([]*Entry, 0, len(w.jobs.Content))
 	for i, item := range w.jobs.Content {
 		e, err := parseEntry(item)
 		if err != nil {
 			return fmt.Errorf("workflow %q, job %d: %w", w.Name, i+1, err)
 		}
-		w.Entries = append(w.Entries, e)
+		entries = append(entries, e)
 	}
+	w.Entries = entries
 	return nil
 }
 

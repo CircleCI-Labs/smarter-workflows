@@ -1,0 +1,544 @@
+package planner
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"slices"
+	"strings"
+
+	"github.com/CircleCI-Labs/smarter-workflows/internal/config"
+	"github.com/CircleCI-Labs/smarter-workflows/internal/diff"
+	"github.com/CircleCI-Labs/smarter-workflows/internal/guard"
+	"github.com/CircleCI-Labs/smarter-workflows/internal/impactmap"
+	"github.com/CircleCI-Labs/smarter-workflows/internal/report"
+)
+
+// maxRepairRounds is how many times the guardrail loop re-plans after a repair
+// (step 9.2).
+const maxRepairRounds = 3
+
+// Repo is what the planner asks git.
+type Repo interface {
+	// Changes lists the changed paths between two commits, renames split into a
+	// delete and an add.
+	Changes(ctx context.Context, base, head string) ([]diff.Change, error)
+	// DirsExist reports which of the directories exist at the revision.
+	DirsExist(ctx context.Context, rev string, dirs []string) (map[string]bool, error)
+}
+
+// Input is everything the planner reads.
+type Input struct {
+	// Config is the full continuation config (the catalog).
+	Config []byte
+	// Map is the impact map. When it is nil, MapProblem says why, and the plan
+	// is a full run.
+	Map        *impactmap.Map
+	MapProblem string
+	// Repo answers questions about the change. It may be nil when there is no
+	// base.
+	Repo Repo
+	// CommitMessage is the head commit's message.
+	CommitMessage string
+	// Checker evaluates the guardrails; nil means there is no policy bundle.
+	// GuardrailsProblem is set when a bundle was asked for but cannot be used:
+	// the plan is a full run and the problem is recorded.
+	Checker           guard.Checker
+	GuardrailsProblem string
+}
+
+// Result is the outcome of planning.
+type Result struct {
+	// Config is the continuation config to send.
+	Config []byte
+	// Report is plan.json.
+	Report *report.Plan
+	// GuardrailsFailed is set when even the full plan breaks a hard guardrail:
+	// the pipeline must not continue (exit 3).
+	GuardrailsFailed bool
+}
+
+// UsageError is a mistake in how the planner was called (an unknown workflow,
+// bad settings), as opposed to a failure while planning.
+type UsageError struct{ Msg string }
+
+func (e *UsageError) Error() string { return e.Msg }
+
+// Run plans one workflow. It fails only when the config cannot be read or the
+// workflow cannot be chosen. Any later problem produces a full plan, with the
+// reason in the report, and no error.
+func Run(ctx context.Context, in Input, opts Options) (*Result, error) {
+	if err := opts.Validate(); err != nil {
+		return nil, &UsageError{Msg: err.Error()}
+	}
+	cfg, err := config.Parse(in.Config)
+	if err != nil {
+		return nil, err
+	}
+	name, err := chooseWorkflow(cfg, opts.Workflow)
+	if err != nil {
+		return nil, &UsageError{Msg: err.Error()}
+	}
+	p := &planner{in: in, o: opts, wf: name}
+	return p.run(ctx), nil
+}
+
+func chooseWorkflow(cfg *config.Config, want string) (string, error) {
+	names := cfg.Workflows()
+	switch {
+	case want != "":
+		if !slices.Contains(names, want) {
+			return "", fmt.Errorf("the config has no workflow %q (it has: %s)", want, strings.Join(names, ", "))
+		}
+		return want, nil
+	case len(names) == 1:
+		return names[0], nil
+	case len(names) == 0:
+		return "", errors.New("the config has no workflow with a job list")
+	}
+	return "", fmt.Errorf("the config has %d workflows (%s): name the one to plan with --workflow", len(names), strings.Join(names, ", "))
+}
+
+type planner struct {
+	in Input
+	o  Options
+	wf string
+
+	changes     []diff.Change
+	changesErr  error
+	changesDone bool
+}
+
+// attempt is one candidate plan.
+type attempt struct {
+	cfg  []byte
+	rep  *report.Plan
+	full bool
+}
+
+// run is step 9 around the planning of steps 1 to 8.
+func (p *planner) run(ctx context.Context) *Result {
+	forced := map[string]bool{}
+	var repairs, warnings []string
+	var violations []report.Violation
+	fullReason := ""
+	status := "SKIPPED"
+	checker := p.in.Checker
+
+	if p.in.GuardrailsProblem != "" {
+		checker = nil
+		status = guard.Error
+		fullReason = "the guardrails cannot be checked: " + p.in.GuardrailsProblem
+		warnings = append(warnings, "guardrails: "+p.in.GuardrailsProblem+"; planned a full run without checking it")
+	}
+
+	failed := false
+	rounds := 0
+	var final *attempt
+	for {
+		a := p.plan(ctx, forced, fullReason)
+		if checker == nil {
+			final = a
+			break
+		}
+		res, err := checker.Check(ctx, a.cfg)
+		if err == nil && res.Status == guard.Error {
+			err = errors.New("the policy check reported an error")
+		}
+		if err != nil {
+			// The check itself broke. The user's own pipeline is the baseline the
+			// guardrails protect, so fall back to the full plan, and say so.
+			status = guard.Error
+			warnings = append(warnings, fmt.Sprintf("guardrails: the check failed (%v)", err))
+			if !a.full {
+				a = p.plan(ctx, forced, "the guardrails could not be checked: "+err.Error())
+			}
+			final = a
+			break
+		}
+
+		violations = convert(res.Violations)
+		hard := hardViolations(res)
+		if len(hard) == 0 {
+			status = res.Status
+			if status == "" {
+				status = guard.Pass
+			}
+			for _, v := range res.Violations {
+				warnings = append(warnings, fmt.Sprintf("guardrails (soft): %s: %s", v.Rule, oneLine(v.Message)))
+			}
+			final = a
+			break
+		}
+		if a.full {
+			status, failed, final = guard.HardFail, true, a
+			break
+		}
+		var fresh []string
+		for _, v := range hard {
+			for _, name := range v.RequireJobs {
+				if !forced[name] && !slices.Contains(fresh, name) {
+					fresh = append(fresh, name)
+				}
+			}
+		}
+		if len(fresh) > 0 && rounds < maxRepairRounds {
+			rounds++
+			for _, name := range fresh {
+				forced[name] = true
+				repairs = append(repairs, "require-job="+name)
+			}
+			continue
+		}
+		fullReason = "the guardrails reject the plan and it cannot be repaired: " + oneLine(hard[0].Message)
+	}
+
+	rep := final.rep
+	rep.Guardrails = report.Guardrails{Status: status, Repairs: repairs, Violations: violations}
+	rep.Warnings = append(rep.Warnings, warnings...)
+	return &Result{Config: final.cfg, Report: rep, GuardrailsFailed: failed}
+}
+
+func hardViolations(r guard.Result) []guard.Violation {
+	var out []guard.Violation
+	for _, v := range r.Violations {
+		if v.Hard {
+			out = append(out, v)
+		}
+	}
+	if len(out) == 0 && r.Status == guard.HardFail {
+		out = append(out, guard.Violation{Message: "the policy check failed", Hard: true})
+	}
+	return out
+}
+
+func convert(vs []guard.Violation) []report.Violation {
+	out := make([]report.Violation, 0, len(vs))
+	for _, v := range vs {
+		out = append(out, report.Violation{Policy: v.Policy, Rule: v.Rule, Message: oneLine(v.Message), Hard: v.Hard})
+	}
+	return out
+}
+
+func oneLine(s string) string { return strings.Join(strings.Fields(s), " ") }
+
+// plan builds a plan. If building fails, it plans a full run instead and
+// records why: first with everything, then without the trace steps, and last
+// by passing the config through untouched.
+func (p *planner) plan(ctx context.Context, forced map[string]bool, fullReason string) *attempt {
+	a, err := p.build(ctx, forced, fullReason, true)
+	if err == nil {
+		return a
+	}
+	reason := "internal error: " + oneLine(err.Error())
+	note := "internal error, planned a full run: " + oneLine(err.Error())
+	for _, withTrace := range []bool{true, false} {
+		if a, err2 := p.build(ctx, nil, reason, withTrace); err2 == nil {
+			a.rep.Warnings = append(a.rep.Warnings, note)
+			return a
+		}
+	}
+	return p.verbatim(reason, note)
+}
+
+// verbatim is the last resort: the config as it came, with no gate.
+func (p *planner) verbatim(reason, note string) *attempt {
+	rep := p.newReport()
+	rep.Full, rep.FullReason = true, reason
+	if cfg, err := config.Parse(p.in.Config); err == nil {
+		if wf, err := cfg.Workflow(p.wf); err == nil {
+			for _, e := range wf.Entries {
+				rep.Jobs = append(rep.Jobs, report.Job{Name: e.Name, Run: true, Reasons: []string{"full run"}})
+			}
+		}
+	}
+	rep.Warnings = append(rep.Warnings, note, "the config is passed through unchanged, without the gate job")
+	return &attempt{cfg: p.in.Config, rep: rep, full: true}
+}
+
+func (p *planner) newReport() *report.Plan {
+	rep := &report.Plan{
+		Version:    report.Version,
+		Mode:       string(p.o.Mode),
+		Workflow:   p.wf,
+		Base:       p.o.Base,
+		Head:       p.o.Head,
+		Branch:     p.o.Branch,
+		Guardrails: report.Guardrails{Status: "SKIPPED"},
+	}
+	if m := p.in.Map; m != nil {
+		rep.MapRevision, rep.MapCreatedAt = m.Revision, m.CreatedAt
+	}
+	return rep
+}
+
+func (p *planner) getChanges(ctx context.Context) ([]diff.Change, error) {
+	if p.changesDone {
+		return p.changes, p.changesErr
+	}
+	p.changesDone = true
+	switch {
+	case p.o.Base == "":
+	case p.o.Head == "":
+		p.changesErr = errors.New("there is no head commit")
+	case p.in.Repo == nil:
+		p.changesErr = errors.New("there is no repository to ask")
+	default:
+		p.changes, p.changesErr = p.in.Repo.Changes(ctx, p.o.Base, p.o.Head)
+	}
+	return p.changes, p.changesErr
+}
+
+func isScheduled(trigger string) bool {
+	switch strings.ToLower(strings.TrimSpace(trigger)) {
+	case "schedule", "scheduled", "scheduled_pipeline":
+		return true
+	}
+	return false
+}
+
+// fullRunReason is step 1. It returns "" when the change gets a real plan.
+func (p *planner) fullRunReason(wf *config.Workflow, cs *changeSet, changesErr error) string {
+	o := p.o
+	switch {
+	case o.ForceFull:
+		return "forced by --force-full"
+	case o.Tag != "":
+		return "tag " + o.Tag
+	case o.Branch != "" && o.Branch == o.DefaultBranch:
+		return "default branch " + o.Branch
+	case isScheduled(o.TriggerType):
+		return "scheduled pipeline"
+	case diff.AsksForFullRun(p.in.CommitMessage):
+		return "the head commit asks for a full run"
+	case o.Base == "":
+		if o.NoBaseReason != "" {
+			return "no diff base: " + o.NoBaseReason
+		}
+		return "no diff base"
+	case p.in.Map == nil:
+		if p.in.MapProblem != "" {
+			return "no usable impact map: " + p.in.MapProblem
+		}
+		return "no usable impact map"
+	case changesErr != nil:
+		return "the changed files could not be listed: " + oneLine(changesErr.Error())
+	}
+	for _, c := range cs.all {
+		if g, ok := matchAny(o.FullRunPaths, c.Path); ok {
+			return fmt.Sprintf("changed path %s matches the full-run path %s", c.Path, g)
+		}
+	}
+	if wf.Condition() == config.DynamicCondition {
+		return "the workflow has a when or unless that is not a literal true or false"
+	}
+	for _, e := range wf.Entries {
+		if e.Dynamic && !e.Matrix {
+			return fmt.Sprintf("job %q has a name or requires that is an expression", e.Name)
+		}
+	}
+	return ""
+}
+
+// build is steps 1 to 8: one plan, from a fresh parse of the config. A
+// non-empty fullReason forces a full run.
+func (p *planner) build(ctx context.Context, forced map[string]bool, fullReason string, allowTrace bool) (a *attempt, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			a, err = nil, fmt.Errorf("planner panic: %v", r)
+		}
+	}()
+
+	cfg, err := config.Parse(p.in.Config)
+	if err != nil {
+		return nil, err
+	}
+	wf, err := cfg.Workflow(p.wf)
+	if err != nil {
+		return nil, err
+	}
+	an, err := analyse(cfg, wf, p.o.Branch, p.o.Tag)
+	if err != nil {
+		return nil, err
+	}
+
+	rep := p.newReport()
+	changes, changesErr := p.getChanges(ctx)
+	cs := newChangeSet(changes, p.o.IgnorePaths)
+	for _, c := range cs.all {
+		rep.Changed = append(rep.Changed, report.Change{Path: c.Path, Status: c.Status})
+	}
+
+	full := fullReason
+	if full == "" {
+		full = p.fullRunReason(wf, cs, changesErr)
+	}
+	rep.Full, rep.FullReason = full != "", full
+
+	n := len(an.entries)
+	var sel *selection
+	if rep.Full {
+		sel = &selection{selected: make([]bool, n), reasons: make([][]string, n)}
+		for i := range sel.selected {
+			sel.selected[i], sel.reasons[i] = true, []string{"full run"}
+		}
+	} else {
+		if err := cs.loadDirs(ctx, p.in.Repo, p.o.Base, p.o.Head); err != nil {
+			return nil, err
+		}
+		sel = p.selectJobs(an, cs, forced)
+		rep.Warnings = append(rep.Warnings, p.planWarnings(an)...)
+		if m := p.in.Map; m != nil && m.Revision != p.o.Base {
+			rep.Warnings = append(rep.Warnings, fmt.Sprintf("the impact map was built at %s, and the diff base is %s", short(m.Revision), short(p.o.Base)))
+		}
+	}
+	if m := p.in.Map; m != nil {
+		rep.Warnings = append(rep.Warnings, m.Problems...)
+	}
+
+	removing := p.o.Mode == ModeSelect && !rep.Full
+	kept := make([]bool, n)
+	for i := range kept {
+		kept[i] = !removing || sel.selected[i]
+	}
+
+	// The report: what the plan runs. In shadow mode this is what select mode
+	// would run, since every job stays.
+	for i, e := range an.entries {
+		job := report.Job{Name: e.Name, Run: sel.selected[i] && an.will[i] != triNo}
+		switch {
+		case sel.selected[i]:
+			job.Reasons = append(job.Reasons, sel.reasons[i]...)
+			if an.will[i] == triNo {
+				job.Reasons = append(job.Reasons, an.inertReason(i, p.o.Branch, p.o.Tag))
+			}
+		default:
+			job.Reasons = []string{an.skipReason(i, p.o.Branch, p.o.Tag)}
+		}
+		rep.Jobs = append(rep.Jobs, job)
+		if kept[i] && an.will[i] == triUnknown && filterVerdict(e.Filters, p.o.Branch, p.o.Tag) == triUnknown {
+			rep.Warnings = append(rep.Warnings, fmt.Sprintf("job %s: its filters cannot be evaluated here, so it is left out of the gate", e.Name))
+		}
+	}
+
+	// The gate waits for every kept job that is certain to run, except the
+	// approvals and what comes after them.
+	var gateRequires []string
+	for i, e := range an.entries {
+		if kept[i] && an.will[i] == triYes && !e.Approval && !an.afterApproval[i] {
+			gateRequires = append(gateRequires, e.RequireName())
+		}
+	}
+
+	var keptNames []string
+	if removing {
+		remove := map[int]bool{}
+		for i := range an.entries {
+			if !kept[i] {
+				remove[i] = true
+			}
+		}
+		if err := wf.Prune(remove); err != nil {
+			return nil, err
+		}
+	}
+	for i, e := range an.entries {
+		if kept[i] {
+			keptNames = append(keptNames, e.Name)
+		}
+	}
+
+	if allowTrace && p.traceOn(rep.Full) {
+		tr, notes, err := p.injectTrace(cfg, wf, an)
+		if err != nil {
+			return nil, err
+		}
+		rep.Warnings = append(rep.Warnings, notes...)
+		if tr != nil {
+			rep.Trace = tr
+			keptNames = append(keptNames, ImpactMapJob)
+		}
+	}
+	if err := p.addGate(cfg, wf, gateRequires); err != nil {
+		return nil, err
+	}
+	keptNames = append(keptNames, p.o.GateJob)
+	rep.Gate = &report.Gate{Name: p.o.GateJob, Requires: gateRequires}
+
+	out, err := cfg.Marshal()
+	if err != nil {
+		return nil, err
+	}
+	if err := p.verify(out, keptNames, an); err != nil {
+		return nil, err
+	}
+	return &attempt{cfg: out, rep: rep, full: rep.Full}, nil
+}
+
+// planWarnings reports settings that name jobs the workflow does not have.
+func (p *planner) planWarnings(an *analysis) []string {
+	var out []string
+	for _, name := range p.o.Mandatory {
+		if _, ok := an.byName[name]; !ok {
+			out = append(out, fmt.Sprintf("mandatory job %s is not in workflow %s", name, p.wf))
+		}
+	}
+	for _, name := range sortedKeys(p.o.ExtraInputs) {
+		if _, ok := an.byName[name]; !ok {
+			out = append(out, fmt.Sprintf("extra inputs name job %s, which is not in workflow %s", name, p.wf))
+		}
+	}
+	return out
+}
+
+func sortedKeys(m map[string][]string) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+	return keys
+}
+
+func short(sha string) string {
+	if len(sha) > 7 {
+		return sha[:7]
+	}
+	if sha == "" {
+		return "unknown"
+	}
+	return sha
+}
+
+// verify re-reads what the planner emitted and checks the workflow holds the
+// entries it meant to keep, and that no requires points at a job that is gone.
+func (p *planner) verify(out []byte, wantNames []string, an *analysis) error {
+	cfg, err := config.Parse(out)
+	if err != nil {
+		return fmt.Errorf("the emitted config does not parse: %w", err)
+	}
+	wf, err := cfg.Workflow(p.wf)
+	if err != nil {
+		return fmt.Errorf("the emitted config lost the workflow: %w", err)
+	}
+	got := map[string]bool{}
+	var gotNames []string
+	for _, e := range wf.Entries {
+		for _, n := range e.Names() {
+			got[n] = true
+		}
+		got[e.RequireName()] = true
+		gotNames = append(gotNames, e.Name)
+	}
+	if !slices.Equal(gotNames, wantNames) {
+		return fmt.Errorf("the emitted workflow has jobs %v, want %v", gotNames, wantNames)
+	}
+	for _, e := range wf.Entries {
+		for _, r := range e.Requires {
+			if _, existed := an.byName[r]; existed && !got[r] {
+				return fmt.Errorf("job %s requires %s, which the plan removed", e.Name, r)
+			}
+		}
+	}
+	return nil
+}
