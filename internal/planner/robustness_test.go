@@ -234,7 +234,12 @@ type rbCheck struct {
 //	(e) an input that passes the policy bundle gives an output that passes it.
 //
 // The run semantics are CircleCI's as the docs give them: a job runs when its
-// filters pass and at least one of its requirements runs.
+// filters pass and at least one of its requirements runs. The planner is
+// stricter on one point (spec step 5): a job with a requirement that does not run
+// is treated as not running, and is removed. So the planner may remove a job
+// that this oracle says runs, and the checks below only hold what is true under
+// both readings: nothing is kept without its requirements, the gate waits only
+// for jobs that surely run, and no job runs that would not have run.
 func rbInvariants(t *testing.T, c rbCheck) {
 	t.Helper()
 	gate := planner.DefaultGateJob
