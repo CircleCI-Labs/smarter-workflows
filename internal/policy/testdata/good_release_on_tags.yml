@@ -1,0 +1,45 @@
+# The deploy job runs on release tags only, after an approval.
+version: 2.1
+jobs:
+  build:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - checkout
+  security-scan:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - checkout
+  deploy:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - checkout
+workflows:
+  release:
+    jobs:
+      - build:
+          filters:
+            tags:
+              only: /^v.*/
+      - security-scan:
+          filters:
+            tags:
+              only: /^v.*/
+      - hold-release:
+          type: approval
+          requires: [build, security-scan]
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v.*/
+      - deploy:
+          context: [deploy]
+          requires: [hold-release]
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v.*/
