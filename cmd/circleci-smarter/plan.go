@@ -9,7 +9,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/CircleCI-Labs/smarter-workflows/internal/diff"
@@ -63,7 +62,7 @@ func runPlan(args []string, stdout, stderr io.Writer) int {
 	gateImage := fs.String("gate-image", planner.DefaultGateImage, "the docker image of the gate and map jobs")
 	smarterBin := fs.String("smarter-bin", "", "where the map job finds this binary (default: the path it runs from)")
 	policyBundle := fs.String("policy-bundle", "", "a policy bundle directory: check the plan against it, repair, or fall back to a full run")
-	policyMeta := fs.String("policy-meta", "", "JSON (or the path of a JSON file) passed to the policies as data.meta (default: built from the environment)")
+	policyMeta := fs.String("policy-meta", "", "JSON (or the path of a JSON file) passed to the policies as data.meta (default: built from the CircleCI environment)")
 	out := fs.String("out", "/tmp/smarter/continue.yml", "where to write the continuation config")
 	reportDir := fs.String("report-dir", "/tmp/smarter/plan", "where to write plan.json and plan.md")
 	if err := fs.Parse(args); err != nil {
@@ -150,7 +149,7 @@ func runPlan(args []string, stdout, stderr io.Writer) int {
 	}
 
 	if *policyBundle != "" {
-		in.Checker, in.GuardrailsProblem = planLoadGuardrails(*policyBundle, *policyMeta, *branch, *tag)
+		in.Checker, in.GuardrailsProblem = planLoadGuardrails(*policyBundle, *policyMeta)
 	}
 
 	res, err := planner.Run(ctx, in, opts)
@@ -225,11 +224,11 @@ func planLoadMap(path string) (*impactmap.Map, string) {
 // planLoadGuardrails builds the guardrail checker. When it cannot (no policy
 // support in this binary, a bad bundle or metadata) it returns a problem
 // instead, and the planner falls back to a full plan.
-func planLoadGuardrails(bundle, metaFlag, branch, tag string) (guard.Checker, string) {
+func planLoadGuardrails(bundle, metaFlag string) (guard.Checker, string) {
 	if loadGuardrails == nil {
 		return nil, "policy support is not built into this binary"
 	}
-	meta, err := planPolicyMeta(metaFlag, branch, tag)
+	meta, err := planPolicyMeta(metaFlag)
 	if err != nil {
 		return nil, err.Error()
 	}
@@ -241,43 +240,25 @@ func planLoadGuardrails(bundle, metaFlag, branch, tag string) (guard.Checker, st
 }
 
 // planPolicyMeta is the data.meta document of the policies: the --policy-meta
-// JSON (or the file it names), or a document built from the CircleCI
-// environment. Only a few well-known variables are read, and nothing is printed.
-func planPolicyMeta(flagValue, branch, tag string) (map[string]any, error) {
-	if v := strings.TrimSpace(flagValue); v != "" {
-		raw := []byte(v)
-		if !strings.HasPrefix(v, "{") {
-			b, err := os.ReadFile(v)
-			if err != nil {
-				return nil, fmt.Errorf("--policy-meta: %v", err)
-			}
-			raw = b
-		}
-		var meta map[string]any
-		if err := json.Unmarshal(raw, &meta); err != nil {
-			return nil, fmt.Errorf("--policy-meta is not a JSON object: %v", err)
-		}
-		return meta, nil
+// JSON object, or the file that holds one. Without the flag it is nil, and the
+// policy package builds the document from the CircleCI environment, as
+// `policy check` does.
+func planPolicyMeta(flagValue string) (map[string]any, error) {
+	v := strings.TrimSpace(flagValue)
+	if v == "" {
+		return nil, nil
 	}
-
-	vcs := map[string]any{}
-	set := func(m map[string]any, key, value string) {
-		if value != "" {
-			m[key] = value
+	raw := []byte(v)
+	if !strings.HasPrefix(v, "{") {
+		b, err := os.ReadFile(v)
+		if err != nil {
+			return nil, fmt.Errorf("--policy-meta: %v", err)
 		}
+		raw = b
 	}
-	set(vcs, "branch", branch)
-	set(vcs, "tag", tag)
-	set(vcs, "revision", os.Getenv("CIRCLE_SHA1"))
-	set(vcs, "origin_repository_url", os.Getenv("CIRCLE_REPOSITORY_URL"))
-	set(vcs, "target_repository_url", os.Getenv("CIRCLE_REPOSITORY_URL"))
-	set(vcs, "review_url", os.Getenv("CIRCLE_PULL_REQUEST"))
-
-	meta := map[string]any{"vcs": vcs}
-	set(meta, "project_id", os.Getenv("CIRCLE_PROJECT_ID"))
-	set(meta, "branch", branch)
-	if n, err := strconv.Atoi(os.Getenv("CIRCLE_BUILD_NUM")); err == nil {
-		meta["build_number"] = n
+	var meta map[string]any
+	if err := json.Unmarshal(raw, &meta); err != nil || meta == nil {
+		return nil, fmt.Errorf("--policy-meta is not a JSON object: %v", err)
 	}
 	return meta, nil
 }

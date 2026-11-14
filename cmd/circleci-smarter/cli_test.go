@@ -50,11 +50,14 @@ type cliRepo struct {
 	dir  string // scratch directory for outputs
 }
 
-func newCLIRepo(t *testing.T) *cliRepo {
+func newCLIRepo(t *testing.T) *cliRepo { return newCLIRepoWith(t, cliConfig) }
+
+// newCLIRepoWith is newCLIRepo with another pipeline config at the base commit.
+func newCLIRepoWith(t *testing.T, config string) *cliRepo {
 	t.Helper()
 	cleanEnv(t)
 	r := difftest.New(t)
-	r.Write(".circleci/continue.yml", cliConfig)
+	r.Write(".circleci/continue.yml", config)
 	r.Write("a.txt", "a\n")
 	r.Write("b.txt", "b\n")
 	base := r.Commit("base")
@@ -543,26 +546,21 @@ func TestPlanCommandGuardrails(t *testing.T) {
 			t.Fatalf("code = %d, report = %+v", code, rep)
 		}
 	})
-	t.Run("the bundle and its meta reach the loader, and a passing plan continues", func(t *testing.T) {
+	t.Run("the bundle reaches the loader, and a passing plan continues", func(t *testing.T) {
 		c := newRepo(t)
 		var gotDir string
-		var gotMeta map[string]any
+		gotMeta := map[string]any{"unset": true}
 		withGuardrails(t, func(dir string, meta map[string]any) (guard.Checker, error) {
 			gotDir, gotMeta = dir, meta
 			return &fakeBundle{result: guard.Result{Status: guard.Pass}}, nil
 		})
-		t.Setenv("CIRCLE_PROJECT_ID", "proj-1")
-		t.Setenv("CIRCLE_BUILD_NUM", "42")
-		t.Setenv("CIRCLE_SHA1", "abc")
 		code, _, stderr := doPlan(t, c.planArgs("--policy-bundle", "policies")...)
 		if code != 0 {
 			t.Fatalf("= %d, %q", code, stderr)
 		}
-		if gotDir != "policies" || gotMeta["project_id"] != "proj-1" || gotMeta["build_number"] != 42 || gotMeta["branch"] != "feature" {
+		// Without --policy-meta the loader gets nil, and builds the meta from the environment.
+		if gotDir != "policies" || gotMeta != nil {
 			t.Fatalf("dir = %q, meta = %v", gotDir, gotMeta)
-		}
-		if vcs, _ := gotMeta["vcs"].(map[string]any); vcs["revision"] != "abc" || vcs["branch"] != "feature" {
-			t.Fatalf("vcs = %v", gotMeta["vcs"])
 		}
 		if rep := readReport(t, c); rep.Guardrails.Status != "PASS" || rep.Full {
 			t.Fatalf("report = %+v", rep)
@@ -578,7 +576,7 @@ func TestPlanCommandGuardrails(t *testing.T) {
 		if code, _, stderr := doPlan(t, c.planArgs("--policy-bundle", "p", "--policy-meta", `{"branch":"x","n":1}`)...); code != 0 {
 			t.Fatalf("= %d, %q", code, stderr)
 		}
-		if gotMeta["branch"] != "x" || gotMeta["n"] != float64(1) || gotMeta["vcs"] != nil {
+		if gotMeta["branch"] != "x" || gotMeta["n"] != float64(1) || len(gotMeta) != 2 {
 			t.Fatalf("meta = %v", gotMeta)
 		}
 		metaFile := c.path("meta.json")
