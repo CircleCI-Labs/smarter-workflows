@@ -11,8 +11,13 @@ A planner for CircleCI setup workflows. For each change it runs only the jobs th
 
 Start in **shadow mode**: plan and report, but run everything. Switch to **select mode** when the reports convince you.
 
+On this repo, a docs-only branch runs 1 of 8 jobs (the mandatory security scan), and a change to one Go package runs 5. Job time drops from 280 s to 46 s for the docs-only case. See [how it works](docs/how-it-works.md#results-on-this-repository-2026-11-14).
+
 | | |
 |---|---|
+| How it works | [docs/how-it-works.md](docs/how-it-works.md) |
+| Quickstart | [docs/quickstart.md](docs/quickstart.md) |
+| Limitations | [docs/limitations.md](docs/limitations.md) |
 | Spec | [docs/spec/v0.1.md](docs/spec/v0.1.md) |
 | Decisions | [docs/adr/](docs/adr/) |
 | Glossary | [GLOSSARY.md](GLOSSARY.md) |
