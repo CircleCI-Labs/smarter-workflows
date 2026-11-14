@@ -69,7 +69,7 @@ func rulesOf(res guard.Result) []string {
 
 func TestCheckPassingConfigs(t *testing.T) {
 	b := loadReal(t)
-	for _, file := range []string{"good.yml", "good_release_on_tags.yml"} {
+	for _, file := range []string{"good.yml", "good_release_on_tags.yml", "good_no_op_and_defined_approval.yml"} {
 		t.Run(file, func(t *testing.T) {
 			res := checkFile(t, b, file)
 			if res.Status != guard.Pass || len(res.Violations) != 0 {

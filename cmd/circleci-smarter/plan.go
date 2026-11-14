@@ -58,8 +58,14 @@ func runPlan(args []string, stdout, stderr io.Writer) int {
 	trace := fs.String("trace", "auto", "add the trace steps: auto (full runs on the default branch), on or off")
 	traceOrb := fs.Bool("trace-orb-jobs", false, "also trace orb jobs (assumes their executor is Linux)")
 	traceReset := fs.String("trace-reset", "on", "reset file access times after checkout in traced jobs: on or off")
-	gateJob := fs.String("gate-job", planner.DefaultGateJob, "the name of the gate job")
-	gateImage := fs.String("gate-image", planner.DefaultGateImage, "the docker image of the gate and map jobs")
+	gateJob := fs.String("gate-job", planner.DefaultGateJob, "the name of the gate job (a no-op job: no executor, no credits)")
+	// The gate used to be a docker job that took its image from --gate-image,
+	// and that flag also set the image of the impact-map job. The gate has no
+	// image now, so the flag is an alias of --map-image: a setup config that
+	// still passes it keeps the image it chose for the map job.
+	var mapImage string
+	fs.StringVar(&mapImage, "map-image", planner.DefaultMapImage, "the docker image of the impact-map job")
+	fs.StringVar(&mapImage, "gate-image", planner.DefaultMapImage, "deprecated alias of --map-image: the gate is a no-op job and has no image")
 	mapKeyPrefix := fs.String("map-key-prefix", planner.DefaultMapKeyPrefix, "the cache key prefix of the saved impact map: <prefix>-<checksum of the commit>; the setup job restores it with the same prefix")
 	smarterBin := fs.String("smarter-bin", "", "where the map job finds this binary (default: the path it runs from)")
 	policyBundle := fs.String("policy-bundle", "", "a policy bundle directory: check the plan against it, repair, or fall back to a full run")
@@ -81,6 +87,9 @@ func runPlan(args []string, stdout, stderr io.Writer) int {
 	}
 	if !flagWasGiven(fs, "tag") {
 		*tag = os.Getenv("CIRCLE_TAG")
+	}
+	if flagWasGiven(fs, "gate-image") {
+		fmt.Fprintln(stderr, "circleci-smarter plan: warning: --gate-image is deprecated: the gate is a no-op job and has no image. It sets the image of the impact-map job, as --map-image does")
 	}
 
 	usage := func(format string, a ...any) int {
@@ -109,7 +118,7 @@ func runPlan(args []string, stdout, stderr io.Writer) int {
 	opts.Trace = planner.TraceMode(*trace)
 	opts.TraceOrbJobs = *traceOrb
 	opts.TraceReset = *traceReset == "on"
-	opts.GateJob, opts.GateImage = *gateJob, *gateImage
+	opts.GateJob, opts.MapImage = *gateJob, mapImage
 	opts.MapKeyPrefix = *mapKeyPrefix
 	opts.Version = version
 	opts.BinPath = *smarterBin

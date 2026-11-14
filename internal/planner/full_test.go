@@ -165,7 +165,7 @@ func TestRunErrors(t *testing.T) {
 		{"a bad ignore glob", in, func(o *planner.Options) { o.IgnorePaths = []string{"a/{b"} }, "ignore paths", true},
 		{"a bad extra input glob", in, func(o *planner.Options) { o.ExtraInputs = map[string][]string{"x": {"["}} }, "extra inputs", true},
 		{"a bad gate name", in, func(o *planner.Options) { o.GateJob = "has space" }, "gate job name", true},
-		{"a bad gate image", in, func(o *planner.Options) { o.GateImage = "" }, "gate image", true},
+		{"a bad map image", in, func(o *planner.Options) { o.MapImage = "" }, "map image", true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

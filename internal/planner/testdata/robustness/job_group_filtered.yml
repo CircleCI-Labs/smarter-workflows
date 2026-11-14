@@ -1,0 +1,53 @@
+version: 2.1
+jobs:
+  lint:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: make lint
+  deploy-service:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: ./deploy/service.sh
+  run-smoke-tests:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: ./deploy/smoke.sh
+  notify:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: ./notify/run.sh
+job-groups:
+  deploy-and-verify:
+    jobs:
+      - deploy-service
+      - run-smoke-tests:
+          requires:
+            - deploy-service
+workflows:
+  ci:
+    jobs:
+      - lint
+      - deploy-and-verify:
+          name: deploy-staging
+          serial-group: << pipeline.project.slug >>/staging
+          requires:
+            - lint
+      - deploy-and-verify:
+          name: deploy-production
+          serial-group: << pipeline.project.slug >>/production
+          requires:
+            - deploy-staging
+          filters:
+            branches:
+              only: main
+      - notify:
+          requires:
+            - deploy-production

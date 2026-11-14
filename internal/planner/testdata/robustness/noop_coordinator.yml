@@ -1,0 +1,34 @@
+version: 2.1
+jobs:
+  test-unit:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: make test-unit
+  test-integration:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: make test-integration
+  tests-done:
+    type: no-op
+  deploy:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: ./deploy/run.sh
+workflows:
+  ci:
+    jobs:
+      - test-unit
+      - test-integration
+      - tests-done:
+          requires:
+            - test-unit
+            - test-integration
+      - deploy:
+          requires:
+            - tests-done

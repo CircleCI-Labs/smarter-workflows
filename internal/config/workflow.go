@@ -16,14 +16,26 @@ type Entry struct {
 	Name string
 	// Alias is the matrix alias, if the entry has a matrix that sets one.
 	Alias string
+	// Kind says what the entry runs. Workflow sets it from the job's
+	// definition, so an entry read on its own (an item of a job group) has
+	// none.
+	Kind Kind
 	// Requires lists the names of the entries this one waits for.
 	Requires []string
+	// Requirements is Requires with the statuses each name waits for.
+	Requirements []Requirement
 	// StatusRequires is set when a requires item names a status other than
 	// success (`- build: failed`), so the entry may run even if that job does
 	// not succeed. `- build: success` is the same as `- build`.
 	StatusRequires bool
-	// Approval is set for `type: approval` entries.
+	// Approval is set for approval entries: `type: approval` on the entry, or
+	// on the definition of the job it names (Kind is KindApproval).
 	Approval bool
+	// Contexts are the values of the entry's `context`, as written.
+	Contexts []string
+	// SerialGroup is the entry's `serial-group` as written ("" if none). It is
+	// a key of the entry, never of the job's definition.
+	SerialGroup string
 	// Matrix is set for entries that expand into a matrix of jobs.
 	Matrix bool
 	// Dynamic is set when the name, alias or a requires item holds an
@@ -34,6 +46,44 @@ type Entry struct {
 
 	item *yaml.Node // the item in the workflow's job list
 	args *yaml.Node // the mapping of arguments, or nil
+}
+
+// MatrixParameters returns the parameters of the entry's matrix: each name
+// with the values it takes, as plain Go values (strings, numbers, booleans). It
+// is nil for an entry with no matrix, or no parameters.
+func (e *Entry) MatrixParameters() map[string][]any {
+	params := lookup(lookup(e.args, "matrix"), "parameters")
+	if params == nil || params.Kind != yaml.MappingNode {
+		return nil
+	}
+	out := map[string][]any{}
+	for i := 0; i+1 < len(params.Content); i += 2 {
+		k, v := params.Content[i], params.Content[i+1]
+		if k.Kind != yaml.ScalarNode {
+			continue
+		}
+		var values []any
+		items := []*yaml.Node{v}
+		if v.Kind == yaml.SequenceNode {
+			items = v.Content
+		}
+		for _, item := range items {
+			var x any
+			if err := item.Decode(&x); err == nil {
+				values = append(values, x)
+			}
+		}
+		out[k.Value] = values
+	}
+	return out
+}
+
+// Requirement is one item of an entry's `requires`: a name and the statuses of
+// that entry it waits for.
+type Requirement struct {
+	Job string
+	// Statuses are as written; a bare name is ["success"].
+	Statuses []string
 }
 
 // Names lists the names under which other entries may require this one.
@@ -108,6 +158,7 @@ type Workflow struct {
 	Name    string
 	Entries []*Entry
 
+	cfg  *Config    // the config the workflow is in, which says what its entries run
 	node *yaml.Node // the workflow mapping
 	jobs *yaml.Node // its job list
 }
@@ -126,7 +177,7 @@ func (c *Config) Workflow(name string) (*Workflow, error) {
 	if jobs == nil || jobs.Kind != yaml.SequenceNode {
 		return nil, fmt.Errorf("workflow %q has no job list", name)
 	}
-	w := &Workflow{Name: name, node: node, jobs: jobs}
+	w := &Workflow{Name: name, cfg: c, node: node, jobs: jobs}
 	if err := w.reload(); err != nil {
 		return nil, err
 	}
@@ -142,6 +193,7 @@ func (w *Workflow) reload() error {
 		if err != nil {
 			return fmt.Errorf("workflow %q, job %d: %w", w.Name, i+1, err)
 		}
+		w.cfg.classify(e)
 		entries = append(entries, e)
 	}
 	w.Entries = entries
@@ -197,11 +249,20 @@ func parseEntry(item *yaml.Node) (*Entry, error) {
 		}
 	}
 	if v := lookup(e.args, "requires"); v != nil {
-		names, status, err := parseRequires(v)
+		reqs, status, err := parseRequires(v)
 		if err != nil {
 			return nil, fmt.Errorf("requires of %q: %w", e.Ref, err)
 		}
-		e.Requires, e.StatusRequires = names, status
+		e.Requirements, e.StatusRequires = reqs, status
+		for _, r := range reqs {
+			e.Requires = append(e.Requires, r.Job)
+		}
+	}
+	if v := lookup(e.args, "context"); v != nil {
+		e.Contexts, _ = stringList(v)
+	}
+	if v, ok := scalarValue(lookup(e.args, "serial-group")); ok {
+		e.SerialGroup = v
 	}
 	if v := lookup(e.args, "filters"); v != nil {
 		e.Filters = parseFilters(v)
@@ -216,7 +277,7 @@ func parseEntry(item *yaml.Node) (*Entry, error) {
 	return e, nil
 }
 
-func parseRequires(seq *yaml.Node) (names []string, status bool, err error) {
+func parseRequires(seq *yaml.Node) (reqs []Requirement, status bool, err error) {
 	if seq.Kind != yaml.SequenceNode {
 		return nil, false, errors.New("not a list")
 	}
@@ -225,10 +286,10 @@ func parseRequires(seq *yaml.Node) (names []string, status bool, err error) {
 		if !ok {
 			return nil, false, errors.New("an item is neither a name nor a name with statuses")
 		}
-		names = append(names, name)
+		reqs = append(reqs, Requirement{Job: name, Statuses: requireStatuses(it)})
 		status = status || isStatus
 	}
-	return names, status, nil
+	return reqs, status, nil
 }
 
 // requireItem reads one requires item: a name, or {name: status(es)}. It
@@ -243,6 +304,17 @@ func requireItem(it *yaml.Node) (name string, withStatus, ok bool) {
 		}
 	}
 	return "", false, false
+}
+
+// requireStatuses lists the statuses a requires item waits for, as written. A
+// bare name waits for success.
+func requireStatuses(it *yaml.Node) []string {
+	if it.Kind == yaml.MappingNode && len(it.Content) == 2 {
+		if statuses, ok := stringList(it.Content[1]); ok && len(statuses) > 0 {
+			return statuses
+		}
+	}
+	return []string{"success"}
 }
 
 // onlySuccess reports whether the statuses of a requires item are success and
@@ -495,6 +567,35 @@ func (w *Workflow) addSteps(e *Entry, key string, prepend bool, steps []*yaml.No
 		seq.Content = append(seq.Content, steps...)
 	}
 	return nil
+}
+
+// RetainRequires cuts the requires of the entry at index i to the items whose
+// name keep accepts. The items that stay are kept as written, with their
+// statuses and comments. If none stays, the list becomes [fallback]. An entry
+// with no requires is left alone. It re-reads Entries, so the entry pointers from
+// before the call must not be used afterwards.
+func (w *Workflow) RetainRequires(i int, keep func(name string) bool, fallback string) error {
+	if i < 0 || i >= len(w.Entries) {
+		return fmt.Errorf("workflow %q has no job %d", w.Name, i+1)
+	}
+	seq := lookup(w.Entries[i].args, "requires")
+	if seq == nil || seq.Kind != yaml.SequenceNode || len(seq.Content) == 0 {
+		return nil
+	}
+	var remain []*yaml.Node
+	for _, it := range seq.Content {
+		if name, _, ok := requireItem(it); !ok || keep(name) {
+			remain = append(remain, it)
+		}
+	}
+	switch {
+	case len(remain) == len(seq.Content):
+		return nil
+	case len(remain) == 0:
+		remain = []*yaml.Node{Str(fallback)}
+	}
+	seq.Content = remain
+	return w.reload()
 }
 
 // AppendEntry adds `- ref` (or `- ref: {requires: [...]}`) at the end of the

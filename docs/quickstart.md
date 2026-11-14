@@ -12,7 +12,7 @@ The orb isn't published yet. Until it is, copy the setup job from this repo's [`
 3. **Turn on setup workflows** under Project Settings → Advanced, if they aren't on.
 4. **Push to the default branch.** The first full run traces every job and saves the first impact map.
 5. **Push branches** and read `smarter-plan/plan.md` in each plan job's artifacts. Shadow mode still runs everything.
-6. **Pick the required check** in your branch protection rules: the planned workflow's check (GitHub App projects report one check per workflow), or `smarter-gate` if you use per-job statuses.
+6. **Pick the required check** in your branch protection rules: the planned workflow's check (GitHub App projects report one check per workflow), or `smarter-gate` if you use per-job statuses. `smarter-gate` is a no-op job: it costs no credits.
 7. **Switch to select mode** (`--mode select`) when the shadow reports convince you.
 
 ## Optional: guardrails
