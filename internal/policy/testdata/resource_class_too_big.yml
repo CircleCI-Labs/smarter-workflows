@@ -1,0 +1,23 @@
+# A job and an executor use classes that are not on the allowlist.
+version: 2.1
+executors:
+  big:
+    docker:
+      - image: cimg/base:stable
+    resource_class: xlarge
+jobs:
+  build:
+    docker:
+      - image: cimg/base:stable
+    resource_class: 2xlarge
+    steps:
+      - checkout
+  security-scan:
+    executor: big
+    steps:
+      - checkout
+workflows:
+  ci:
+    jobs:
+      - build
+      - security-scan
