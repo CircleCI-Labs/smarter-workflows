@@ -1,0 +1,46 @@
+version: 2.1
+jobs:
+  security-scan:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: govulncheck ./...
+  lint:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: make lint
+  build:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: make build
+  deploy:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: ./deploy/run.sh
+workflows:
+  ci:
+    jobs:
+      - security-scan
+      - lint
+      - build
+      - hold:
+          type: approval
+          requires:
+            - build
+          filters:
+            branches:
+              only: main
+      - deploy:
+          requires:
+            - hold
+          context: deploy
+          filters:
+            branches:
+              only: main

@@ -1,0 +1,40 @@
+version: 2.1
+jobs:
+  a:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: make a
+  b:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: make b
+  c:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: make c
+  d:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: make d
+workflows:
+  ci:
+    jobs:
+      - a
+      - b:
+          requires:
+            - a
+      - c:
+          requires:
+            - a
+      - d:
+          requires:
+            - b
+            - c

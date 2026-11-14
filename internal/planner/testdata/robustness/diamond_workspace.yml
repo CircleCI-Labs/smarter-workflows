@@ -1,0 +1,50 @@
+version: 2.1
+jobs:
+  a:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: make a
+      - persist_to_workspace:
+          root: .
+          paths:
+            - dist
+  b:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - attach_workspace:
+          at: .
+      - run: make b
+  c:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - attach_workspace:
+          at: .
+      - run: make c
+  d:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - attach_workspace:
+          at: .
+      - run: make d
+workflows:
+  ci:
+    jobs:
+      - a
+      - b:
+          requires:
+            - a
+      - c:
+          requires:
+            - a
+      - d:
+          requires:
+            - b
+            - c

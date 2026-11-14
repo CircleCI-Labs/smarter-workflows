@@ -1,0 +1,39 @@
+version: 2.1
+jobs:
+  lint:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: make lint
+  feature-build:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: make feature-build
+  expr-job:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: make expr-job
+  dependent:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: make dependent
+workflows:
+  ci:
+    jobs:
+      - lint
+      - feature-build:
+          filters:
+            branches:
+              only: /feature\/.*/
+      - expr-job:
+          filters: pipeline.git.branch == "feature/login"
+      - dependent:
+          requires:
+            - expr-job
