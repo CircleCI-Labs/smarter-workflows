@@ -158,7 +158,7 @@ restricted_context_uses[[wf, name, ref, cfg, context]] {
 	is_object(workflow)
 	some entry in workflow.jobs
 	cfg := entry_cfg(entry)
-	object.get(cfg, "type", "") != "approval"
+	not approval_entry(entry)
 	some context in utils.to_set(cfg.context)
 	context_restrictions[context]
 	ref := entry_ref(entry)
@@ -200,7 +200,7 @@ downstream_of_approval(workflow, name) {
 
 approval_jobs(workflow) := {name |
 	some entry in workflow.jobs
-	entry_cfg(entry).type == "approval"
+	approval_entry(entry)
 	name := entry_name(entry)
 }
 
@@ -248,11 +248,18 @@ resource_classes[msg] {
 	msg := class_message("job", name, class)
 }
 
+# A no-op job has no executor and costs no credits, so its resource class (if it
+# has one) is never used and is not checked.
 disallowed_class(definition) := class {
+	not no_op_job(definition)
 	class := definition.resource_class
 	is_string(class)
 	not utils.is_parameterized_expression(class)
 	not allowed_resource_classes[class]
+}
+
+no_op_job(definition) {
+	definition.type == "no-op"
 }
 
 class_message(kind, name, class) := sprintf(
@@ -330,6 +337,16 @@ entry_cfg(entry) := cfg if {
 
 # The name that other jobs `require`: `name:` if set, else the job name.
 entry_name(entry) := object.get(entry_cfg(entry), "name", entry_ref(entry))
+
+# An approval: the entry says `type: approval`, or the job it names is defined
+# with that type under `jobs`.
+approval_entry(entry) {
+	entry_cfg(entry).type == "approval"
+}
+
+approval_entry(entry) {
+	input.jobs[entry_ref(entry)].type == "approval"
+}
 
 job_label(name, ref) := sprintf("%q", [name]) if {
 	name == ref

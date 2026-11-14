@@ -1,0 +1,493 @@
+package config_test
+
+import (
+	"reflect"
+	"strings"
+	"testing"
+
+	"github.com/CircleCI-Labs/smarter-workflows/internal/config"
+)
+
+const kindsConfig = `
+version: 2.1
+orbs:
+  node: circleci/node@5.1.0
+  local:
+    executors:
+      small:
+        docker:
+          - image: cimg/base:2026.11
+        resource_class: small
+    commands:
+      greet:
+        steps:
+          - persist_to_workspace:
+              root: .
+              paths: [greeting]
+    jobs:
+      hello:
+        executor: small
+        steps:
+          - checkout
+          - greet
+          - run: echo hello
+      skip:
+        type: no-op
+jobs:
+  build:
+    docker:
+      - image: cimg/go:1.27
+    steps:
+      - checkout
+  tests:
+    type: build
+    docker:
+      - image: cimg/go:1.27
+    steps:
+      - checkout
+  coordinator:
+    type: no-op
+  hold:
+    type: approval
+  release-svc:
+    type: release
+    plan_name: svc-release
+  odd:
+    type: surprise
+    docker:
+      - image: cimg/go:1.27
+    steps: [checkout]
+job-groups:
+  deploy-and-verify:
+    jobs:
+      - build
+      - smoke:
+          name: verify
+          requires: [build]
+workflows:
+  w:
+    jobs:
+      - build
+      - tests:
+          requires: [build]
+      - coordinator:
+          requires: [tests]
+      - hold:
+          requires: [coordinator]
+      - approve-by-entry:
+          type: approval
+          requires: [coordinator]
+      - release-svc:
+          requires: [hold]
+      - deploy-and-verify:
+          name: ship
+          serial-group: << pipeline.project.slug >>/deploy
+          requires: [coordinator]
+      - local/hello
+      - node/test:
+          context: [one, two]
+      - mystery
+      - odd
+`
+
+func TestEntryKinds(t *testing.T) {
+	c := mustParse(t, kindsConfig)
+	w := mustWorkflow(t, c, "w")
+	type brief struct {
+		name     string
+		kind     config.Kind
+		approval bool
+	}
+	var got []brief
+	for _, e := range w.Entries {
+		got = append(got, brief{e.Name, e.Kind, e.Approval})
+	}
+	want := []brief{
+		{"build", config.KindJob, false},
+		{"tests", config.KindJob, false},
+		// type: no-op is read from the definition, not from the entry.
+		{"coordinator", config.KindNoOp, false},
+		// An approval is `type: approval` in the job's definition, or on the entry.
+		{"hold", config.KindApproval, true},
+		{"approve-by-entry", config.KindApproval, true},
+		{"release-svc", config.KindRelease, false},
+		{"ship", config.KindJobGroup, false},
+		// Jobs of an orb, inline or not, and names that nothing defines.
+		{"local/hello", config.KindOrb, false},
+		{"node/test", config.KindOrb, false},
+		{"mystery", config.KindOrb, false},
+		// A type that this package does not know is an ordinary job.
+		{"odd", config.KindJob, false},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("kinds:\n got %+v\nwant %+v", got, want)
+	}
+}
+
+func TestKindHasSteps(t *testing.T) {
+	for kind, want := range map[config.Kind]bool{
+		config.KindJob: true, config.KindOrb: true, config.KindJobGroup: true,
+		config.KindApproval: false, config.KindNoOp: false, config.KindRelease: false,
+	} {
+		if got := kind.HasSteps(); got != want {
+			t.Errorf("%s.HasSteps() = %v, want %v", kind, got, want)
+		}
+	}
+}
+
+func TestEntryContextsSerialGroupAndRequirements(t *testing.T) {
+	c := mustParse(t, kindsConfig+`
+  other:
+    jobs:
+      - build:
+          context: solo
+      - tests:
+          context: [a, b]
+          serial-group: plain/group
+          requires:
+            - build
+            - coordinator: [success, failed]
+            - hold: failed
+`)
+	byName := map[string]*config.Entry{}
+	for _, e := range mustWorkflow(t, c, "w").Entries {
+		byName[e.Name] = e
+	}
+	if got, want := byName["node/test"].Contexts, []string{"one", "two"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("contexts = %v, want %v", got, want)
+	}
+	if got := byName["build"].Contexts; got != nil {
+		t.Errorf("an entry with no context has contexts %v", got)
+	}
+	// An expression is kept as written: the planner and the catalog do not evaluate it.
+	if got, want := byName["ship"].SerialGroup, "<< pipeline.project.slug >>/deploy"; got != want {
+		t.Errorf("serial group = %q, want %q", got, want)
+	}
+	if got := byName["build"].SerialGroup; got != "" {
+		t.Errorf("an entry with no serial-group has %q", got)
+	}
+
+	other := mustWorkflow(t, c, "other").Entries
+	if got := other[0].Contexts; !reflect.DeepEqual(got, []string{"solo"}) {
+		t.Errorf("a context given as a string = %v", got)
+	}
+	tests := other[1]
+	if tests.SerialGroup != "plain/group" || !reflect.DeepEqual(tests.Contexts, []string{"a", "b"}) {
+		t.Errorf("tests = %+v", tests)
+	}
+	wantReqs := []config.Requirement{
+		{Job: "build", Statuses: []string{"success"}},
+		{Job: "coordinator", Statuses: []string{"success", "failed"}},
+		{Job: "hold", Statuses: []string{"failed"}},
+	}
+	if !reflect.DeepEqual(tests.Requirements, wantReqs) {
+		t.Errorf("requirements = %+v, want %+v", tests.Requirements, wantReqs)
+	}
+	if !reflect.DeepEqual(tests.Requires, []string{"build", "coordinator", "hold"}) || !tests.StatusRequires {
+		t.Errorf("requires = %v, status = %v", tests.Requires, tests.StatusRequires)
+	}
+}
+
+func TestJobGroups(t *testing.T) {
+	c := mustParse(t, kindsConfig)
+	got := c.JobGroups()
+	want := []config.JobGroup{{Name: "deploy-and-verify", Jobs: []string{"build", "verify"}}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("JobGroups = %+v, want %+v", got, want)
+	}
+	if g := c.JobGroupOf("verify"); g != "deploy-and-verify" {
+		t.Errorf("JobGroupOf(verify) = %q", g)
+	}
+	if g := c.JobGroupOf("nowhere"); g != "" {
+		t.Errorf("JobGroupOf(nowhere) = %q", g)
+	}
+	if got := mustParse(t, "version: 2.1\n").JobGroups(); len(got) != 0 {
+		t.Errorf("a config with no job-groups has groups %+v", got)
+	}
+}
+
+func TestJobDef(t *testing.T) {
+	c := mustParse(t, `
+version: 2.1
+orbs:
+  node: circleci/node@5.1.0
+  local:
+    executors:
+      small:
+        docker:
+          - image: cimg/base:2026.11
+        resource_class: small
+    commands:
+      greet:
+        steps:
+          - persist_to_workspace:
+              root: .
+              paths: [greeting]
+    jobs:
+      hello:
+        executor: small
+        steps:
+          - checkout
+          - greet
+      skip:
+        type: no-op
+executors:
+  fast:
+    docker:
+      - image: cimg/node:24
+    resource_class: large
+commands:
+  save:
+    steps:
+      - persist_to_workspace:
+          root: out
+          paths: [b, a]
+jobs:
+  api:
+    docker:
+      - image: cimg/go:1.27
+      - image: cimg/postgres:17
+    resource_class: medium
+    steps:
+      - checkout
+      - run:
+          name: Test the API
+          command: make test
+      - run: |
+          set -e
+
+          make build
+      - run:
+          command: "  \n  echo from the command  \n"
+      - save
+      - persist_to_workspace:
+          root: .
+          paths: [dist, a]
+      - store_artifacts:
+          path: out
+      - when:
+          condition: true
+          steps: [checkout]
+  web:
+    executor: fast
+    steps:
+      - checkout
+      - attach_workspace:
+          at: .
+      - run: `+strings.Repeat("x", 100)+`
+  tuned:
+    executor:
+      name: fast
+    resource_class: xlarge
+    steps: [checkout]
+  vm:
+    machine:
+      image: ubuntu-2204:2024.01.1
+    steps: [checkout]
+  legacy:
+    machine: true
+    steps: [checkout]
+  win:
+    machine:
+      image: windows-server-2022-gui:current
+    steps: [checkout]
+  mac:
+    macos:
+      xcode: 15.4.0
+    resource_class: macos.m1.medium.gen1
+    steps: [checkout]
+  param:
+    executor: << parameters.exec >>
+    steps: [checkout]
+  noop:
+    type: no-op
+    docker:
+      - image: cimg/base:2026.11
+  hold:
+    type: approval
+  rel:
+    type: release
+    plan_name: p
+`)
+	type brief struct {
+		Known    bool
+		Executor config.Executor
+		Steps    []string
+		Persists []string
+		Attaches bool
+	}
+	tests := []struct {
+		ref  string
+		want brief
+	}{
+		{"api", brief{true, config.Executor{Type: "docker", Image: "cimg/go:1.27", ResourceClass: "medium"},
+			[]string{"checkout", "run: Test the API", "run: set -e", "run: echo from the command", "save", "persist_to_workspace", "store_artifacts", "when"},
+			[]string{"a", "b", "dist"}, false}},
+		{"web", brief{true, config.Executor{Type: "docker", Image: "cimg/node:24", ResourceClass: "large"},
+			[]string{"checkout", "attach_workspace", "run: " + strings.Repeat("x", 77) + "..."}, []string{}, true}},
+		{"tuned", brief{true, config.Executor{Type: "docker", Image: "cimg/node:24", ResourceClass: "xlarge"}, []string{"checkout"}, []string{}, false}},
+		{"vm", brief{true, config.Executor{Type: "machine", Image: "ubuntu-2204:2024.01.1"}, []string{"checkout"}, []string{}, false}},
+		{"legacy", brief{true, config.Executor{Type: "machine"}, []string{"checkout"}, []string{}, false}},
+		{"win", brief{true, config.Executor{Type: "windows", Image: "windows-server-2022-gui:current"}, []string{"checkout"}, []string{}, false}},
+		{"mac", brief{true, config.Executor{Type: "macos", Image: "xcode:15.4.0", ResourceClass: "macos.m1.medium.gen1"}, []string{"checkout"}, []string{}, false}},
+		{"param", brief{true, config.Executor{Type: "unknown"}, []string{"checkout"}, []string{}, false}},
+		// An approval, a no-op and a release job have no executor and no steps,
+		// even when a no-op job's definition carries one that CircleCI ignores.
+		{"noop", brief{true, config.Executor{Type: "unknown"}, []string{}, []string{}, false}},
+		{"hold", brief{true, config.Executor{Type: "unknown"}, []string{}, []string{}, false}},
+		{"rel", brief{true, config.Executor{Type: "unknown"}, []string{}, []string{}, false}},
+		// An inline orb's job is read, with the orb's own executors and commands.
+		{"local/hello", brief{true, config.Executor{Type: "docker", Image: "cimg/base:2026.11", ResourceClass: "small"},
+			[]string{"checkout", "greet"}, []string{"greeting"}, false}},
+		{"local/skip", brief{true, config.Executor{Type: "unknown"}, []string{}, []string{}, false}},
+		// A registry orb's job, an inline orb's missing job, and a name nothing defines.
+		{"node/test", brief{false, config.Executor{Type: "unknown"}, nil, nil, false}},
+		{"local/missing", brief{false, config.Executor{Type: "unknown"}, nil, nil, false}},
+		{"mystery", brief{false, config.Executor{Type: "unknown"}, nil, nil, false}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.ref, func(t *testing.T) {
+			jd := c.JobDef(tc.ref)
+			got := brief{jd.Known, jd.Executor, jd.Steps, jd.Persists, jd.Attaches}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("JobDef(%q):\n got %+v\nwant %+v", tc.ref, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestEntryWorkspace(t *testing.T) {
+	c := mustParse(t, `
+version: 2.1
+commands:
+  stash:
+    steps:
+      - persist_to_workspace:
+          root: .
+          paths: [c, a]
+jobs:
+  j:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+workflows:
+  w:
+    jobs:
+      - j:
+          pre-steps:
+            - attach_workspace:
+                at: .
+          post-steps:
+            - persist_to_workspace:
+                root: .
+                paths: [out, bin]
+            - stash
+      - j:
+          name: plain
+          requires: [j]
+`)
+	entries := mustWorkflow(t, c, "w").Entries
+	got := c.EntryWorkspace(entries[0])
+	want := config.WorkspaceUse{Persists: true, Attaches: true, Paths: []string{"a", "bin", "c", "out"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("EntryWorkspace = %+v, want %+v", got, want)
+	}
+	// The entry's own steps only: the job's definition is read by Workspace.
+	if got := c.EntryWorkspace(entries[1]); got.Persists || got.Attaches || len(got.Paths) != 0 {
+		t.Errorf("an entry with no steps of its own: %+v", got)
+	}
+}
+
+func TestRetainRequires(t *testing.T) {
+	const src = `version: 2.1
+workflows:
+  w:
+    jobs:
+      - a
+      - b
+      - c
+      - gatekeeper:
+          requires:
+            - a # the first
+            - b: success
+            - c
+      - flow:
+          requires: [a, {b: [success]}, c]
+      - alone:
+          requires: [b]
+      - bare
+`
+	keep := func(names ...string) func(string) bool {
+		return func(n string) bool {
+			for _, k := range names {
+				if k == n {
+					return true
+				}
+			}
+			return false
+		}
+	}
+	reqs := func(w *config.Workflow, name string) []string {
+		for _, e := range w.Entries {
+			if e.Name == name {
+				return e.Requires
+			}
+		}
+		t.Fatalf("no entry %s", name)
+		return nil
+	}
+
+	t.Run("the items that stay are kept as written", func(t *testing.T) {
+		c := mustParse(t, src)
+		w := mustWorkflow(t, c, "w")
+		if err := w.RetainRequires(3, keep("a", "b"), "fallback"); err != nil {
+			t.Fatal(err)
+		}
+		if got := reqs(w, "gatekeeper"); !reflect.DeepEqual(got, []string{"a", "b"}) {
+			t.Errorf("requires = %v", got)
+		}
+		out := mustMarshal(t, c)
+		if !strings.Contains(out, "          requires:\n            - a # the first\n            - b: success\n      - flow:") {
+			t.Errorf("the items are not as written:\n%s", out)
+		}
+		if err := w.RetainRequires(4, keep("a", "b"), "fallback"); err != nil {
+			t.Fatal(err)
+		}
+		if got := reqs(w, "flow"); !reflect.DeepEqual(got, []string{"a", "b"}) {
+			t.Errorf("flow requires = %v", got)
+		}
+		if w.Entries[4].StatusRequires {
+			t.Error("a status of success only is not a status requirement")
+		}
+	})
+	t.Run("when none stays the list is the fallback", func(t *testing.T) {
+		c := mustParse(t, src)
+		w := mustWorkflow(t, c, "w")
+		if err := w.RetainRequires(3, keep("x"), "smarter-gate"); err != nil {
+			t.Fatal(err)
+		}
+		if got := reqs(w, "gatekeeper"); !reflect.DeepEqual(got, []string{"smarter-gate"}) {
+			t.Errorf("requires = %v", got)
+		}
+		if out := mustMarshal(t, c); !strings.Contains(out, "          requires:\n            - smarter-gate\n") {
+			t.Errorf("fallback not written as a list item:\n%s", out)
+		}
+	})
+	t.Run("nothing to cut, no requires, and the wrong index", func(t *testing.T) {
+		c := mustParse(t, src)
+		w := mustWorkflow(t, c, "w")
+		before := mustMarshal(t, c)
+		for _, i := range []int{0, 3, 5, 6} { // a, and entries that keep everything or require nothing
+			if err := w.RetainRequires(i, keep("a", "b", "c"), "fallback"); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if after := mustMarshal(t, c); after != before {
+			t.Errorf("the config changed:\n%s", after)
+		}
+		if err := w.RetainRequires(9, keep(), "fallback"); err == nil {
+			t.Error("an index out of range is accepted")
+		}
+	})
+}

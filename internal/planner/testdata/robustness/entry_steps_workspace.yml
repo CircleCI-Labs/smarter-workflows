@@ -1,0 +1,28 @@
+version: 2.1
+jobs:
+  compile:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: make compile
+  check:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - attach_workspace:
+          at: .
+      - run: make check
+workflows:
+  ci:
+    jobs:
+      - compile:
+          post-steps:
+            - persist_to_workspace:
+                root: .
+                paths:
+                  - out
+      - check:
+          requires:
+            - compile

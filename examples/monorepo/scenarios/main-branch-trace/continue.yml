@@ -159,14 +159,7 @@ jobs:
       - store_artifacts:
           path: /tmp/smarter/impact-map.json
   smarter-gate:
-    docker:
-      - image: cimg/base:2026.11
-    resource_class: small
-    steps:
-      - run:
-          name: gate
-          command: |
-            echo "every job this plan selected has passed"
+    type: no-op
 workflows:
   ci:
     jobs:

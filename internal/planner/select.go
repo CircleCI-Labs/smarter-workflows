@@ -35,7 +35,27 @@ type analysis struct {
 	downstreamMemo map[int][]int
 }
 
+// analyse reads the workflow as a graph. Two entries that answer to one name
+// are an error: no requires can tell which one it means.
 func analyse(cfg *config.Config, wf *config.Workflow, branch, tag string) (*analysis, error) {
+	an, clashes := buildAnalysis(cfg, wf, branch, tag)
+	if len(clashes) > 0 {
+		c := clashes[0]
+		return nil, fmt.Errorf("jobs %d and %d of workflow %q share the name %q", c.first+1, c.second+1, wf.Name, c.name)
+	}
+	return an, nil
+}
+
+// nameClash is a name that two entries answer to.
+type nameClash struct {
+	first, second int
+	name          string
+}
+
+// buildAnalysis is analyse that reports clashing names and goes on: the first
+// entry of a name keeps it. The layout check uses it to report every problem of
+// a workflow, and not only the first.
+func buildAnalysis(cfg *config.Config, wf *config.Workflow, branch, tag string) (*analysis, []nameClash) {
 	n := len(wf.Entries)
 	an := &analysis{
 		entries:        slices.Clone(wf.Entries),
@@ -48,10 +68,12 @@ func analyse(cfg *config.Config, wf *config.Workflow, branch, tag string) (*anal
 		afterApproval:  make([]bool, n),
 		downstreamMemo: map[int][]int{},
 	}
+	var clashes []nameClash
 	for i, e := range wf.Entries {
 		for _, name := range e.Names() {
 			if j, dup := an.byName[name]; dup && j != i {
-				return nil, fmt.Errorf("jobs %d and %d of workflow %q share the name %q", j+1, i+1, wf.Name, name)
+				clashes = append(clashes, nameClash{j, i, name})
+				continue
 			}
 			an.byName[name] = i
 		}
@@ -67,11 +89,15 @@ func analyse(cfg *config.Config, wf *config.Workflow, branch, tag string) (*anal
 				an.rdeps[j] = append(an.rdeps[j], i)
 			}
 		}
-		switch {
-		case e.Approval:
-		case cfg.HasJob(e.Ref):
+		switch e.Kind {
+		case config.KindApproval, config.KindNoOp, config.KindRelease:
+			// they run no steps, so they neither persist nor attach
+		case config.KindJob:
 			an.producer[i], an.consumer[i] = cfg.Workspace(e.Ref)
-		default: // an orb job: unknown inside, so assume both
+			// The entry's own pre-steps and post-steps run in the job too.
+			u := cfg.EntryWorkspace(e)
+			an.producer[i], an.consumer[i] = an.producer[i] || u.Persists, an.consumer[i] || u.Attaches
+		default: // an orb job or a job group: unknown inside, so assume both
 			an.producer[i], an.consumer[i] = true, true
 		}
 	}
@@ -99,7 +125,14 @@ func analyse(cfg *config.Config, wf *config.Workflow, branch, tag string) (*anal
 	for i := range wf.Entries {
 		an.afterApproval[i] = after(i, 0)
 	}
-	return an, nil
+	return an, clashes
+}
+
+// gateIgnores says whether the gate never waits for an entry of this kind: an
+// approval waits for a person, and a no-op job runs no steps, so it can only
+// fail with the jobs it requires, which the gate waits for.
+func gateIgnores(k config.Kind) bool {
+	return k == config.KindApproval || k == config.KindNoOp
 }
 
 // downstream lists every entry that requires i, directly or not.
@@ -203,7 +236,13 @@ func (cs *changeSet) loadDirs(ctx context.Context, repo Repo, base, head string)
 type selection struct {
 	selected []bool
 	reasons  [][]string // why an entry is selected, or why it is skipped
+	// gatekeeper is set for a leaf no-op entry that the plan keeps although the
+	// closure did not select it (see analysis.gatekeeper).
+	gatekeeper []bool
 }
+
+// gatekeeperReason is why the report says a gatekeeper stays.
+const gatekeeperReason = "kept: a no-op gatekeeper"
 
 // directReasons is the direct selection (step 3) of one entry. An empty result
 // means "inputs unchanged".
@@ -214,6 +253,11 @@ func (p *planner) directReasons(e *config.Entry, cs *changeSet, mandatory, force
 	}
 	if forced[e.Name] {
 		reasons = append(reasons, fmt.Sprintf("required by the guardrails ([smarter:require-job=%s])", e.Name))
+	}
+	if e.Kind == config.KindJobGroup {
+		// A group is one unit in v0.1: it has no trace, so nothing says which of
+		// its jobs a change reaches, and it runs whatever the change is.
+		return append(reasons, "job group: runs as one unit, as v0.1 does not look inside it")
 	}
 	if e.Matrix {
 		reasons = append(reasons, "matrix entry always runs")
@@ -291,7 +335,7 @@ func capped(items []string, prefix, what string) []string {
 // requirement on it, which CircleCI would ignore (step 7).
 func (p *planner) selectJobs(an *analysis, cs *changeSet, forced map[string]bool) *selection {
 	n := len(an.entries)
-	sel := &selection{selected: make([]bool, n), reasons: make([][]string, n)}
+	sel := &selection{selected: make([]bool, n), reasons: make([][]string, n), gatekeeper: make([]bool, n)}
 	mandatory := toSet(p.o.Mandatory)
 	eligible := func(i int) bool { return an.will[i] != triNo }
 	pick := func(i int, why string) bool {
@@ -304,8 +348,11 @@ func (p *planner) selectJobs(an *analysis, cs *changeSet, forced map[string]bool
 	}
 
 	for i, e := range an.entries {
-		if e.Approval || !eligible(i) {
-			continue // an approval is decided by the closure
+		if !e.Kind.HasSteps() || !eligible(i) {
+			// An approval, a no-op job and a release job run no steps. They have
+			// no trace, so no inputs of their own: the jobs around them decide
+			// (the closure below).
+			continue
 		}
 		if rs := p.directReasons(e, cs, mandatory, forced); len(rs) > 0 {
 			sel.selected[i], sel.reasons[i] = true, rs
@@ -314,7 +361,17 @@ func (p *planner) selectJobs(an *analysis, cs *changeSet, forced map[string]bool
 
 	for changed := true; changed; {
 		changed = false
-		for i := range an.entries {
+		for i, e := range an.entries {
+			if e.Kind == config.KindRelease && !sel.selected[i] {
+				// A release job tracks the release of the job it requires: it is
+				// kept when any of them is selected.
+				for _, d := range an.deps[i] {
+					if sel.selected[d] && pick(i, "tracks the release of "+an.entries[d].Name) {
+						changed = true
+						break
+					}
+				}
+			}
 			if !sel.selected[i] {
 				continue
 			}
@@ -333,7 +390,24 @@ func (p *planner) selectJobs(an *analysis, cs *changeSet, forced map[string]bool
 			}
 		}
 	}
+
+	// A gatekeeper is kept whatever else is selected: it is not selected, so it
+	// pulls in nothing, and the plan cuts what it waits for (build).
+	for i := range an.entries {
+		sel.gatekeeper[i] = !sel.selected[i] && an.gatekeeper(i)
+	}
 	return sel
+}
+
+// gatekeeper says whether entry i is a gatekeeper: a no-op job that no entry
+// requires, that waits only for success, and that runs on this branch or tag. It
+// is the shape of a job that a project requires as its one status check
+// (CircleCI's gatekeeper pattern), so select mode must not drop it: the check
+// would wait for ever. A no-op job that some entry requires is a coordinator, and
+// stays only when a selected job requires it.
+func (an *analysis) gatekeeper(i int) bool {
+	e := an.entries[i]
+	return e.Kind == config.KindNoOp && !e.StatusRequires && len(an.rdeps[i]) == 0 && an.will[i] != triNo
 }
 
 // skipReason says why an entry was left out of the plan.
@@ -341,8 +415,13 @@ func (an *analysis) skipReason(i int, branch, tag string) string {
 	if an.will[i] == triNo {
 		return an.inertReason(i, branch, tag)
 	}
-	if an.entries[i].Approval {
+	switch an.entries[i].Kind {
+	case config.KindApproval:
 		return "no selected job requires this approval"
+	case config.KindNoOp:
+		return "no selected job requires this no-op job"
+	case config.KindRelease:
+		return "none of the jobs it requires is selected"
 	}
 	return "inputs unchanged"
 }

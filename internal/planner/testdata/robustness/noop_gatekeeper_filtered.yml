@@ -1,0 +1,33 @@
+version: 2.1
+jobs:
+  lint:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: make lint
+  publish:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: ./publish.sh
+  release-ok:
+    type: no-op
+  main-ok:
+    type: no-op
+workflows:
+  ci:
+    jobs:
+      - lint
+      - publish:
+          filters:
+            branches:
+              only: main
+      - release-ok:
+          requires:
+            - lint
+            - publish
+      - main-ok:
+          requires:
+            - publish

@@ -1,0 +1,407 @@
+{
+  "version": 1,
+  "workflow": "ci",
+  "map_revision": "3f7a1c9e5b2d4a60b8e1f2a3c4d5e6f708192a3b",
+  "jobs": [
+    {
+      "name": "api-test",
+      "ref": "api-test",
+      "kind": "build",
+      "executor": {
+        "type": "docker",
+        "image": "cimg/go:1.26",
+        "resource_class": ""
+      },
+      "contexts": [],
+      "filters": {},
+      "requires": [
+        {
+          "job": "lint",
+          "status": [
+            "success"
+          ]
+        }
+      ],
+      "required_by": [
+        "hold-deploy"
+      ],
+      "workspace": {
+        "persists": [],
+        "attaches": false
+      },
+      "serial_group": "",
+      "matrix": null,
+      "inputs": {
+        "traced": true,
+        "complete": true,
+        "files": 8,
+        "dirs": 2,
+        "top_dirs": [
+          ".",
+          "libs/shared",
+          "services/api"
+        ]
+      },
+      "steps": [
+        "checkout",
+        "run: Test the API"
+      ]
+    },
+    {
+      "name": "build",
+      "ref": "build",
+      "kind": "build",
+      "executor": {
+        "type": "docker",
+        "image": "cimg/go:1.26",
+        "resource_class": ""
+      },
+      "contexts": [],
+      "filters": {},
+      "requires": [
+        {
+          "job": "lint",
+          "status": [
+            "success"
+          ]
+        }
+      ],
+      "required_by": [
+        "e2e"
+      ],
+      "workspace": {
+        "persists": [
+          "dist"
+        ],
+        "attaches": false
+      },
+      "serial_group": "",
+      "matrix": null,
+      "inputs": {
+        "traced": true,
+        "complete": true,
+        "files": 11,
+        "dirs": 5,
+        "top_dirs": [
+          ".",
+          "libs/shared",
+          "services/api",
+          "services/web"
+        ]
+      },
+      "steps": [
+        "checkout",
+        "run: Build",
+        "persist_to_workspace"
+      ]
+    },
+    {
+      "name": "deploy",
+      "ref": "deploy",
+      "kind": "build",
+      "executor": {
+        "type": "docker",
+        "image": "cimg/go:1.26",
+        "resource_class": ""
+      },
+      "contexts": [
+        "deploy"
+      ],
+      "filters": {
+        "branches": {
+          "only": [
+            "main"
+          ]
+        }
+      },
+      "requires": [
+        {
+          "job": "hold-deploy",
+          "status": [
+            "success"
+          ]
+        }
+      ],
+      "required_by": [],
+      "workspace": {
+        "persists": [],
+        "attaches": true
+      },
+      "serial_group": "",
+      "matrix": null,
+      "inputs": {
+        "traced": false,
+        "complete": false,
+        "files": 0,
+        "dirs": 0,
+        "top_dirs": []
+      },
+      "steps": [
+        "checkout",
+        "attach_workspace",
+        "run: Deploy"
+      ]
+    },
+    {
+      "name": "docs",
+      "ref": "docs",
+      "kind": "build",
+      "executor": {
+        "type": "docker",
+        "image": "cimg/node:24",
+        "resource_class": ""
+      },
+      "contexts": [],
+      "filters": {},
+      "requires": [],
+      "required_by": [],
+      "workspace": {
+        "persists": [],
+        "attaches": false
+      },
+      "serial_group": "",
+      "matrix": null,
+      "inputs": {
+        "traced": true,
+        "complete": true,
+        "files": 3,
+        "dirs": 1,
+        "top_dirs": [
+          ".",
+          "docs"
+        ]
+      },
+      "steps": [
+        "checkout",
+        "run: Build the docs"
+      ]
+    },
+    {
+      "name": "e2e",
+      "ref": "e2e",
+      "kind": "build",
+      "executor": {
+        "type": "docker",
+        "image": "cimg/node:24",
+        "resource_class": ""
+      },
+      "contexts": [],
+      "filters": {},
+      "requires": [
+        {
+          "job": "build",
+          "status": [
+            "success"
+          ]
+        }
+      ],
+      "required_by": [
+        "hold-deploy"
+      ],
+      "workspace": {
+        "persists": [],
+        "attaches": true
+      },
+      "serial_group": "",
+      "matrix": null,
+      "inputs": {
+        "traced": true,
+        "complete": true,
+        "files": 3,
+        "dirs": 1,
+        "top_dirs": [
+          ".",
+          "e2e"
+        ]
+      },
+      "steps": [
+        "checkout",
+        "attach_workspace",
+        "run: End-to-end tests"
+      ]
+    },
+    {
+      "name": "hold-deploy",
+      "ref": "hold-deploy",
+      "kind": "approval",
+      "executor": {
+        "type": "unknown",
+        "image": "",
+        "resource_class": ""
+      },
+      "contexts": [],
+      "filters": {
+        "branches": {
+          "only": [
+            "main"
+          ]
+        }
+      },
+      "requires": [
+        {
+          "job": "api-test",
+          "status": [
+            "success"
+          ]
+        },
+        {
+          "job": "e2e",
+          "status": [
+            "success"
+          ]
+        },
+        {
+          "job": "security-scan",
+          "status": [
+            "success"
+          ]
+        },
+        {
+          "job": "web-test",
+          "status": [
+            "success"
+          ]
+        }
+      ],
+      "required_by": [
+        "deploy"
+      ],
+      "workspace": {
+        "persists": [],
+        "attaches": false
+      },
+      "serial_group": "",
+      "matrix": null,
+      "inputs": {
+        "traced": false,
+        "complete": false,
+        "files": 0,
+        "dirs": 0,
+        "top_dirs": []
+      },
+      "steps": []
+    },
+    {
+      "name": "lint",
+      "ref": "lint",
+      "kind": "build",
+      "executor": {
+        "type": "docker",
+        "image": "cimg/go:1.26",
+        "resource_class": ""
+      },
+      "contexts": [],
+      "filters": {},
+      "requires": [],
+      "required_by": [
+        "api-test",
+        "build",
+        "web-test"
+      ],
+      "workspace": {
+        "persists": [],
+        "attaches": false
+      },
+      "serial_group": "",
+      "matrix": null,
+      "inputs": {
+        "traced": true,
+        "complete": true,
+        "files": 14,
+        "dirs": 9,
+        "top_dirs": [
+          ".",
+          "docs",
+          "e2e",
+          "libs/shared",
+          "services/api",
+          "services/web"
+        ]
+      },
+      "steps": [
+        "checkout",
+        "run: Lint"
+      ]
+    },
+    {
+      "name": "security-scan",
+      "ref": "security-scan",
+      "kind": "build",
+      "executor": {
+        "type": "docker",
+        "image": "cimg/go:1.26",
+        "resource_class": ""
+      },
+      "contexts": [],
+      "filters": {},
+      "requires": [],
+      "required_by": [
+        "hold-deploy"
+      ],
+      "workspace": {
+        "persists": [],
+        "attaches": false
+      },
+      "serial_group": "",
+      "matrix": null,
+      "inputs": {
+        "traced": true,
+        "complete": true,
+        "files": 3,
+        "dirs": 1,
+        "top_dirs": [
+          "."
+        ]
+      },
+      "steps": [
+        "checkout",
+        "run: Scan the dependencies"
+      ]
+    },
+    {
+      "name": "web-test",
+      "ref": "web-test",
+      "kind": "build",
+      "executor": {
+        "type": "docker",
+        "image": "cimg/node:24",
+        "resource_class": ""
+      },
+      "contexts": [],
+      "filters": {},
+      "requires": [
+        {
+          "job": "lint",
+          "status": [
+            "success"
+          ]
+        }
+      ],
+      "required_by": [
+        "hold-deploy"
+      ],
+      "workspace": {
+        "persists": [],
+        "attaches": false
+      },
+      "serial_group": "",
+      "matrix": null,
+      "inputs": {
+        "traced": true,
+        "complete": true,
+        "files": 6,
+        "dirs": 3,
+        "top_dirs": [
+          ".",
+          "libs/shared",
+          "services/web"
+        ]
+      },
+      "steps": [
+        "checkout",
+        "run: Test the web app"
+      ]
+    }
+  ],
+  "job_groups": []
+}

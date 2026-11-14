@@ -1,0 +1,42 @@
+version: 2.1
+jobs:
+  lint:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: make lint
+  deploy-api:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: ./deploy/api.sh
+  release-api:
+    type: release
+    plan_name: api-release
+  deploy-web:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: ./deploy/web.sh
+  release-web:
+    type: release
+    plan_name: web-release
+workflows:
+  ci:
+    jobs:
+      - lint
+      - deploy-api:
+          requires:
+            - lint
+      - release-api:
+          requires:
+            - deploy-api
+      - deploy-web:
+          requires:
+            - lint
+      - release-web:
+          requires:
+            - deploy-web

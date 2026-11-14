@@ -319,3 +319,9 @@ func entryOf(t *testing.T, cfgYAML, name string) *config.Entry {
 	t.Fatalf("no entry %q", name)
 	return nil
 }
+
+// rawJob returns the definition of job name in cfg, read as plain YAML.
+func rawJob(t *testing.T, cfg []byte, name string) map[string]any {
+	t.Helper()
+	return rbJob(t, rbDoc(t, cfg), name)
+}

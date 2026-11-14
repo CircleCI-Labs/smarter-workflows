@@ -75,28 +75,30 @@ func Run(ctx context.Context, in Input, opts Options) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	name, err := chooseWorkflow(cfg, opts.Workflow)
+	name, err := ChooseWorkflow(cfg, opts.Workflow)
 	if err != nil {
-		return nil, &UsageError{Msg: err.Error()}
+		return nil, err
 	}
 	p := &planner{in: in, o: opts, wf: name}
 	return p.run(ctx), nil
 }
 
-func chooseWorkflow(cfg *config.Config, want string) (string, error) {
+// ChooseWorkflow picks the workflow to work on: the one that is named, or the
+// only one. Anything else is a UsageError.
+func ChooseWorkflow(cfg *config.Config, want string) (string, error) {
 	names := cfg.Workflows()
 	switch {
 	case want != "":
 		if !slices.Contains(names, want) {
-			return "", fmt.Errorf("the config has no workflow %q (it has: %s)", want, strings.Join(names, ", "))
+			return "", &UsageError{Msg: fmt.Sprintf("the config has no workflow %q (it has: %s)", want, strings.Join(names, ", "))}
 		}
 		return want, nil
 	case len(names) == 1:
 		return names[0], nil
 	case len(names) == 0:
-		return "", errors.New("the config has no workflow with a job list")
+		return "", &UsageError{Msg: "the config has no workflow with a job list"}
 	}
-	return "", fmt.Errorf("the config has %d workflows (%s): name the one to plan with --workflow", len(names), strings.Join(names, ", "))
+	return "", &UsageError{Msg: fmt.Sprintf("the config has %d workflows (%s): name the one to plan with --workflow", len(names), strings.Join(names, ", "))}
 }
 
 type planner struct {
@@ -378,7 +380,7 @@ func (p *planner) build(ctx context.Context, forced map[string]bool, fullReason 
 	n := len(an.entries)
 	var sel *selection
 	if rep.Full {
-		sel = &selection{selected: make([]bool, n), reasons: make([][]string, n)}
+		sel = &selection{selected: make([]bool, n), reasons: make([][]string, n), gatekeeper: make([]bool, n)}
 		for i := range sel.selected {
 			sel.selected[i], sel.reasons[i] = true, []string{"full run"}
 		}
@@ -399,14 +401,16 @@ func (p *planner) build(ctx context.Context, forced map[string]bool, fullReason 
 	removing := p.o.Mode == ModeSelect && !rep.Full
 	kept := make([]bool, n)
 	for i := range kept {
-		kept[i] = !removing || sel.selected[i]
+		kept[i] = !removing || sel.selected[i] || sel.gatekeeper[i]
 	}
 
 	// The report: what the plan runs. In shadow mode this is what select mode
 	// would run, since every job stays.
 	for i, e := range an.entries {
-		job := report.Job{Name: e.Name, Run: sel.selected[i] && an.will[i] != triNo}
+		job := report.Job{Name: e.Name, Run: (sel.selected[i] || sel.gatekeeper[i]) && an.will[i] != triNo}
 		switch {
+		case sel.gatekeeper[i]:
+			job.Reasons = []string{gatekeeperReason}
 		case sel.selected[i]:
 			// What keeps a job from running comes first: it is the answer to "why not?".
 			if an.will[i] == triNo {
@@ -420,18 +424,20 @@ func (p *planner) build(ctx context.Context, forced map[string]bool, fullReason 
 		if kept[i] && an.will[i] == triUnknown && filterVerdict(e.Filters, p.o.Branch, p.o.Tag) == triUnknown {
 			rep.Warnings = append(rep.Warnings, fmt.Sprintf("job %s: its filters cannot be evaluated here, so it is left out of the gate", e.Name))
 		}
-		if kept[i] && an.will[i] != triNo && e.StatusRequires && !e.Approval && !an.afterApproval[i] {
+		if kept[i] && an.will[i] != triNo && e.StatusRequires && !gateIgnores(e.Kind) && !an.afterApproval[i] {
 			// A job that waits for a failure may never run, and the gate would
 			// wait for it for ever.
 			rep.Warnings = append(rep.Warnings, fmt.Sprintf("%s does not wait for %s: it requires a job status other than success", p.o.GateJob, e.Name))
 		}
 	}
 
-	// The gate waits for every kept job that is certain to run, except the
-	// approvals and what comes after them.
+	// The gate waits for every kept job that is certain to run, except what
+	// comes after an approval. It does not wait for an approval, or for a
+	// no-op job: they run no steps, so they can only fail with the jobs they
+	// require, and the gate waits for those.
 	var gateRequires []string
 	for i, e := range an.entries {
-		if kept[i] && an.will[i] == triYes && !e.Approval && !an.afterApproval[i] {
+		if kept[i] && an.will[i] == triYes && !gateIgnores(e.Kind) && !an.afterApproval[i] {
 			gateRequires = append(gateRequires, e.RequireName())
 		}
 	}
@@ -441,9 +447,24 @@ func (p *planner) build(ctx context.Context, forced map[string]bool, fullReason 
 		// CircleCI ignores a requirement on a job that does not run, so Prune may
 		// drop the names of those jobs, and no others, from the jobs that stay.
 		remove, inert := map[int]bool{}, map[int]bool{}
-		for i := range an.entries {
+		goes := map[string]bool{} // the names of the entries that leave
+		for i, e := range an.entries {
 			if !kept[i] {
 				remove[i], inert[i] = true, an.will[i] == triNo
+				for _, name := range e.Names() {
+					goes[name] = true
+				}
+			}
+		}
+		// A gatekeeper waits only for what stays, which is what it would wait for
+		// were the project to run just this plan. If nothing it waited for stays,
+		// it waits for the gate, so that it never passes before the jobs the plan
+		// selects have.
+		for i := range an.entries {
+			if sel.gatekeeper[i] {
+				if err := wf.RetainRequires(i, func(name string) bool { return !goes[name] }, p.o.GateJob); err != nil {
+					return nil, err
+				}
 			}
 		}
 		if err := wf.Prune(remove, inert); err != nil {
