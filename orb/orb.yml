@@ -608,6 +608,10 @@ jobs:
         type: string
         default: smarter-gate
         description: The name of the gate job (plan --gate-job).
+      map-key-prefix:
+        type: string
+        default: smarter-impact-v1
+        description: The start of the impact map's cache key, for the restore here and the save in the map job. Give each pipeline of a project its own (plan --map-key-prefix).
       gate-image:
         type: string
         default: ""
@@ -635,8 +639,8 @@ jobs:
             /tmp/smarter/bin/circleci-smarter base --default-branch "$SMARTER_ARG_DEFAULT_BRANCH" > .smarter-key
       - restore_cache:
           keys:
-            - smarter-impact-v1-{{ checksum ".smarter-key" }}
-            - smarter-impact-v1-
+            - << parameters.map-key-prefix >>-{{ checksum ".smarter-key" }}
+            - << parameters.map-key-prefix >>-
       - run:
           name: "smarter: plan"
           environment:
@@ -653,6 +657,7 @@ jobs:
             SMARTER_ARG_TRACE: "<< parameters.trace >>"
             SMARTER_ARG_TRACE_ORB_JOBS: "trace-orb-jobs=<< parameters.trace-orb-jobs >>"
             SMARTER_ARG_GATE_JOB: "<< parameters.gate-job >>"
+            SMARTER_ARG_MAP_KEY_PREFIX: "<< parameters.map-key-prefix >>"
             SMARTER_ARG_GATE_IMAGE: "<< parameters.gate-image >>"
             SMARTER_ARG_POLICY_BUNDLE: "<< parameters.policy-bundle >>"
             SMARTER_ARG_POLICY_META: "<< parameters.policy-meta >>"
@@ -664,7 +669,8 @@ jobs:
               --mode "$SMARTER_ARG_MODE" \
               --full-run-paths "$SMARTER_ARG_FULL_RUN_PATHS" \
               --trace "$SMARTER_ARG_TRACE" \
-              --gate-job "$SMARTER_ARG_GATE_JOB"
+              --gate-job "$SMARTER_ARG_GATE_JOB" \
+              --map-key-prefix "$SMARTER_ARG_MAP_KEY_PREFIX"
             [ -z "$SMARTER_ARG_WORKFLOW" ] || set -- "$@" --workflow "$SMARTER_ARG_WORKFLOW"
             [ -z "$SMARTER_ARG_TRIGGER_TYPE" ] || set -- "$@" --trigger-type "$SMARTER_ARG_TRIGGER_TYPE"
             [ -z "$SMARTER_ARG_MANDATORY" ] || set -- "$@" --mandatory "$SMARTER_ARG_MANDATORY"

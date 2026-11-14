@@ -24,6 +24,10 @@ Copy [`policies/`](../policies/), edit the settings at the top of `guardrails.re
 
 Run the tests with `circleci policy test policies`.
 
+## Several pipelines in one project
+
+All pipelines of a project share its cache. Give each setup config its own `--map-key-prefix` (default `smarter-impact-v1`) and use the same prefix in its `restore_cache` keys. Restore keys match by prefix, so no prefix may start with another one followed by a dash: `smarter-impact-v1` would restore the maps of `smarter-impact-v1-demo`. `smarter-demo-impact-v1` is fine.
+
 ## Requirements
 
 - **Linux jobs** (docker or machine) for tracing. Other jobs always run.
