@@ -260,8 +260,8 @@ func without(base map[string]bool, drop ...string) map[string]bool {
 func TestSelectionLeavesNoRequirementOnARemovedJob(t *testing.T) {
 	repo := &fakeRepo{changes: changes("M docs/index.md"), dirs: map[string]map[string]bool{"base1": sourceDirs(), "head1": sourceDirs()}}
 	res := plan(t, input(repo), opts())
-	// Nothing in the plan may require a job that was removed, and the planner
-	// never edits a requirement to get there: what it keeps, it keeps as it was.
+	// Nothing in the plan may require a job that was removed. No job that stays
+	// here requires one that does not run, so the planner edits no requirement.
 	have := emittedJobs(t, res, "ci")
 	for _, name := range have {
 		got := emittedEntry(t, res, "ci", name).Requires

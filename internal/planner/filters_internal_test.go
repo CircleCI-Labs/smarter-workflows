@@ -81,17 +81,10 @@ func TestWillRunCascade(t *testing.T) {
 			want:    []tri{triNo, triNo},
 		},
 		{
-			// Every job it requires must run, so one filtered-out requirement is enough.
-			name:    "a job does not run when one of its required jobs is filtered out, whatever else it requires",
+			name:    "a requirement on a filtered-out job is ignored when another one runs",
 			entries: []*config.Entry{entry("a", only("main")), entry("c", config.Filters{}), entry("b", config.Filters{}, "a", "c")},
 			deps:    [][]int{nil, nil, {0, 1}},
-			want:    []tri{triNo, triYes, triNo},
-		},
-		{
-			name:    "an approval that is filtered out stops what comes after it",
-			entries: []*config.Entry{entry("hold", only("main")), entry("deploy", config.Filters{}, "hold"), entry("notify", config.Filters{}, "deploy")},
-			deps:    [][]int{nil, {0}, {1}},
-			want:    []tri{triNo, triNo, triNo},
+			want:    []tri{triNo, triYes, triYes},
 		},
 		{
 			name:    "the cascade goes down the chain",
@@ -106,30 +99,17 @@ func TestWillRunCascade(t *testing.T) {
 			want:    []tri{triUnknown, triUnknown},
 		},
 		{
-			name:    "a requirement that runs does not settle an unknown one",
+			name:    "a requirement that runs makes an unknown one irrelevant",
 			entries: []*config.Entry{entry("a", config.Filters{Present: true, Expr: true}), entry("c", config.Filters{}), entry("b", config.Filters{}, "a", "c")},
 			deps:    [][]int{nil, nil, {0, 1}},
-			want:    []tri{triUnknown, triYes, triUnknown},
+			want:    []tri{triUnknown, triYes, triYes},
 		},
 		{
-			name:    "an unknown requirement and a filtered-out one: the job does not run",
-			entries: []*config.Entry{entry("a", config.Filters{Present: true, Expr: true}), entry("c", only("main")), entry("b", config.Filters{}, "a", "c")},
-			deps:    [][]int{nil, nil, {0, 1}},
-			want:    []tri{triUnknown, triNo, triNo},
-		},
-		{
-			name:    "a status requirement on a job that runs leaves the job unknown",
-			entries: []*config.Entry{entry("a", config.Filters{}), entry("b", config.Filters{}, "a")},
-			deps:    [][]int{nil, {0}},
-			status:  []bool{false, true},
-			want:    []tri{triYes, triUnknown},
-		},
-		{
-			name:    "a status requirement does not start the job when the required job is filtered out",
+			name:    "a status requirement may start the job although the other does not run",
 			entries: []*config.Entry{entry("a", only("main")), entry("b", config.Filters{}, "a")},
 			deps:    [][]int{nil, {0}},
 			status:  []bool{false, true},
-			want:    []tri{triNo, triNo},
+			want:    []tri{triNo, triUnknown},
 		},
 		{
 			name:    "a requirement that matches no entry could be anything",
@@ -143,6 +123,33 @@ func TestWillRunCascade(t *testing.T) {
 			entries: []*config.Entry{entry("a", config.Filters{}), entry("b", only("main"), "a")},
 			deps:    [][]int{nil, {0}},
 			want:    []tri{triYes, triNo},
+		},
+		{
+			name:    "an approval that is filtered out stops what comes after it",
+			entries: []*config.Entry{entry("hold", only("main")), entry("deploy", config.Filters{}, "hold"), entry("notify", config.Filters{}, "deploy")},
+			deps:    [][]int{nil, {0}, {1}},
+			want:    []tri{triNo, triNo, triNo},
+		},
+		{
+			// CircleCI's reference: a requirement on a job that does not run is
+			// ignored, so deploy runs after test, and so does what follows deploy.
+			name:    "an approval that is filtered out is ignored while another requirement runs",
+			entries: []*config.Entry{entry("hold", only("main")), entry("test", config.Filters{}), entry("deploy", config.Filters{}, "hold", "test"), entry("notify", config.Filters{}, "deploy")},
+			deps:    [][]int{nil, nil, {0, 1}, {2}},
+			want:    []tri{triNo, triYes, triYes, triYes},
+		},
+		{
+			name:    "a chain behind a filtered-out job: none of it runs",
+			entries: []*config.Entry{entry("a", only("main")), entry("b", config.Filters{}, "a"), entry("c", config.Filters{}, "b")},
+			deps:    [][]int{nil, {0}, {1}},
+			want:    []tri{triNo, triNo, triNo},
+		},
+		{
+			name:    "a status requirement on a job that runs leaves the job unknown",
+			entries: []*config.Entry{entry("a", config.Filters{}), entry("b", config.Filters{}, "a")},
+			deps:    [][]int{nil, {0}},
+			status:  []bool{false, true},
+			want:    []tri{triYes, triUnknown},
 		},
 		{
 			name:    "a cycle is unknown, not a hang",

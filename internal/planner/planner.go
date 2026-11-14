@@ -438,13 +438,15 @@ func (p *planner) build(ctx context.Context, forced map[string]bool, fullReason 
 
 	var keptNames []string
 	if removing {
-		remove := map[int]bool{}
+		// CircleCI ignores a requirement on a job that does not run, so Prune may
+		// drop the names of those jobs, and no others, from the jobs that stay.
+		remove, inert := map[int]bool{}, map[int]bool{}
 		for i := range an.entries {
 			if !kept[i] {
-				remove[i] = true
+				remove[i], inert[i] = true, an.will[i] == triNo
 			}
 		}
-		if err := wf.Prune(remove); err != nil {
+		if err := wf.Prune(remove, inert); err != nil {
 			return nil, err
 		}
 	}

@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -226,7 +227,9 @@ type rbCheck struct {
 // rbInvariants checks what every emitted config must hold:
 //
 //	(a) no requires names a job the output does not define;
-//	(b) a job the output keeps keeps every requires ancestor it has in the input;
+//	(b) a job the output keeps keeps every requirement that runs on the branch,
+//	    and its requires list differs from the input's only by the names of jobs
+//	    that do not run (CircleCI ignores a requirement on such a job), never by all;
 //	(c) the gate requires only jobs the report says run;
 //	safety: the output never runs a job the input does not run on the branch;
 //	report: in select mode, the report's running set is what the output runs;
@@ -234,12 +237,7 @@ type rbCheck struct {
 //	(e) an input that passes the policy bundle gives an output that passes it.
 //
 // The run semantics are CircleCI's as the docs give them: a job runs when its
-// filters pass and at least one of its requirements runs. The planner is
-// stricter on one point (spec step 5): a job with a requirement that does not run
-// is treated as not running, and is removed. So the planner may remove a job
-// that this oracle says runs, and the checks below only hold what is true under
-// both readings: nothing is kept without its requirements, the gate waits only
-// for jobs that surely run, and no job runs that would not have run.
+// filters pass and at least one of its requirements runs.
 func rbInvariants(t *testing.T, c rbCheck) {
 	t.Helper()
 	gate := planner.DefaultGateJob
@@ -257,6 +255,8 @@ func rbInvariants(t *testing.T, c rbCheck) {
 		}
 	}
 
+	inRuns, outRuns := rbOracle(inEntries, c.branch), rbOracle(outEntries, c.branch)
+
 	// (b)
 	for _, e := range outEntries {
 		if infra(e) {
@@ -267,15 +267,29 @@ func rbInvariants(t *testing.T, c rbCheck) {
 			t.Errorf("the output has job %s, which the input does not", e.Name)
 			continue
 		}
-		for _, a := range rbAncestors(inEntries, inIdx, i) {
+		for _, a := range rbLiveAncestors(inEntries, inIdx, inRuns, i) {
 			if _, ok := outIdx[a.Name]; !ok {
-				t.Errorf("(b) %s is kept, but its requirement %s is gone from the output", e.Name, a.Name)
+				t.Errorf("(b) %s is kept, but its requirement %s, which runs on %s, is gone from the output", e.Name, a.Name, c.branch)
 			}
+		}
+		var want []string
+		for _, r := range inEntries[i].Requires {
+			j, existed := inIdx[r]
+			if _, kept := outIdx[r]; kept || !existed {
+				want = append(want, r)
+			} else if inRuns[j] != rbNo {
+				t.Errorf("(b) %s lost its requirement %s, which may run on %s", e.Name, r, c.branch)
+			}
+		}
+		if !slices.Equal(e.Requires, want) {
+			t.Errorf("(b) %s requires %v, want the input's %v without the jobs that do not run", e.Name, e.Requires, want)
+		}
+		if len(inEntries[i].Requires) > 0 && len(e.Requires) == 0 {
+			t.Errorf("(b) %s lost every requirement, so it would run when CircleCI would not run it", e.Name)
 		}
 	}
 
 	// (c)
-	inRuns, outRuns := rbOracle(inEntries, c.branch), rbOracle(outEntries, c.branch)
 	var gateEntry *config.Entry
 	for _, e := range outEntries {
 		if e.Name == gate {
@@ -362,8 +376,10 @@ func rbIndex(entries []*config.Entry) map[string]int {
 	return idx
 }
 
-// rbAncestors lists the entries that entry i requires, directly or not.
-func rbAncestors(entries []*config.Entry, idx map[string]int, i int) []*config.Entry {
+// rbLiveAncestors lists the entries that entry i requires, directly or not,
+// through jobs that run or may run on the branch. A requirement on a job that
+// does not run is ignored by CircleCI, and so is what that job requires.
+func rbLiveAncestors(entries []*config.Entry, idx map[string]int, runs []rbVerdict, i int) []*config.Entry {
 	seen := map[int]bool{i: true}
 	var out []*config.Entry
 	queue := []int{i}
@@ -372,7 +388,7 @@ func rbAncestors(entries []*config.Entry, idx map[string]int, i int) []*config.E
 		queue = queue[1:]
 		for _, r := range entries[cur].Requires {
 			j, ok := idx[r]
-			if !ok || seen[j] {
+			if !ok || seen[j] || runs[j] == rbNo {
 				continue
 			}
 			seen[j] = true
@@ -669,13 +685,16 @@ func TestRobustness_ApprovalInTheMiddle(t *testing.T) {
 	})
 }
 
-// A job runs only if every job it requires runs (spec step 5), and the planner
-// never drops a requirement to make a job runnable. A mandatory job whose
-// requirement the branch filters out does not run on the branch, so the plan
-// leaves it out with what it requires, warns, and does not force it. Dropping
-// an approval's edge instead would run the job without its approval.
-func TestRobustness_MandatoryJobWithAFilteredRequirementIsLeftOutWithAWarning(t *testing.T) {
-	t.Run("a job whose requirement is filtered out", func(t *testing.T) {
+// CircleCI's configuration reference (`requires`): "When jobs you list as
+// dependencies do not execute (due to filters, for example), CircleCI ignores
+// them as dependencies for other jobs. But if filters exclude all dependencies
+// of a job, that job doesn't execute either." The planner reproduces that (spec
+// step 5). So a job whose requirements are all filtered out does not run, even
+// when it is mandatory: it is left out with a warning, and it is not forced.
+// Dropping its requirements instead would run it, and for an approval that the
+// branch filters out, run it without its approval.
+func TestRobustness_JobWithOnlyFilteredRequirementsDoesNotRun(t *testing.T) {
+	t.Run("a mandatory job whose only requirement is filtered out", func(t *testing.T) {
 		res := rbRun(t, rbCase{
 			cfg:    rbFixture(t, "mandatory_filtered.yml"),
 			base:   map[string]string{"services/api/main.go": "package api\n", "release/notes.md": "# notes\n", "release/publish.sh": "#!/bin/sh\n"},
@@ -695,7 +714,7 @@ func TestRobustness_MandatoryJobWithAFilteredRequirementIsLeftOutWithAWarning(t 
 			t.Errorf("publish reasons = %v", got)
 		}
 	})
-	t.Run("an approval that the branch filters out", func(t *testing.T) {
+	t.Run("a mandatory job whose only requirement is an approval that the branch filters out", func(t *testing.T) {
 		res := rbRun(t, rbCase{
 			cfg:    rbFixture(t, "mandatory_filtered_approval.yml"),
 			base:   map[string]string{"services/api/main.go": "package api\n", "deploy/run.sh": "#!/bin/sh\n"},
@@ -730,26 +749,109 @@ func TestRobustness_MandatoryJobWithAFilteredRequirementIsLeftOutWithAWarning(t 
 	})
 }
 
-// A job whose required job is filtered out does not run, whatever else it
-// requires and whatever changed in its inputs: it is not selected, and it leaves
-// the plan with the job it requires. The gate does not wait for it. (CircleCI's
-// reference ignores a filtered-out requirement while another one runs; the
-// planner takes the stricter rule of spec step 5.)
-func TestRobustness_JobWithAFilteredRequirementIsNotSelected(t *testing.T) {
-	res := rbRun(t, rbCase{
-		cfg:    rbFixture(t, "filtered_mixed.yml"),
-		base:   map[string]string{"app/main.go": "package app\n", "build/main.sh": "#!/bin/sh\n"},
-		change: rbEdit("app/main.go", "package app\n\n// changed\n"),
-		reads: map[string]rbReads{
-			"build-main": {files: []string{"build/main.sh"}, dirs: []string{"build"}},
-			"test":       {files: []string{"app/main.go"}, dirs: []string{"app"}},
-			"ship":       {files: []string{"app/main.go"}, dirs: []string{"app"}},
-		},
-		want: rbWant{running: []string{"test"}, emitted: []string{"test", "smarter-gate"}, gate: []string{"test"}},
-	})
-	if got := reasons(t, res, "ship"); len(got) != 1 || got[0] != "does not run: it requires build-main, which does not run" {
-		t.Errorf("ship reasons = %v", got)
+// A requirement on a job that does not run is ignored while another requirement
+// runs (CircleCI's reference, as above): ship requires [build-main, test],
+// build-main is filtered out, and ship runs after test. The plan keeps ship, and
+// emits it with `requires: [test]`, which means what the input meant.
+func TestRobustness_FilteredRequirementIsDroppedWhileAnotherOneRuns(t *testing.T) {
+	base := map[string]string{"app/main.go": "package app\n", "build/main.sh": "#!/bin/sh\n", "ship/run.sh": "#!/bin/sh\n"}
+	reads := map[string]rbReads{
+		"build-main": {files: []string{"build/main.sh"}, dirs: []string{"build"}},
+		"test":       {files: []string{"app/main.go"}, dirs: []string{"app"}},
+		"ship":       {files: []string{"ship/run.sh"}, dirs: []string{"ship"}},
 	}
+	want := rbWant{running: []string{"test", "ship"}, emitted: []string{"test", "ship", "smarter-gate"}, gate: []string{"test", "ship"}}
+	t.Run("both read the change", func(t *testing.T) {
+		reads := maps.Clone(reads)
+		reads["ship"] = rbReads{files: []string{"app/main.go"}, dirs: []string{"app"}}
+		res := rbRun(t, rbCase{cfg: rbFixture(t, "filtered_mixed.yml"), base: base, reads: reads, want: want,
+			change: rbEdit("app/main.go", "package app\n\n// changed\n")})
+		if got := emittedEntry(t, res, "ci", "ship").Requires; !slices.Equal(got, []string{"test"}) {
+			t.Errorf("ship requires %v, want [test]", got)
+		}
+	})
+	t.Run("only ship reads the change: the closure takes test, and skips build-main", func(t *testing.T) {
+		res := rbRun(t, rbCase{cfg: rbFixture(t, "filtered_mixed.yml"), base: base, reads: reads, want: want,
+			change: rbEdit("ship/run.sh", "#!/bin/sh\n# changed\n")})
+		if got := emittedEntry(t, res, "ci", "ship").Requires; !slices.Equal(got, []string{"test"}) {
+			t.Errorf("ship requires %v, want [test]", got)
+		}
+		if got := reasons(t, res, "test"); !slices.Equal(got, []string{"required by ship"}) {
+			t.Errorf("test reasons = %v", got)
+		}
+	})
+}
+
+// CircleCI's reference, once more, for an approval: deploy requires
+// [hold-deploy, test], and hold-deploy is filtered to main. On a branch the
+// approval is ignored, and deploy runs after test, with no approval. That is
+// what CircleCI does with the input, so the plan must not change it: deploy
+// stays, and its requirement on the approval goes with the approval. On main,
+// the approval is there, and the requirement stays.
+func TestRobustness_ApprovalFilteredOutIsIgnoredWhileAnotherRequirementRuns(t *testing.T) {
+	cfg := rbFixture(t, "approval_filtered_partial.yml")
+	base := map[string]string{"services/api/main.go": "package api\n", "deploy/run.sh": "#!/bin/sh\n"}
+	reads := map[string]rbReads{
+		"test":   {files: []string{"services/api/main.go"}, dirs: []string{"services/api"}},
+		"deploy": {files: []string{"deploy/run.sh"}, dirs: []string{"deploy"}},
+	}
+	t.Run("on a branch, deploy runs after test", func(t *testing.T) {
+		res := rbRun(t, rbCase{cfg: cfg, base: base, reads: reads, change: rbEdit("deploy/run.sh", "#!/bin/sh\n# changed\n"),
+			want: rbWant{running: []string{"test", "deploy"}, emitted: []string{"test", "deploy", "smarter-gate"}, gate: []string{"test"}}})
+		if got := emittedEntry(t, res, "ci", "deploy").Requires; !slices.Equal(got, []string{"test"}) {
+			t.Errorf("deploy requires %v, want [test]", got)
+		}
+	})
+	t.Run("on a branch, a change deploy does not read leaves it out with the approval", func(t *testing.T) {
+		rbRun(t, rbCase{cfg: cfg, base: base, reads: reads, change: rbEdit("services/api/main.go", "package api\n\n// changed\n"),
+			want: rbWant{running: []string{"test"}, emitted: []string{"test", "smarter-gate"}, gate: []string{"test"}}})
+	})
+	t.Run("on main, the approval is there and stays", func(t *testing.T) {
+		res := rbRun(t, rbCase{cfg: cfg, base: base, reads: reads, branch: "main", change: rbEdit("deploy/run.sh", "#!/bin/sh\n# changed\n"),
+			want: rbWant{full: true, running: []string{"test", "hold-deploy", "deploy"},
+				emitted: []string{"test", "hold-deploy", "deploy", "smarter-impact-map", "smarter-gate"}, gate: []string{"test"}}})
+		if got := emittedEntry(t, res, "ci", "deploy").Requires; !slices.Equal(got, []string{"hold-deploy", "test"}) {
+			t.Errorf("deploy requires %v, want [hold-deploy test]", got)
+		}
+	})
+}
+
+// The rule is recursive: build-main is filtered out, package requires only it,
+// and publish requires only package. Neither package nor publish runs, so both
+// leave the plan, whatever changed, and a mandatory publish gets a warning.
+func TestRobustness_ChainBehindAFilteredJobDoesNotRun(t *testing.T) {
+	base := map[string]string{"services/api/main.go": "package api\n", "release/publish.sh": "#!/bin/sh\n", "pkg/x.txt": "x\n"}
+	reads := map[string]rbReads{
+		"lint":       {files: []string{"services/api/main.go"}, dirs: []string{"services/api"}},
+		"build-main": {files: []string{"pkg/x.txt"}, dirs: []string{"pkg"}},
+		"package":    {files: []string{"pkg/x.txt"}, dirs: []string{"pkg"}},
+		"publish":    {files: []string{"release/publish.sh"}, dirs: []string{"release"}},
+	}
+	want := rbWant{running: []string{"lint"}, emitted: []string{"lint", "smarter-gate"}, gate: []string{"lint"}}
+	t.Run("the inputs of the whole chain change", func(t *testing.T) {
+		res := rbRun(t, rbCase{cfg: rbFixture(t, "filtered_chain.yml"), base: base, reads: reads, want: want,
+			change: func(r *difftest.Repo) {
+				r.Write("services/api/main.go", "package api\n\n// changed\n")
+				r.Write("pkg/x.txt", "changed\n")
+				r.Write("release/publish.sh", "#!/bin/sh\n# changed\n")
+			}})
+		for job, why := range map[string]string{
+			"build-main": "does not run: its filters leave out branch feature",
+			"package":    "does not run: it requires build-main, which does not run",
+			"publish":    "does not run: it requires package, which does not run",
+		} {
+			if got := reasons(t, res, job); len(got) != 1 || got[0] != why {
+				t.Errorf("%s reasons = %v, want %q", job, got, why)
+			}
+		}
+	})
+	t.Run("the last job of the chain is mandatory", func(t *testing.T) {
+		res := rbRun(t, rbCase{cfg: rbFixture(t, "filtered_chain.yml"), base: base, reads: reads, want: want, mandatory: []string{"publish"},
+			change: rbEdit("services/api/main.go", "package api\n\n// changed\n")})
+		if !rbWarned(res, "mandatory job publish", "requires package, which does not run", "does not force it") {
+			t.Errorf("warnings = %v, want one about the mandatory job publish", res.Report.Warnings)
+		}
+	})
 }
 
 // Case 2, the removal case: a job the change does not reach, whose only
@@ -768,6 +870,32 @@ func TestRobustness_RequirementFilteredOutRemovesDependent(t *testing.T) {
 		},
 		want: rbWant{running: []string{"lint"}, emitted: []string{"lint", "smarter-gate"}, gate: []string{"lint"}},
 	})
+}
+
+// A job that requires a job by a status (`deploy: failed`), where the job is
+// filtered out on the branch: the planner cannot tell whether CircleCI runs it
+// (the status may be met by a job that did not run), so it is unknown, and the
+// gate does not wait for it. Left out, its requirement could not be dropped
+// without making it run unconditionally, so the plan is a full run.
+func TestRobustness_StatusRequirementOnAFilteredJobGivesAFullRun(t *testing.T) {
+	res := rbRun(t, rbCase{
+		cfg:       rbFixture(t, "status_filtered.yml"),
+		base:      map[string]string{"services/api/main.go": "package api\n", "deploy/run.sh": "#!/bin/sh\n", "notify/run.sh": "#!/bin/sh\n"},
+		change:    rbEdit("services/api/main.go", "package api\n\n// changed\n"),
+		reads:     map[string]rbReads{"lint": {files: []string{"services/api/main.go"}, dirs: []string{"services/api"}}, "deploy": {files: []string{"deploy/run.sh"}, dirs: []string{"deploy"}}},
+		mandatory: []string{"notify"},
+		want: rbWant{full: true, running: []string{"lint", "notify"}, emitted: []string{"lint", "deploy", "notify", "smarter-gate"},
+			gate: []string{"lint"}},
+	})
+	if !strings.Contains(res.Report.FullReason, "job notify requires only jobs that do not run here") {
+		t.Errorf("full-run reason = %q", res.Report.FullReason)
+	}
+	if got := emittedEntry(t, res, "ci", "notify").Requires; !slices.Equal(got, []string{"deploy"}) {
+		t.Errorf("notify requires %v: the plan must not edit it", got)
+	}
+	if !rbWarned(res, "smarter-gate does not wait for notify") {
+		t.Errorf("warnings = %v", res.Report.Warnings)
+	}
 }
 
 // Case 3: two workflows. Only the planned one is pruned, and the other keeps its
