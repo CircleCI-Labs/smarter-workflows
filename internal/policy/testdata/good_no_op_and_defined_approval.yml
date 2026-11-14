@@ -1,0 +1,35 @@
+# Passes every rule: the gate is a no-op job, which has no executor, so its
+# resource class (it has one here) is not checked; and the approval before the
+# deploy is set in the job's definition, not on its workflow entry.
+version: 2.1
+jobs:
+  security-scan:
+    docker:
+      - image: cimg/base:stable
+    resource_class: small
+    steps:
+      - checkout
+  deploy:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - checkout
+  hold-deploy:
+    type: approval
+  smarter-gate:
+    type: no-op
+    resource_class: 2xlarge
+workflows:
+  ci:
+    jobs:
+      - security-scan
+      - hold-deploy:
+          requires: [security-scan]
+      - deploy:
+          context: deploy
+          requires: [hold-deploy]
+          filters:
+            branches:
+              only: main
+      - smarter-gate:
+          requires: [security-scan]

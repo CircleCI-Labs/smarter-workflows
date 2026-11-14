@@ -271,6 +271,23 @@ test_restricted_context_an_approval_by_name {
 	count(restricted_contexts) == 0 with input as fixture_workflow(jobs)
 }
 
+test_restricted_context_an_approval_defined_under_jobs {
+	# The approval type may be set in the job's definition, and not on the entry.
+	cfg := object.union(
+		fixture_workflow([{"hold-deploy": {}}, {"deploy": fixture_deploy}]),
+		{"jobs": {"hold-deploy": {"type": "approval"}}},
+	)
+	count(restricted_contexts) == 0 with input as cfg
+}
+
+test_restricted_context_a_job_defined_under_jobs_as_a_no_op_is_not_an_approval {
+	cfg := object.union(
+		fixture_workflow([{"hold-deploy": {}}, {"deploy": fixture_deploy}]),
+		{"jobs": {"hold-deploy": {"type": "no-op"}}},
+	)
+	has_message(restricted_contexts, "must run downstream of an approval job") with input as cfg
+}
+
 test_restricted_context_requires_with_a_status {
 	jobs := [fixture_hold, {"deploy": object.union(fixture_deploy, {"requires": [{"hold-deploy": ["success"]}]})}]
 	count(restricted_contexts) == 0 with input as fixture_workflow(jobs)
@@ -307,6 +324,14 @@ test_restricted_context_every_failure_is_reported {
 test_restricted_context_approval_jobs_run_no_code {
 	jobs := [{"hold-deploy": {"type": "approval", "context": ["deploy"]}}]
 	count(restricted_contexts) == 0 with input as fixture_workflow(jobs)
+}
+
+test_restricted_context_an_approval_defined_under_jobs_runs_no_code {
+	cfg := object.union(
+		fixture_workflow([{"hold-deploy": {"context": ["deploy"]}}]),
+		{"jobs": {"hold-deploy": {"type": "approval"}}},
+	)
+	count(restricted_contexts) == 0 with input as cfg
 }
 
 test_restricted_context_malformed_entries_are_ignored {
@@ -361,6 +386,25 @@ test_resource_class_in_both_source_and_compiled_is_reported_once {
 
 test_resource_class_parameterized_is_skipped_in_the_source {
 	count(resource_classes) == 0 with input as {"jobs": {"build": {"resource_class": "<< parameters.size >>"}}}
+}
+
+test_resource_class_a_no_op_job_has_no_executor_so_it_is_not_checked {
+	count(resource_classes) == 0 with input as {"jobs": {"gate": {"type": "no-op"}}}
+	count(resource_classes) == 0 with input as {"jobs": {"gate": {"type": "no-op", "resource_class": "2xlarge"}}}
+}
+
+test_resource_class_a_no_op_job_is_not_checked_after_compiling_either {
+	cfg := {"_compiled_": {"jobs": {
+		"gate": {"type": "no-op", "resource_class": "xlarge"},
+		"build": {"resource_class": "xlarge"},
+	}}}
+	msgs := resource_classes with input as cfg
+	count(msgs) == 1
+	has_message(msgs, "job \"build\" uses the resource_class \"xlarge\"")
+}
+
+test_resource_class_a_job_of_another_type_is_still_checked {
+	count(resource_classes) == 1 with input as {"jobs": {"build": {"type": "build", "resource_class": "xlarge"}}}
 }
 
 test_resource_class_allowlist_is_a_setting {
