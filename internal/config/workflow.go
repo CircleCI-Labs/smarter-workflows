@@ -439,6 +439,25 @@ func (w *Workflow) ownArgs(e *Entry) (*yaml.Node, error) {
 	return e.args, nil
 }
 
+// CheckSteps reports whether AddPreSteps and AddPostSteps can edit the entry:
+// its pre-steps and post-steps, when it has them, must each be a list. A key
+// with no value counts as an empty list. The check does not touch the entry.
+func (e *Entry) CheckSteps() error {
+	for _, key := range []string{"pre-steps", "post-steps"} {
+		if err := stepsProblem(e, key); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func stepsProblem(e *Entry, key string) error {
+	if v := lookup(e.args, key); v != nil && !isNull(v) && v.Kind != yaml.SequenceNode {
+		return fmt.Errorf("%s of %q is not a list", key, e.Name)
+	}
+	return nil
+}
+
 // AddPreSteps puts steps before the entry's own pre-steps.
 func (w *Workflow) AddPreSteps(e *Entry, steps ...*yaml.Node) error {
 	return w.addSteps(e, "pre-steps", true, steps)
@@ -450,6 +469,9 @@ func (w *Workflow) AddPostSteps(e *Entry, steps ...*yaml.Node) error {
 }
 
 func (w *Workflow) addSteps(e *Entry, key string, prepend bool, steps []*yaml.Node) error {
+	if err := stepsProblem(e, key); err != nil {
+		return err
+	}
 	args, err := w.ownArgs(e)
 	if err != nil {
 		return err
@@ -457,12 +479,12 @@ func (w *Workflow) addSteps(e *Entry, key string, prepend bool, steps []*yaml.No
 	var seq *yaml.Node
 	if i := keyIndex(args, key); i >= 0 {
 		seq = args.Content[i+1]
+		if isNull(seq) { // `post-steps:` with no value is an empty list
+			seq.Kind, seq.Tag, seq.Value, seq.Style = yaml.SequenceNode, "!!seq", "", 0
+		}
 	} else {
 		seq = Seq()
 		args.Content = append(args.Content, Str(key), seq)
-	}
-	if seq.Kind != yaml.SequenceNode {
-		return fmt.Errorf("%s of %q is not a list", key, e.Name)
 	}
 	seq.Style &^= yaml.FlowStyle
 	if prepend {

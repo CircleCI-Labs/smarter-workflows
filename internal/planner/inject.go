@@ -88,7 +88,10 @@ func (p *planner) traceOn(full bool) bool {
 
 // injectTrace is step 8: trace steps on the entries that can be traced, and the
 // job that builds the map from their traces. It returns nil when nothing can be
-// traced, with the reason in warnings.
+// traced, with the reason in warnings. An entry that cannot take the steps (its
+// pre-steps or post-steps is not a list) is left as it is, with a warning, and
+// does not stop the others: it has no trace, and so no map entry, and later
+// plans always run it.
 func (p *planner) injectTrace(cfg *config.Config, wf *config.Workflow, an *analysis) (*report.Trace, []string, error) {
 	if v := cfg.Version(); v != "2.1" {
 		// pre-steps and post-steps exist from version 2.1 on.
@@ -99,7 +102,7 @@ func (p *planner) injectTrace(cfg *config.Config, wf *config.Workflow, an *analy
 		local bool
 	}
 	var targets []target
-	var requires []string
+	var requires, notes []string
 	for _, e := range wf.Entries {
 		if e.Approval || e.Matrix {
 			// An approval is not a job. A matrix entry always runs, so its trace
@@ -113,6 +116,10 @@ func (p *planner) injectTrace(cfg *config.Config, wf *config.Workflow, an *analy
 		default:
 			continue
 		}
+		if err := e.CheckSteps(); err != nil {
+			notes = append(notes, fmt.Sprintf("trace: %s is not traced, so later plans always run it: %v", e.Name, err))
+			continue
+		}
 		targets = append(targets, target{e, local})
 		// The map job waits for jobs that are certain to run, and not for ones
 		// behind an approval, which would never let it start.
@@ -121,10 +128,10 @@ func (p *planner) injectTrace(cfg *config.Config, wf *config.Workflow, an *analy
 		}
 	}
 	if len(targets) == 0 {
-		return nil, []string{"trace: no job of the workflow can be traced (only docker and Linux machine jobs defined in the config can; orb jobs need --trace-orb-jobs)"}, nil
+		return nil, append(notes, "trace: no job of the workflow can be traced (only docker and Linux machine jobs defined in the config can; orb jobs need --trace-orb-jobs)"), nil
 	}
 	if len(requires) == 0 {
-		return nil, []string{"trace: none of the traceable jobs is certain to run on this branch, so there is nothing for the map job to wait for"}, nil
+		return nil, append(notes, "trace: none of the traceable jobs is certain to run on this branch, so there is nothing for the map job to wait for"), nil
 	}
 
 	tr := &report.Trace{MapJob: ImpactMapJob, Requires: requires}
@@ -153,5 +160,5 @@ func (p *planner) injectTrace(cfg *config.Config, wf *config.Workflow, an *analy
 	if err := wf.AppendEntry(ImpactMapJob, requires); err != nil {
 		return nil, nil, fmt.Errorf("adding the map job: %w", err)
 	}
-	return tr, nil, nil
+	return tr, notes, nil
 }
