@@ -44,6 +44,9 @@ const (
 	DefaultFullRunPaths = ".circleci/**"
 	// ImpactMapJob is the name of the job that merges the traces into the map.
 	ImpactMapJob = "smarter-impact-map"
+	// DefaultMapKeyPrefix starts the cache key the map job saves the impact
+	// map under: <prefix>-<checksum of the commit>.
+	DefaultMapKeyPrefix = "smarter-impact-v1"
 	// TraceDir is where the traced jobs leave their traces (in the workspace).
 	TraceDir = "/tmp/smarter"
 )
@@ -80,6 +83,11 @@ type Options struct {
 	GateJob   string
 	GateImage string
 
+	// MapKeyPrefix starts the cache key of the saved impact map. Pipelines of
+	// one project share its cache, so each one needs its own prefix, and its
+	// setup job restores the map with the same one.
+	MapKeyPrefix string
+
 	// Version is the planner's own version, written into the map job.
 	Version string
 	// BinPath is where the map job finds the planner binary: the path it ran
@@ -97,12 +105,17 @@ func DefaultOptions() Options {
 		TraceReset:    true,
 		GateJob:       DefaultGateJob,
 		GateImage:     DefaultGateImage,
+		MapKeyPrefix:  DefaultMapKeyPrefix,
 		Version:       "dev",
 		BinPath:       "circleci-smarter",
 	}
 }
 
 var jobName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]*$`)
+
+// mapKeyPrefixRE is what a cache key prefix may look like: the characters of a
+// job name, so it needs no quoting and cannot hold a `{{ }}` template.
+var mapKeyPrefixRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]*$`)
 
 // Validate checks the settings. Its errors are usage errors.
 func (o Options) Validate() error {
@@ -121,6 +134,9 @@ func (o Options) Validate() error {
 	}
 	if strings.TrimSpace(o.GateImage) == "" || strings.ContainsAny(o.GateImage, " \t\r\n") {
 		return fmt.Errorf("gate image %q is not usable", o.GateImage)
+	}
+	if !mapKeyPrefixRE.MatchString(o.MapKeyPrefix) {
+		return fmt.Errorf("map key prefix %q is not usable: start with a letter or digit, then use letters, digits, . _ or -", o.MapKeyPrefix)
 	}
 	if err := validateGlobs(o.FullRunPaths); err != nil {
 		return fmt.Errorf("full-run paths: %w", err)
