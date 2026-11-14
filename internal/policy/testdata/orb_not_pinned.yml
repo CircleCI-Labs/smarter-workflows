@@ -1,0 +1,16 @@
+# Registry orbs that are not pinned to an exact x.y.z version.
+version: 2.1
+orbs:
+  node: circleci/node@5
+  tools: example/tools@volatile
+  pinned: example/pinned@1.2.3
+jobs:
+  security-scan:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - checkout
+workflows:
+  ci:
+    jobs:
+      - security-scan

@@ -1,0 +1,44 @@
+# What the policy service passes: the source config, and the compiled config
+# under _compiled_. The source job takes its class from a parameter.
+version: 2.1
+jobs:
+  build:
+    parameters:
+      size:
+        type: string
+        default: medium
+    docker:
+      - image: cimg/base:stable
+    resource_class: << parameters.size >>
+    steps:
+      - checkout
+  security-scan:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - checkout
+workflows:
+  ci:
+    jobs:
+      - build:
+          size: 2xlarge
+      - security-scan
+_compiled_:
+  version: 2
+  jobs:
+    build:
+      docker:
+        - image: cimg/base:stable
+      resource_class: 2xlarge
+      steps:
+        - checkout
+    security-scan:
+      docker:
+        - image: cimg/base:stable
+      steps:
+        - checkout
+  workflows:
+    ci:
+      jobs:
+        - build
+        - security-scan

@@ -33,3 +33,9 @@ A job's equivalent of test coverage is the set of repo files it reads. There are
 - `noatime` filesystems, busybox `find` and non-Linux executors give incomplete traces, so those jobs always run.
 - Traces miss inputs that were read and then rewritten in the same job (formatters that run with `-w`), and inputs from outside the repo. See ADR 2 for how those are covered.
 - Cache entries can expire (default retention) and can be written by any branch. A missing map means a full run. Mandatory jobs and guardrails don't depend on the map. Signing the map on the default branch is planned hardening.
+
+## Verification (2026-11-13)
+
+Tested on CircleCI's docker executor (`cimg/base`, overlay, relatime) and machine executor (`ubuntu-2404`, ext4, relatime):
+- After the `checkout` step, 43 of 44 tracked files already had atime newer than mtime, because checkout reads them.
+- After the reset step, a job that ran `cat README.md; ls docs` was traced as exactly `README.md` and `docs`.

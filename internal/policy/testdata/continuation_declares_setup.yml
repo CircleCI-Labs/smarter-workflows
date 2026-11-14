@@ -1,0 +1,13 @@
+# A continuation config must not be a setup config.
+version: 2.1
+setup: true
+jobs:
+  security-scan:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - checkout
+workflows:
+  ci:
+    jobs:
+      - security-scan

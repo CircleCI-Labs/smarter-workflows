@@ -1,0 +1,47 @@
+# Passes every rule of the bundle.
+version: 2.1
+orbs:
+  node: circleci/node@5.1.0
+  shared: https://example.com/example-org/example-orbs/0123456789abcdef0123456789abcdef01234567/src/orb.yml
+  local:
+    jobs:
+      hello:
+        docker:
+          - image: cimg/base:stable
+        steps:
+          - checkout
+executors:
+  small-docker:
+    docker:
+      - image: cimg/base:stable
+    resource_class: small
+jobs:
+  build:
+    docker:
+      - image: cimg/base:stable
+    resource_class: medium
+    steps:
+      - checkout
+  security-scan:
+    executor: small-docker
+    steps:
+      - checkout
+  deploy:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - checkout
+workflows:
+  ci:
+    jobs:
+      - build
+      - security-scan
+      - hold-deploy:
+          type: approval
+          requires: [build, security-scan]
+      - deploy:
+          context: deploy
+          requires: [hold-deploy]
+          filters:
+            branches:
+              only: main
