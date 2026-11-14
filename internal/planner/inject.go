@@ -102,9 +102,11 @@ func (p *planner) injectTrace(cfg *config.Config, wf *config.Workflow, an *analy
 	var targets []target
 	var requires, notes []string
 	for _, e := range wf.Entries {
-		if e.Approval || e.Matrix {
-			// An approval is not a job. A matrix entry always runs, so its trace
-			// would never be looked up.
+		if !e.Kind.HasSteps() || e.Kind == config.KindJobGroup || e.Matrix {
+			// An approval, a no-op job and a release job run no steps, so there is
+			// nothing to trace. A job group is one unit that runs whole and is not
+			// looked into. A matrix entry always runs, so its trace would never be
+			// looked up.
 			continue
 		}
 		local := cfg.HasJob(e.Ref)

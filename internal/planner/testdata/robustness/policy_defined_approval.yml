@@ -1,0 +1,38 @@
+version: 2.1
+jobs:
+  security-scan:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: make scan
+  build:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: make build
+  hold:
+    type: approval
+  deploy:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: ./deploy/run.sh
+workflows:
+  ci:
+    jobs:
+      - security-scan
+      - build
+      - hold:
+          requires:
+            - build
+            - security-scan
+      - deploy:
+          context: deploy
+          requires:
+            - hold
+          filters:
+            branches:
+              only: main

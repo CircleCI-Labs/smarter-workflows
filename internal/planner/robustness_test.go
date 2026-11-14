@@ -1485,3 +1485,376 @@ func TestRobustness_FixturesAreValidCircleCI(t *testing.T) {
 		})
 	}
 }
+
+// ---- job types and job groups ----
+//
+// A no-op job, an approval and a release job run no steps, so they have no
+// trace and no inputs of their own. The jobs around them decide: a no-op job
+// or an approval is kept when a selected job requires it, a release job when a
+// job it requires is selected. A job group is one unit that always runs.
+
+// rbEntryHas reports whether the entry of workflow wf has the key.
+func rbEntryHas(t *testing.T, cfg []byte, wf, name, key string) bool {
+	t.Helper()
+	_, ok := rbEntryBody(t, rbDoc(t, cfg), wf, name)[key]
+	return ok
+}
+
+// A no-op job between the tests and the deploy is a structural job: the
+// closure keeps it when the deploy is selected, and drops it when nothing that
+// requires it is. It is not traced, and the gate does not wait for it, since it
+// can only fail with the jobs it requires.
+func TestRobustness_NoOpCoordinatorIsDecidedByTheClosure(t *testing.T) {
+	cfg := rbFixture(t, "noop_coordinator.yml")
+	base := map[string]string{"unit/x.go": "package unit\n", "integration/x.go": "package integration\n", "deploy/run.sh": "#!/bin/sh\n", "notes/readme.md": "# notes\n"}
+	reads := map[string]rbReads{
+		"test-unit":        {files: []string{"unit/x.go"}, dirs: []string{"unit"}},
+		"test-integration": {files: []string{"integration/x.go"}, dirs: []string{"integration"}},
+		"deploy":           {files: []string{"deploy/run.sh"}, dirs: []string{"deploy"}},
+	}
+	t.Run("the change reaches the job after the no-op job", func(t *testing.T) {
+		res := rbRun(t, rbCase{cfg: cfg, base: base, reads: reads, change: rbEdit("deploy/run.sh", "#!/bin/sh\n# changed\n"),
+			want: rbWant{running: []string{"test-unit", "test-integration", "tests-done", "deploy"},
+				emitted: []string{"test-unit", "test-integration", "tests-done", "deploy", "smarter-gate"},
+				gate:    []string{"test-unit", "test-integration", "deploy"}}})
+		if got := reasons(t, res, "tests-done"); !slices.Equal(got, []string{"required by deploy"}) {
+			t.Errorf("tests-done reasons = %v", got)
+		}
+		if got := emittedEntry(t, res, "ci", "tests-done").Requires; !slices.Equal(got, []string{"test-unit", "test-integration"}) {
+			t.Errorf("tests-done requires %v: the plan must not edit it", got)
+		}
+	})
+	t.Run("the change reaches a job before it, and nothing that requires it", func(t *testing.T) {
+		res := rbRun(t, rbCase{cfg: cfg, base: base, reads: reads, change: rbEdit("unit/x.go", "package unit\n\n// changed\n"),
+			want: rbWant{running: []string{"test-unit"}, emitted: []string{"test-unit", "smarter-gate"}, gate: []string{"test-unit"}}})
+		if got := reasons(t, res, "tests-done"); !slices.Equal(got, []string{"no selected job requires this no-op job"}) {
+			t.Errorf("tests-done reasons = %v", got)
+		}
+	})
+	t.Run("the change reaches nothing", func(t *testing.T) {
+		rbRun(t, rbCase{cfg: cfg, base: base, reads: reads, change: rbEdit("notes/readme.md", "# notes\n\nmore\n"),
+			want: rbWant{emitted: []string{"smarter-gate"}}})
+	})
+	t.Run("on the default branch it is not traced, and the map job does not wait for it", func(t *testing.T) {
+		res := rbRun(t, rbCase{cfg: cfg, base: base, reads: reads, branch: "main", change: rbEdit("deploy/run.sh", "#!/bin/sh\n# changed\n"),
+			want: rbWant{full: true, running: []string{"test-unit", "test-integration", "tests-done", "deploy"},
+				emitted: []string{"test-unit", "test-integration", "tests-done", "deploy", "smarter-impact-map", "smarter-gate"},
+				gate:    []string{"test-unit", "test-integration", "deploy"}}})
+		wantTraced := []string{"test-unit", "test-integration", "deploy"}
+		if got := res.Report.Trace.Jobs; !slices.Equal(got, wantTraced) {
+			t.Errorf("traced jobs = %v, want %v", got, wantTraced)
+		}
+		if got := emittedEntry(t, res, "ci", planner.ImpactMapJob).Requires; !slices.Equal(got, wantTraced) {
+			t.Errorf("the map job requires %v, want %v", got, wantTraced)
+		}
+		doc := rbDoc(t, res.Config)
+		if rbEntryHas(t, res.Config, "ci", "tests-done", "post-steps") || rbEntryHas(t, res.Config, "ci", "tests-done", "pre-steps") {
+			t.Error("the no-op job has trace steps")
+		}
+		if got := rbJob(t, doc, "tests-done"); !reflect.DeepEqual(got, map[string]any{"type": "no-op"}) {
+			t.Errorf("the no-op job's definition is %v, want it as it was", got)
+		}
+	})
+}
+
+// A no-op job that nothing requires, such as a gatekeeper for one required
+// status check, is decided like an approval that nothing requires: select mode
+// drops it. Shadow mode keeps every entry, and says what select mode would do.
+// The gate takes over its role, so the project requires the gate's check.
+func TestRobustness_NoOpNobodyRequiresIsDroppedInSelectMode(t *testing.T) {
+	cfg := rbFixture(t, "noop_gatekeeper.yml")
+	base := map[string]string{"lint/x.go": "package lint\n", "test/x.go": "package test\n"}
+	reads := map[string]rbReads{
+		"lint": {files: []string{"lint/x.go"}, dirs: []string{"lint"}},
+		"test": {files: []string{"test/x.go"}, dirs: []string{"test"}},
+	}
+	change := rbEdit("lint/x.go", "package lint\n\n// changed\n")
+	t.Run("select mode", func(t *testing.T) {
+		res := rbRun(t, rbCase{cfg: cfg, base: base, reads: reads, change: change,
+			want: rbWant{running: []string{"lint"}, emitted: []string{"lint", "smarter-gate"}, gate: []string{"lint"}}})
+		if got := reasons(t, res, "all-green"); !slices.Equal(got, []string{"no selected job requires this no-op job"}) {
+			t.Errorf("all-green reasons = %v", got)
+		}
+	})
+	t.Run("shadow mode", func(t *testing.T) {
+		rr := rbChange(t, base, "feature", change)
+		o := rbOpts("ci", "feature", rr)
+		o.Mode = planner.ModeShadow
+		in := planner.Input{Config: cfg, Map: rbMap(rr.base, reads), Repo: rr.git, CommitMessage: "change"}
+		res, err := planner.Run(context.Background(), in, o)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, want := emittedJobs(t, res, "ci"), []string{"lint", "test", "all-green", "smarter-gate"}; !slices.Equal(got, want) {
+			t.Errorf("emitted jobs = %v, want %v", got, want)
+		}
+		if got := running(res); !slices.Equal(got, []string{"lint"}) {
+			t.Errorf("select mode would run %v, want [lint]", got)
+		}
+		if got := res.Report.Gate.Requires; !slices.Equal(got, []string{"lint", "test"}) {
+			t.Errorf("gate requires %v: it does not wait for the no-op job", got)
+		}
+		rbValidate(t, res.Config)
+	})
+}
+
+// An approval set in the job's definition (`hold: {type: approval}` under jobs)
+// is an approval, as one set on the workflow entry is: the closure decides it,
+// the gate does not wait for it or for what follows it, and it is not traced.
+func TestRobustness_ApprovalDefinedUnderJobs(t *testing.T) {
+	cfg := rbFixture(t, "approval_defined.yml")
+	base := map[string]string{"app/main.go": "package app\n", "deploy/run.sh": "#!/bin/sh\n"}
+	reads := map[string]rbReads{
+		"build":  {files: []string{"app/main.go"}, dirs: []string{"app"}},
+		"deploy": {files: []string{"deploy/run.sh"}, dirs: []string{"deploy"}},
+	}
+	t.Run("the change reaches the build only", func(t *testing.T) {
+		rbRun(t, rbCase{cfg: cfg, base: base, reads: reads, change: rbEdit("app/main.go", "package app\n\n// changed\n"),
+			want: rbWant{running: []string{"build"}, emitted: []string{"build", "smarter-gate"}, gate: []string{"build"}}})
+	})
+	t.Run("the change reaches the deploy: the approval and the build stay", func(t *testing.T) {
+		res := rbRun(t, rbCase{cfg: cfg, base: base, reads: reads, change: rbEdit("deploy/run.sh", "#!/bin/sh\n# changed\n"),
+			want: rbWant{running: []string{"build", "hold", "deploy"}, emitted: []string{"build", "hold", "deploy", "smarter-gate"}, gate: []string{"build"}}})
+		if got := reasons(t, res, "hold"); !slices.Equal(got, []string{"required by deploy"}) {
+			t.Errorf("hold reasons = %v", got)
+		}
+	})
+	t.Run("on the default branch the map job waits for what runs before the approval", func(t *testing.T) {
+		res := rbRun(t, rbCase{cfg: cfg, base: base, reads: reads, branch: "main", change: rbEdit("app/main.go", "package app\n\n// changed\n"),
+			want: rbWant{full: true, running: []string{"build", "hold", "deploy"},
+				emitted: []string{"build", "hold", "deploy", "smarter-impact-map", "smarter-gate"}, gate: []string{"build"}}})
+		if got := emittedEntry(t, res, "ci", planner.ImpactMapJob).Requires; !slices.Equal(got, []string{"build"}) {
+			t.Errorf("the map job requires %v, want [build]", got)
+		}
+		if got := res.Report.Trace.Jobs; !slices.Equal(got, []string{"build", "deploy"}) {
+			t.Errorf("traced jobs = %v, want [build deploy]", got)
+		}
+		if rbEntryHas(t, res.Config, "ci", "hold", "post-steps") {
+			t.Error("the approval has trace steps")
+		}
+	})
+}
+
+// A release job tracks the release of the job it requires: it is kept when that
+// job is selected, and left out otherwise. It is not traced, and the gate waits
+// for it, since a release can fail its validation.
+func TestRobustness_ReleaseJobFollowsItsDeploy(t *testing.T) {
+	cfg := rbFixture(t, "release_job.yml")
+	base := map[string]string{"app/main.go": "package app\n", "api/x.go": "package api\n", "web/x.ts": "export {};\n"}
+	reads := map[string]rbReads{
+		"lint":       {files: []string{"app/main.go"}, dirs: []string{"app"}},
+		"deploy-api": {files: []string{"api/x.go"}, dirs: []string{"api"}},
+		"deploy-web": {files: []string{"web/x.ts"}, dirs: []string{"web"}},
+	}
+	t.Run("one deploy is selected", func(t *testing.T) {
+		res := rbRun(t, rbCase{cfg: cfg, base: base, reads: reads, change: rbEdit("api/x.go", "package api\n\n// changed\n"),
+			want: rbWant{running: []string{"lint", "deploy-api", "release-api"},
+				emitted: []string{"lint", "deploy-api", "release-api", "smarter-gate"}, gate: []string{"lint", "deploy-api", "release-api"}}})
+		if got := reasons(t, res, "release-api"); !slices.Equal(got, []string{"tracks the release of deploy-api"}) {
+			t.Errorf("release-api reasons = %v", got)
+		}
+		if got := reasons(t, res, "release-web"); !slices.Equal(got, []string{"none of the jobs it requires is selected"}) {
+			t.Errorf("release-web reasons = %v", got)
+		}
+		if got := rbJob(t, rbDoc(t, res.Config), "release-api"); !reflect.DeepEqual(got, map[string]any{"type": "release", "plan_name": "api-release"}) {
+			t.Errorf("the release job's definition is %v, want it as it was", got)
+		}
+	})
+	t.Run("both deploys are selected", func(t *testing.T) {
+		rbRun(t, rbCase{cfg: cfg, base: base, reads: reads, change: rbEdit("app/main.go", "package app\n\n// changed\n"),
+			want: rbWant{running: []string{"lint"}, emitted: []string{"lint", "smarter-gate"}, gate: []string{"lint"}}})
+	})
+	t.Run("nothing reaches a deploy", func(t *testing.T) {
+		rbRun(t, rbCase{cfg: cfg, base: base, reads: reads, change: rbEdit("docs/guide.md", "# guide\n"),
+			want: rbWant{emitted: []string{"smarter-gate"}}})
+	})
+	t.Run("on the default branch no release job is traced", func(t *testing.T) {
+		res := rbRun(t, rbCase{cfg: cfg, base: base, reads: reads, branch: "main", change: rbEdit("app/main.go", "package app\n\n// changed\n"),
+			want: rbWant{full: true, running: []string{"lint", "deploy-api", "release-api", "deploy-web", "release-web"},
+				emitted: []string{"lint", "deploy-api", "release-api", "deploy-web", "release-web", "smarter-impact-map", "smarter-gate"},
+				gate:    []string{"lint", "deploy-api", "release-api", "deploy-web", "release-web"}}})
+		wantTraced := []string{"lint", "deploy-api", "deploy-web"}
+		if got := res.Report.Trace.Jobs; !slices.Equal(got, wantTraced) {
+			t.Errorf("traced jobs = %v, want %v", got, wantTraced)
+		}
+		if got := emittedEntry(t, res, "ci", planner.ImpactMapJob).Requires; !slices.Equal(got, wantTraced) {
+			t.Errorf("the map job requires %v, want %v", got, wantTraced)
+		}
+		for _, name := range []string{"release-api", "release-web"} {
+			if rbEntryHas(t, res.Config, "ci", name, "post-steps") {
+				t.Errorf("%s has trace steps", name)
+			}
+		}
+	})
+}
+
+// A workflow entry that names a job group is one opaque unit in v0.1: it always
+// runs, with the jobs it requires, whatever the change is. It has no trace, the
+// report says why it runs, and its requires, its serial-group and the job-groups
+// key come out as they went in.
+func TestRobustness_JobGroupIsAnOpaqueUnitThatAlwaysRuns(t *testing.T) {
+	cfg := rbFixture(t, "job_group.yml")
+	base := map[string]string{"app/main.go": "package app\n", "notify/run.sh": "#!/bin/sh\n", "docs/guide.md": "# guide\n"}
+	reads := map[string]rbReads{
+		"lint":   {files: []string{"app/main.go"}, dirs: []string{"app"}},
+		"build":  {files: []string{"app/main.go"}, dirs: []string{"app"}},
+		"notify": {files: []string{"notify/run.sh"}, dirs: []string{"notify"}},
+	}
+	const serialGroup = "<< pipeline.project.slug >>/deploy-group"
+	checkUnit := func(t *testing.T, res *planner.Result) {
+		t.Helper()
+		doc := rbDoc(t, res.Config)
+		body := rbEntryBody(t, doc, "ci", "deploy-and-verify")
+		if got := body["serial-group"]; got != serialGroup {
+			t.Errorf("the group's serial-group = %v, want %q", got, serialGroup)
+		}
+		if got := body["requires"]; !reflect.DeepEqual(got, []any{"build"}) {
+			t.Errorf("the group requires %v, want [build]", got)
+		}
+		if got, want := doc["job-groups"], rbDoc(t, cfg)["job-groups"]; !reflect.DeepEqual(got, want) {
+			t.Errorf("job-groups = %v, want it as it was: %v", got, want)
+		}
+		if body["pre-steps"] != nil || body["post-steps"] != nil {
+			t.Errorf("the group has trace steps: %v", body)
+		}
+		noNewExpressions(t, cfg, res.Config)
+	}
+	t.Run("a change that reaches no job", func(t *testing.T) {
+		res := rbRun(t, rbCase{cfg: cfg, base: base, reads: reads, change: rbEdit("docs/guide.md", "# guide\n\nmore\n"),
+			want: rbWant{running: []string{"lint", "build", "deploy-and-verify"},
+				emitted: []string{"lint", "build", "deploy-and-verify", "smarter-gate"}, gate: []string{"lint", "build", "deploy-and-verify"}}})
+		want := "job group: runs as one unit, as v0.1 does not look inside it"
+		if got := reasons(t, res, "deploy-and-verify"); !slices.Equal(got, []string{want}) {
+			t.Errorf("the group's reasons = %v, want [%s]", got, want)
+		}
+		if got := reasons(t, res, "lint"); !slices.Equal(got, []string{"required by build"}) {
+			t.Errorf("lint reasons = %v", got)
+		}
+		checkUnit(t, res)
+	})
+	t.Run("a change that reaches the job after it", func(t *testing.T) {
+		res := rbRun(t, rbCase{cfg: cfg, base: base, reads: reads, change: rbEdit("notify/run.sh", "#!/bin/sh\n# changed\n"),
+			want: rbWant{running: []string{"lint", "build", "deploy-and-verify", "notify"},
+				emitted: []string{"lint", "build", "deploy-and-verify", "notify", "smarter-gate"}, gate: []string{"lint", "build", "deploy-and-verify", "notify"}}})
+		checkUnit(t, res)
+	})
+	t.Run("on the default branch it is not traced, and the map job does not wait for it", func(t *testing.T) {
+		res := rbRun(t, rbCase{cfg: cfg, base: base, reads: reads, branch: "main", change: rbEdit("docs/guide.md", "# guide\n\nmore\n"),
+			want: rbWant{full: true, running: []string{"lint", "build", "deploy-and-verify", "notify"},
+				emitted: []string{"lint", "build", "deploy-and-verify", "notify", "smarter-impact-map", "smarter-gate"},
+				gate:    []string{"lint", "build", "deploy-and-verify", "notify"}}})
+		wantTraced := []string{"lint", "build", "notify"}
+		if got := res.Report.Trace.Jobs; !slices.Equal(got, wantTraced) {
+			t.Errorf("traced jobs = %v, want %v", got, wantTraced)
+		}
+		if got := emittedEntry(t, res, "ci", planner.ImpactMapJob).Requires; !slices.Equal(got, wantTraced) {
+			t.Errorf("the map job requires %v, want %v", got, wantTraced)
+		}
+		checkUnit(t, res)
+	})
+}
+
+// A group invoked twice under two names is two units. The invocation that its
+// own filters leave out on the branch does not run, and what requires only it
+// goes with it, as for any job.
+func TestRobustness_JobGroupInvokedTwiceAndFiltered(t *testing.T) {
+	cfg := rbFixture(t, "job_group_filtered.yml")
+	base := map[string]string{"app/main.go": "package app\n", "notify/run.sh": "#!/bin/sh\n"}
+	reads := map[string]rbReads{
+		"lint":   {files: []string{"app/main.go"}, dirs: []string{"app"}},
+		"notify": {files: []string{"notify/run.sh"}, dirs: []string{"notify"}},
+	}
+	change := rbEdit("notify/run.sh", "#!/bin/sh\n# changed\n")
+	t.Run("on a branch", func(t *testing.T) {
+		res := rbRun(t, rbCase{cfg: cfg, base: base, reads: reads, change: change,
+			want: rbWant{running: []string{"lint", "deploy-staging"}, emitted: []string{"lint", "deploy-staging", "smarter-gate"}, gate: []string{"lint", "deploy-staging"}}})
+		if got := reasons(t, res, "deploy-production"); !slices.Equal(got, []string{"does not run: its filters leave out branch feature"}) {
+			t.Errorf("deploy-production reasons = %v", got)
+		}
+		if got := rbEntryBody(t, rbDoc(t, res.Config), "ci", "deploy-staging")["serial-group"]; got != "<< pipeline.project.slug >>/staging" {
+			t.Errorf("deploy-staging serial-group = %v", got)
+		}
+	})
+	t.Run("on the default branch", func(t *testing.T) {
+		res := rbRun(t, rbCase{cfg: cfg, base: base, reads: reads, branch: "main", change: change,
+			want: rbWant{full: true, running: []string{"lint", "deploy-staging", "deploy-production", "notify"},
+				emitted: []string{"lint", "deploy-staging", "deploy-production", "notify", "smarter-impact-map", "smarter-gate"},
+				gate:    []string{"lint", "deploy-staging", "deploy-production", "notify"}}})
+		doc := rbDoc(t, res.Config)
+		for name, want := range map[string]string{"deploy-staging": "<< pipeline.project.slug >>/staging", "deploy-production": "<< pipeline.project.slug >>/production"} {
+			if got := rbEntryBody(t, doc, "ci", name)["serial-group"]; got != want {
+				t.Errorf("%s serial-group = %v, want %q", name, got, want)
+			}
+		}
+	})
+}
+
+// A serial-group key of a workflow entry survives the emit, on the entries that
+// stay, in a plan and in a traced full run.
+func TestRobustness_SerialGroupSurvivesTheEmit(t *testing.T) {
+	cfg := rbFixture(t, "serial_group.yml")
+	base := map[string]string{"app/main.go": "package app\n", "deploy/run.sh": "#!/bin/sh\n", "docs/guide.md": "# guide\n"}
+	reads := map[string]rbReads{
+		"lint":   {files: []string{"app/main.go"}, dirs: []string{"app"}},
+		"build":  {files: []string{"app/main.go"}, dirs: []string{"app"}},
+		"deploy": {files: []string{"deploy/run.sh"}, dirs: []string{"deploy"}},
+	}
+	want := map[string]string{"build": "<< pipeline.project.slug >>/build-group", "deploy": "deploy/production"}
+	check := func(t *testing.T, res *planner.Result, kept ...string) {
+		t.Helper()
+		doc := rbDoc(t, res.Config)
+		for _, name := range kept {
+			if got := rbEntryBody(t, doc, "ci", name)["serial-group"]; got != want[name] {
+				t.Errorf("%s serial-group = %v, want %q", name, got, want[name])
+			}
+		}
+		noNewExpressions(t, cfg, res.Config)
+	}
+	t.Run("a plan that keeps both", func(t *testing.T) {
+		res := rbRun(t, rbCase{cfg: cfg, base: base, reads: reads, change: rbEdit("deploy/run.sh", "#!/bin/sh\n# changed\n"),
+			want: rbWant{running: []string{"lint", "build", "deploy"}, emitted: []string{"lint", "build", "deploy", "smarter-gate"}, gate: []string{"lint", "build", "deploy"}}})
+		check(t, res, "build", "deploy")
+	})
+	t.Run("a plan that keeps one", func(t *testing.T) {
+		res := rbRun(t, rbCase{cfg: cfg, base: base, reads: reads, change: rbEdit("app/main.go", "package app\n\n// changed\n"),
+			want: rbWant{running: []string{"lint", "build"}, emitted: []string{"lint", "build", "smarter-gate"}, gate: []string{"lint", "build"}}})
+		check(t, res, "build")
+	})
+	t.Run("a traced full run", func(t *testing.T) {
+		res := rbRun(t, rbCase{cfg: cfg, base: base, reads: reads, branch: "main", change: rbEdit("docs/guide.md", "# guide\n\nmore\n"),
+			want: rbWant{full: true, running: []string{"lint", "build", "deploy"},
+				emitted: []string{"lint", "build", "deploy", "smarter-impact-map", "smarter-gate"}, gate: []string{"lint", "build", "deploy"}}})
+		check(t, res, "build", "deploy")
+		// The trace steps are added next to the key, in the same entry.
+		doc := rbDoc(t, res.Config)
+		if rbCount(rbSteps(t, rbEntryBody(t, doc, "ci", "build")["post-steps"]), rbCollect) != 1 {
+			t.Error("build has no single collect step")
+		}
+	})
+}
+
+// Policy: the restricted-context rule of the bundle reads an approval that is
+// set in the job's definition, so a plan of such a config passes it, on a branch
+// (the deploy is left out) and on main (the deploy stays, behind the approval).
+func TestRobustness_PolicyBundleReadsAnApprovalDefinedUnderJobs(t *testing.T) {
+	cfg := rbFixture(t, "policy_defined_approval.yml")
+	base := map[string]string{"app/main.go": "package app\n", "go.mod": "module x\n", "deploy/run.sh": "#!/bin/sh\n"}
+	reads := map[string]rbReads{
+		"security-scan": {files: []string{"go.mod"}, dirs: []string{"."}},
+		"build":         {files: []string{"app/main.go"}, dirs: []string{"app"}},
+		"deploy":        {files: []string{"deploy/run.sh"}, dirs: []string{"deploy"}},
+	}
+	change := rbEdit("app/main.go", "package app\n\n// changed\n")
+	t.Run("on a branch", func(t *testing.T) {
+		rbRun(t, rbCase{cfg: cfg, base: base, reads: reads, change: change, mandatory: []string{"security-scan"}, checker: rbBundle(t),
+			want: rbWant{running: []string{"security-scan", "build"}, emitted: []string{"security-scan", "build", "smarter-gate"}, gate: []string{"security-scan", "build"}}})
+	})
+	t.Run("on the default branch", func(t *testing.T) {
+		res := rbRun(t, rbCase{cfg: cfg, base: base, reads: reads, branch: "main", change: change, mandatory: []string{"security-scan"}, checker: rbBundle(t),
+			want: rbWant{full: true, running: []string{"security-scan", "build", "hold", "deploy"},
+				emitted: []string{"security-scan", "build", "hold", "deploy", "smarter-impact-map", "smarter-gate"}, gate: []string{"security-scan", "build"}}})
+		if res.GuardrailsFailed || res.Report.Guardrails.Status != "PASS" {
+			t.Errorf("guardrails failed = %v, status = %s: the deploy is behind an approval", res.GuardrailsFailed, res.Report.Guardrails.Status)
+		}
+	})
+}
