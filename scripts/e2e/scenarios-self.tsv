@@ -1,0 +1,10 @@
+# Scenarios of this repository's own pipeline (workflow ci), run by run-scenarios.sh.
+# Fields, separated by tabs: name, expectation, change, commit message (optional).
+#
+# What each job reads (from its trace on main): no job reads docs/. go-test, go-lint,
+# build and security-scan read and list internal/report; e2e-plan attaches the
+# workspace of build; policy-test, script-test and orb-validate do not touch it.
+self-docs-only	security-scan	printf '\nThe planner never skips a job it cannot prove is unaffected.\n' >> docs/limitations.md	docs: restate a limit
+self-internal-report	go-test go-lint build e2e-plan security-scan	sed -i 's|^// maxChangedInMarkdown is how many changed files plan\.md lists\.$|// maxChangedInMarkdown is how many changed files plan.md lists at most.|' internal/report/report.go	refactor(report): reword a comment
+self-added-file-internal-report	go-test go-lint build e2e-plan security-scan	printf '# report\n\nWrites plan.json and plan.md.\n' > internal/report/NOTES.md	docs(report): add a note on the package
+self-smarter-full-message	full:asks for a full run	printf '\nA full run is always one commit message away.\n' >> docs/limitations.md	docs: add a note [smarter full]
