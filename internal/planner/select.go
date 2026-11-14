@@ -88,7 +88,8 @@ func analyse(cfg *config.Config, wf *config.Workflow, branch, tag string) (*anal
 		}
 		memo[i] = 1
 		for _, d := range an.deps[i] {
-			if an.entries[d].Approval || after(d, depth+1) {
+			// An approval that the branch filters out is not there to wait for.
+			if (an.entries[d].Approval && an.will[d] != triNo) || after(d, depth+1) {
 				memo[i] = 2
 				break
 			}
