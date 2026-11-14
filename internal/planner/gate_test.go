@@ -154,7 +154,7 @@ workflows:
 	if got := res.Report.Gate.Requires; !slices.Equal(got, []string{"prep", "other"}) {
 		t.Fatalf("gate requires %v", got)
 	}
-	if got := reasons(t, res, "scan"); got[0] != "mandatory job" || !strings.Contains(got[1], "does not run") {
+	if got := reasons(t, res, "scan"); !strings.Contains(got[0], "does not run") || got[1] != "mandatory job" {
 		t.Fatalf("scan reasons = %v", got)
 	}
 	if got := reasons(t, res, "prep"); got[0] != "required by scan" {

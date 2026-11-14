@@ -74,7 +74,7 @@ func TestFullRunReasons(t *testing.T) {
 				t.Errorf("emitted jobs = %v, want %v", got, want)
 			}
 			for _, j := range res.Report.Jobs {
-				if j.Reasons[0] != "full run" && !strings.HasPrefix(j.Reasons[len(j.Reasons)-1], "does not run") {
+				if j.Reasons[0] != "full run" && !strings.HasPrefix(j.Reasons[0], "does not run") {
 					t.Errorf("%s: reasons %v", j.Name, j.Reasons)
 				}
 			}
@@ -92,7 +92,7 @@ func TestFullRunReportsWhatCannotRun(t *testing.T) {
 	if got := skipped(res); !sameSet(got, []string{"hold", "deploy"}) {
 		t.Fatalf("skipped = %v", got)
 	}
-	if got := reasons(t, res, "deploy"); got[0] != "full run" || !strings.Contains(got[1], "its filters leave out branch feature") {
+	if got := reasons(t, res, "deploy"); !strings.Contains(got[0], "its filters leave out branch feature") || got[1] != "full run" {
 		t.Fatalf("reasons = %v", got)
 	}
 	// On main the same jobs run (behind the approval).
