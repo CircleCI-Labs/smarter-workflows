@@ -1,0 +1,6 @@
+/circleci-smarter
+/dist/
+/tmp/
+.smarter-key
+.smarter-version
+*.test
