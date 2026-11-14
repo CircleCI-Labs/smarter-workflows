@@ -229,7 +229,9 @@ type rbCheck struct {
 //	(a) no requires names a job the output does not define;
 //	(b) a job the output keeps keeps every requirement that runs on the branch,
 //	    and its requires list differs from the input's only by the names of jobs
-//	    that do not run (CircleCI ignores a requirement on such a job), never by all;
+//	    that do not run (CircleCI ignores a requirement on such a job), never by all.
+//	    The one exception is a gatekeeper, a no-op job that nothing requires: a plan
+//	    keeps it, and cuts its requires to the entries that stay, or to the gate;
 //	(c) the gate requires only jobs the report says run;
 //	safety: the output never runs a job the input does not run on the branch;
 //	report: in select mode, the report's running set is what the output runs;
@@ -268,6 +270,23 @@ func rbInvariants(t *testing.T, c rbCheck) {
 		i, ok := inIdx[e.Name]
 		if !ok {
 			t.Errorf("the output has job %s, which the input does not", e.Name)
+			continue
+		}
+		if c.res.Report.Mode == "select" && !c.res.Report.Full && inRuns[i] != rbNo && rbGatekeeper(inEntries, inIdx, i) {
+			// A gatekeeper stays, and waits only for the entries that stay. When
+			// none of them does, it waits for the gate.
+			var want []string
+			for _, r := range inEntries[i].Requires {
+				if _, kept := outIdx[r]; kept {
+					want = append(want, r)
+				}
+			}
+			if len(want) == 0 && len(inEntries[i].Requires) > 0 {
+				want = []string{gate}
+			}
+			if !slices.Equal(e.Requires, want) {
+				t.Errorf("(b) the gatekeeper %s requires %v, want %v", e.Name, e.Requires, want)
+			}
 			continue
 		}
 		for _, a := range rbLiveAncestors(inEntries, inIdx, inRuns, i) {
@@ -384,6 +403,23 @@ func rbLayout(t *testing.T, c rbCheck) {
 			}
 		}
 	}
+}
+
+// rbGatekeeper reports whether entry i of the input is a gatekeeper: a no-op job
+// that no other entry requires and that waits for success only. The planner
+// keeps it in select mode.
+func rbGatekeeper(entries []*config.Entry, idx map[string]int, i int) bool {
+	if entries[i].Kind != config.KindNoOp || entries[i].StatusRequires {
+		return false
+	}
+	for j, e := range entries {
+		for _, r := range e.Requires {
+			if k, ok := idx[r]; ok && k == i && j != i {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // rbEntries returns the entries of workflow wf in cfg.
@@ -1592,27 +1628,81 @@ func TestRobustness_NoOpCoordinatorIsDecidedByTheClosure(t *testing.T) {
 	})
 }
 
-// A no-op job that nothing requires, such as a gatekeeper for one required
-// status check, is decided like an approval that nothing requires: select mode
-// drops it. Shadow mode keeps every entry, and says what select mode would do.
-// The gate takes over its role, so the project requires the gate's check.
-func TestRobustness_NoOpNobodyRequiresIsDroppedInSelectMode(t *testing.T) {
-	cfg := rbFixture(t, "noop_gatekeeper.yml")
-	base := map[string]string{"lint/x.go": "package lint\n", "test/x.go": "package test\n"}
-	reads := map[string]rbReads{
-		"lint": {files: []string{"lint/x.go"}, dirs: []string{"lint"}},
-		"test": {files: []string{"test/x.go"}, dirs: []string{"test"}},
+// A no-op job that nothing requires is a gatekeeper: a project uses it as the
+// one required status check of its pipeline. Select mode keeps it, whatever is
+// selected, or the check would wait for ever. It waits only for what stays, as
+// the gate does, and for the gate when nothing it waited for stays, so that it
+// never passes before the selected jobs have.
+func TestRobustness_LeafNoOpGatekeeperIsKept(t *testing.T) {
+	cfg := rbFixture(t, "noop_gatekeeper_three.yml")
+	base := map[string]string{
+		"a/x.go": "package a\n", "b/x.go": "package b\n", "c/x.go": "package c\n", "scan/x.sh": "#!/bin/sh\n",
+		"shared/config.json": "{}\n", "docs/guide.md": "# guide\n",
 	}
-	change := rbEdit("lint/x.go", "package lint\n\n// changed\n")
-	t.Run("select mode", func(t *testing.T) {
-		res := rbRun(t, rbCase{cfg: cfg, base: base, reads: reads, change: change,
-			want: rbWant{running: []string{"lint"}, emitted: []string{"lint", "smarter-gate"}, gate: []string{"lint"}}})
-		if got := reasons(t, res, "all-green"); !slices.Equal(got, []string{"no selected job requires this no-op job"}) {
-			t.Errorf("all-green reasons = %v", got)
+	reads := map[string]rbReads{
+		"test-a":        {files: []string{"a/x.go", "shared/config.json"}, dirs: []string{"a", "shared"}},
+		"test-b":        {files: []string{"b/x.go", "shared/config.json"}, dirs: []string{"b", "shared"}},
+		"test-c":        {files: []string{"c/x.go", "shared/config.json"}, dirs: []string{"c", "shared"}},
+		"security-scan": {files: []string{"scan/x.sh"}, dirs: []string{"scan"}},
+	}
+	const why = "kept: a no-op gatekeeper"
+	gatekeeperRequires := func(t *testing.T, res *planner.Result) []string {
+		t.Helper()
+		return emittedEntry(t, res, "ci", "all-tests-passed").Requires
+	}
+	t.Run("one of three tests is reached", func(t *testing.T) {
+		res := rbRun(t, rbCase{cfg: cfg, base: base, reads: reads, change: rbEdit("b/x.go", "package b\n\n// changed\n"),
+			want: rbWant{running: []string{"test-b", "all-tests-passed"}, emitted: []string{"test-b", "all-tests-passed", "smarter-gate"}, gate: []string{"test-b"}}})
+		if got := gatekeeperRequires(t, res); !slices.Equal(got, []string{"test-b"}) {
+			t.Errorf("all-tests-passed requires %v, want [test-b]", got)
+		}
+		if got := reasons(t, res, "all-tests-passed"); !slices.Equal(got, []string{why}) {
+			t.Errorf("all-tests-passed reasons = %v", got)
+		}
+		if got := rbJob(t, rbDoc(t, res.Config), "all-tests-passed"); !reflect.DeepEqual(got, map[string]any{"type": "no-op"}) {
+			t.Errorf("the gatekeeper's definition is %v, want it as it was", got)
 		}
 	})
-	t.Run("shadow mode", func(t *testing.T) {
-		rr := rbChange(t, base, "feature", change)
+	t.Run("every test is reached", func(t *testing.T) {
+		res := rbRun(t, rbCase{cfg: cfg, base: base, reads: reads, change: rbEdit("shared/config.json", "{\"changed\": true}\n"),
+			want: rbWant{running: []string{"test-a", "test-b", "test-c", "all-tests-passed"},
+				emitted: []string{"test-a", "test-b", "test-c", "all-tests-passed", "smarter-gate"}, gate: []string{"test-a", "test-b", "test-c"}}})
+		if got := gatekeeperRequires(t, res); !slices.Equal(got, []string{"test-a", "test-b", "test-c"}) {
+			t.Errorf("all-tests-passed requires %v: nothing it waited for is gone, so it is as it was", got)
+		}
+	})
+	t.Run("no test is reached: it waits for the gate", func(t *testing.T) {
+		res := rbRun(t, rbCase{cfg: cfg, base: base, reads: reads, change: rbEdit("docs/guide.md", "# guide\n\nmore\n"),
+			want: rbWant{running: []string{"all-tests-passed"}, emitted: []string{"all-tests-passed", "smarter-gate"}, gate: nil}})
+		if got := gatekeeperRequires(t, res); !slices.Equal(got, []string{"smarter-gate"}) {
+			t.Errorf("all-tests-passed requires %v, want [smarter-gate]", got)
+		}
+		if got := reasons(t, res, "all-tests-passed"); !slices.Equal(got, []string{why}) {
+			t.Errorf("all-tests-passed reasons = %v", got)
+		}
+	})
+	t.Run("no test is reached, and a mandatory job runs: the gatekeeper waits for it through the gate", func(t *testing.T) {
+		res := rbRun(t, rbCase{cfg: cfg, base: base, reads: reads, change: rbEdit("docs/guide.md", "# guide\n\nmore\n"), mandatory: []string{"security-scan"},
+			want: rbWant{running: []string{"security-scan", "all-tests-passed"},
+				emitted: []string{"security-scan", "all-tests-passed", "smarter-gate"}, gate: []string{"security-scan"}}})
+		if got := gatekeeperRequires(t, res); !slices.Equal(got, []string{"smarter-gate"}) {
+			t.Errorf("all-tests-passed requires %v, want [smarter-gate]", got)
+		}
+	})
+	t.Run("on the default branch every job stays, as it was", func(t *testing.T) {
+		res := rbRun(t, rbCase{cfg: cfg, base: base, reads: reads, branch: "main", change: rbEdit("docs/guide.md", "# guide\n\nmore\n"),
+			want: rbWant{full: true, running: []string{"test-a", "test-b", "test-c", "security-scan", "all-tests-passed"},
+				emitted: []string{"test-a", "test-b", "test-c", "security-scan", "all-tests-passed", "smarter-impact-map", "smarter-gate"},
+				gate:    []string{"test-a", "test-b", "test-c", "security-scan"}}})
+		if got := gatekeeperRequires(t, res); !slices.Equal(got, []string{"test-a", "test-b", "test-c"}) {
+			t.Errorf("all-tests-passed requires %v", got)
+		}
+		if rbEntryHas(t, res.Config, "ci", "all-tests-passed", "post-steps") {
+			t.Error("the gatekeeper has trace steps")
+		}
+	})
+	t.Run("shadow mode keeps every job and says what select mode would do", func(t *testing.T) {
+		rr := rbChange(t, base, "feature", rbEdit("b/x.go", "package b\n\n// changed\n"))
 		o := rbOpts("ci", "feature", rr)
 		o.Mode = planner.ModeShadow
 		in := planner.Input{Config: cfg, Map: rbMap(rr.base, reads), Repo: rr.git, CommitMessage: "change"}
@@ -1620,16 +1710,57 @@ func TestRobustness_NoOpNobodyRequiresIsDroppedInSelectMode(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got, want := emittedJobs(t, res, "ci"), []string{"lint", "test", "all-green", "smarter-gate"}; !slices.Equal(got, want) {
+		if got, want := emittedJobs(t, res, "ci"), []string{"test-a", "test-b", "test-c", "security-scan", "all-tests-passed", "smarter-gate"}; !slices.Equal(got, want) {
 			t.Errorf("emitted jobs = %v, want %v", got, want)
 		}
-		if got := running(res); !slices.Equal(got, []string{"lint"}) {
-			t.Errorf("select mode would run %v, want [lint]", got)
+		if got := gatekeeperRequires(t, res); !slices.Equal(got, []string{"test-a", "test-b", "test-c"}) {
+			t.Errorf("all-tests-passed requires %v: shadow mode edits nothing", got)
 		}
-		if got := res.Report.Gate.Requires; !slices.Equal(got, []string{"lint", "test"}) {
-			t.Errorf("gate requires %v: it does not wait for the no-op job", got)
+		if got := running(res); !sameSet(got, []string{"test-b", "all-tests-passed"}) {
+			t.Errorf("select mode would run %v", got)
+		}
+		if got := reasons(t, res, "all-tests-passed"); !slices.Equal(got, []string{why}) {
+			t.Errorf("all-tests-passed reasons = %v", got)
 		}
 		rbValidate(t, res.Config)
+	})
+}
+
+// A gatekeeper is kept only where it runs. It waits for the jobs that stay, and a
+// job that its branch filters leave out is not one of them. One that waits only
+// for jobs the filters leave out does not run on the branch (CircleCI runs a job
+// when any job it requires runs), so it is dropped, not made to run.
+func TestRobustness_GatekeeperAndFilters(t *testing.T) {
+	cfg := rbFixture(t, "noop_gatekeeper_filtered.yml")
+	base := map[string]string{"app/main.go": "package app\n", "docs/guide.md": "# guide\n", "release/publish.sh": "#!/bin/sh\n"}
+	reads := map[string]rbReads{
+		"lint":    {files: []string{"app/main.go"}, dirs: []string{"app"}},
+		"publish": {files: []string{"release/publish.sh"}, dirs: []string{"release"}},
+	}
+	t.Run("a branch, and the change reaches the job it waits for", func(t *testing.T) {
+		res := rbRun(t, rbCase{cfg: cfg, base: base, reads: reads, change: rbEdit("app/main.go", "package app\n\n// changed\n"),
+			want: rbWant{running: []string{"lint", "release-ok"}, emitted: []string{"lint", "release-ok", "smarter-gate"}, gate: []string{"lint"}}})
+		if got := emittedEntry(t, res, "ci", "release-ok").Requires; !slices.Equal(got, []string{"lint"}) {
+			t.Errorf("release-ok requires %v, want [lint]: publish does not run on a branch", got)
+		}
+		if got := reasons(t, res, "main-ok"); !slices.Equal(got, []string{"does not run: it requires publish, which does not run"}) {
+			t.Errorf("main-ok reasons = %v", got)
+		}
+	})
+	t.Run("a branch, and the change reaches nothing", func(t *testing.T) {
+		res := rbRun(t, rbCase{cfg: cfg, base: base, reads: reads, change: rbEdit("docs/guide.md", "# guide\n\nmore\n"),
+			want: rbWant{running: []string{"release-ok"}, emitted: []string{"release-ok", "smarter-gate"}}})
+		if got := emittedEntry(t, res, "ci", "release-ok").Requires; !slices.Equal(got, []string{"smarter-gate"}) {
+			t.Errorf("release-ok requires %v, want [smarter-gate]", got)
+		}
+	})
+	t.Run("the default branch runs everything, as it was", func(t *testing.T) {
+		res := rbRun(t, rbCase{cfg: cfg, base: base, reads: reads, branch: "main", change: rbEdit("docs/guide.md", "# guide\n\nmore\n"),
+			want: rbWant{full: true, running: []string{"lint", "publish", "release-ok", "main-ok"},
+				emitted: []string{"lint", "publish", "release-ok", "main-ok", "smarter-impact-map", "smarter-gate"}, gate: []string{"lint", "publish"}}})
+		if got := emittedEntry(t, res, "ci", "release-ok").Requires; !slices.Equal(got, []string{"lint", "publish"}) {
+			t.Errorf("release-ok requires %v", got)
+		}
 	})
 }
 

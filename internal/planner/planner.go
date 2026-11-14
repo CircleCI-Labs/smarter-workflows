@@ -380,7 +380,7 @@ func (p *planner) build(ctx context.Context, forced map[string]bool, fullReason 
 	n := len(an.entries)
 	var sel *selection
 	if rep.Full {
-		sel = &selection{selected: make([]bool, n), reasons: make([][]string, n)}
+		sel = &selection{selected: make([]bool, n), reasons: make([][]string, n), gatekeeper: make([]bool, n)}
 		for i := range sel.selected {
 			sel.selected[i], sel.reasons[i] = true, []string{"full run"}
 		}
@@ -401,14 +401,16 @@ func (p *planner) build(ctx context.Context, forced map[string]bool, fullReason 
 	removing := p.o.Mode == ModeSelect && !rep.Full
 	kept := make([]bool, n)
 	for i := range kept {
-		kept[i] = !removing || sel.selected[i]
+		kept[i] = !removing || sel.selected[i] || sel.gatekeeper[i]
 	}
 
 	// The report: what the plan runs. In shadow mode this is what select mode
 	// would run, since every job stays.
 	for i, e := range an.entries {
-		job := report.Job{Name: e.Name, Run: sel.selected[i] && an.will[i] != triNo}
+		job := report.Job{Name: e.Name, Run: (sel.selected[i] || sel.gatekeeper[i]) && an.will[i] != triNo}
 		switch {
+		case sel.gatekeeper[i]:
+			job.Reasons = []string{gatekeeperReason}
 		case sel.selected[i]:
 			// What keeps a job from running comes first: it is the answer to "why not?".
 			if an.will[i] == triNo {
@@ -445,9 +447,24 @@ func (p *planner) build(ctx context.Context, forced map[string]bool, fullReason 
 		// CircleCI ignores a requirement on a job that does not run, so Prune may
 		// drop the names of those jobs, and no others, from the jobs that stay.
 		remove, inert := map[int]bool{}, map[int]bool{}
-		for i := range an.entries {
+		goes := map[string]bool{} // the names of the entries that leave
+		for i, e := range an.entries {
 			if !kept[i] {
 				remove[i], inert[i] = true, an.will[i] == triNo
+				for _, name := range e.Names() {
+					goes[name] = true
+				}
+			}
+		}
+		// A gatekeeper waits only for what stays, which is what it would wait for
+		// were the project to run just this plan. If nothing it waited for stays,
+		// it waits for the gate, so that it never passes before the jobs the plan
+		// selects have.
+		for i := range an.entries {
+			if sel.gatekeeper[i] {
+				if err := wf.RetainRequires(i, func(name string) bool { return !goes[name] }, p.o.GateJob); err != nil {
+					return nil, err
+				}
 			}
 		}
 		if err := wf.Prune(remove, inert); err != nil {

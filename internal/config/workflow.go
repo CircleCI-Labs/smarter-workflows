@@ -569,6 +569,35 @@ func (w *Workflow) addSteps(e *Entry, key string, prepend bool, steps []*yaml.No
 	return nil
 }
 
+// RetainRequires cuts the requires of the entry at index i to the items whose
+// name keep accepts. The items that stay are kept as written, with their
+// statuses and comments. If none stays, the list becomes [fallback]. An entry
+// with no requires is left alone. It re-reads Entries, so the entry pointers from
+// before the call must not be used afterwards.
+func (w *Workflow) RetainRequires(i int, keep func(name string) bool, fallback string) error {
+	if i < 0 || i >= len(w.Entries) {
+		return fmt.Errorf("workflow %q has no job %d", w.Name, i+1)
+	}
+	seq := lookup(w.Entries[i].args, "requires")
+	if seq == nil || seq.Kind != yaml.SequenceNode || len(seq.Content) == 0 {
+		return nil
+	}
+	var remain []*yaml.Node
+	for _, it := range seq.Content {
+		if name, _, ok := requireItem(it); !ok || keep(name) {
+			remain = append(remain, it)
+		}
+	}
+	switch {
+	case len(remain) == len(seq.Content):
+		return nil
+	case len(remain) == 0:
+		remain = []*yaml.Node{Str(fallback)}
+	}
+	seq.Content = remain
+	return w.reload()
+}
+
 // AppendEntry adds `- ref` (or `- ref: {requires: [...]}`) at the end of the
 // job list.
 func (w *Workflow) AppendEntry(ref string, requires []string) error {

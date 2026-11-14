@@ -6,20 +6,28 @@ jobs:
     steps:
       - checkout
       - run: make lint
-  test:
+  publish:
     docker:
       - image: cimg/base:2026.11
     steps:
       - checkout
-      - run: make test
-  all-green:
+      - run: ./publish.sh
+  release-ok:
+    type: no-op
+  main-ok:
     type: no-op
 workflows:
   ci:
     jobs:
       - lint
-      - test
-      - all-green:
+      - publish:
+          filters:
+            branches:
+              only: main
+      - release-ok:
           requires:
             - lint
-            - test
+            - publish
+      - main-ok:
+          requires:
+            - publish

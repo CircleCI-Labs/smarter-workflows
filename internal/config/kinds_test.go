@@ -398,3 +398,96 @@ workflows:
 		t.Errorf("an entry with no steps of its own: %+v", got)
 	}
 }
+
+func TestRetainRequires(t *testing.T) {
+	const src = `version: 2.1
+workflows:
+  w:
+    jobs:
+      - a
+      - b
+      - c
+      - gatekeeper:
+          requires:
+            - a # the first
+            - b: success
+            - c
+      - flow:
+          requires: [a, {b: [success]}, c]
+      - alone:
+          requires: [b]
+      - bare
+`
+	keep := func(names ...string) func(string) bool {
+		return func(n string) bool {
+			for _, k := range names {
+				if k == n {
+					return true
+				}
+			}
+			return false
+		}
+	}
+	reqs := func(w *config.Workflow, name string) []string {
+		for _, e := range w.Entries {
+			if e.Name == name {
+				return e.Requires
+			}
+		}
+		t.Fatalf("no entry %s", name)
+		return nil
+	}
+
+	t.Run("the items that stay are kept as written", func(t *testing.T) {
+		c := mustParse(t, src)
+		w := mustWorkflow(t, c, "w")
+		if err := w.RetainRequires(3, keep("a", "b"), "fallback"); err != nil {
+			t.Fatal(err)
+		}
+		if got := reqs(w, "gatekeeper"); !reflect.DeepEqual(got, []string{"a", "b"}) {
+			t.Errorf("requires = %v", got)
+		}
+		out := mustMarshal(t, c)
+		if !strings.Contains(out, "          requires:\n            - a # the first\n            - b: success\n      - flow:") {
+			t.Errorf("the items are not as written:\n%s", out)
+		}
+		if err := w.RetainRequires(4, keep("a", "b"), "fallback"); err != nil {
+			t.Fatal(err)
+		}
+		if got := reqs(w, "flow"); !reflect.DeepEqual(got, []string{"a", "b"}) {
+			t.Errorf("flow requires = %v", got)
+		}
+		if w.Entries[4].StatusRequires {
+			t.Error("a status of success only is not a status requirement")
+		}
+	})
+	t.Run("when none stays the list is the fallback", func(t *testing.T) {
+		c := mustParse(t, src)
+		w := mustWorkflow(t, c, "w")
+		if err := w.RetainRequires(3, keep("x"), "smarter-gate"); err != nil {
+			t.Fatal(err)
+		}
+		if got := reqs(w, "gatekeeper"); !reflect.DeepEqual(got, []string{"smarter-gate"}) {
+			t.Errorf("requires = %v", got)
+		}
+		if out := mustMarshal(t, c); !strings.Contains(out, "          requires:\n            - smarter-gate\n") {
+			t.Errorf("fallback not written as a list item:\n%s", out)
+		}
+	})
+	t.Run("nothing to cut, no requires, and the wrong index", func(t *testing.T) {
+		c := mustParse(t, src)
+		w := mustWorkflow(t, c, "w")
+		before := mustMarshal(t, c)
+		for _, i := range []int{0, 3, 5, 6} { // a, and entries that keep everything or require nothing
+			if err := w.RetainRequires(i, keep("a", "b", "c"), "fallback"); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if after := mustMarshal(t, c); after != before {
+			t.Errorf("the config changed:\n%s", after)
+		}
+		if err := w.RetainRequires(9, keep(), "fallback"); err == nil {
+			t.Error("an index out of range is accepted")
+		}
+	})
+}
