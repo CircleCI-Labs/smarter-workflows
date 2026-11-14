@@ -180,6 +180,10 @@ workflows:
               v: [a, b]
       - orb/job:
           context: [c1]
+      - explicit:
+          requires:
+            - plain: success
+            - nothing: [success]
 `)
 	w := mustWorkflow(t, c, "w")
 	type brief struct {
@@ -201,6 +205,8 @@ workflows:
 		{ref: "mat", name: "mat", alias: "all-mat", matrix: true},
 		{ref: "dyn", name: "dyn-<< matrix.v >>", matrix: true, dynamic: true},
 		{ref: "orb/job", name: "orb/job"},
+		// `success` is what a bare name means: it is not a status requirement.
+		{ref: "explicit", name: "explicit", requires: []string{"plain", "nothing"}},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("entries:\n got %+v\nwant %+v", got, want)
