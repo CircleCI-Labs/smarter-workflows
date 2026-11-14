@@ -60,7 +60,7 @@ func (p *planner) impactMapJob() *yaml.Node {
 			config.RunStep("smarter: write cache key", "", "",
 				"printf '%s\\n' \"$CIRCLE_SHA1\" > .smarter-key\n"),
 			config.Map("save_cache", config.Map(
-				"key", `smarter-impact-v1-{{ checksum ".smarter-key" }}`,
+				"key", p.o.MapKeyPrefix+`-{{ checksum ".smarter-key" }}`,
 				"paths", config.Strs(TraceDir+"/impact-map.json"))),
 			config.Map("store_artifacts", config.Map("path", TraceDir+"/impact-map.json")),
 		),
