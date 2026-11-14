@@ -75,7 +75,7 @@ jobs:
             cat <<EOF2
             x
             EOF2
-  build: &build_defaults
+  build:
     docker:
       - image: cimg/go:1.26
     steps:
@@ -94,7 +94,8 @@ workflows:
               only: /^release\/.*/
       - hold:
           type: approval
-      - other: *build_defaults
+      - other:
+          context: shared
 `
 
 func TestRoundTripKeepsOrderCommentsAndStyle(t *testing.T) {
@@ -503,7 +504,7 @@ workflows:
 }
 
 func TestPruneWithAnchorsAndMergeKeys(t *testing.T) {
-	t.Run("an anchor defined in a removed entry is inlined where it is still used", func(t *testing.T) {
+	t.Run("an anchor defined in a removed entry: the entries that used it keep their own copy", func(t *testing.T) {
 		c := mustParse(t, `version: 2.1
 workflows:
   w:
@@ -521,7 +522,7 @@ workflows:
 		if err := w.Prune(map[int]bool{0: true}); err != nil {
 			t.Fatal(err)
 		}
-		got := mustMarshal(t, c) // mustMarshal re-parses: a dangling alias would fail here
+		got := mustMarshal(t, c)
 		want := `version: 2.1
 workflows:
   w:
@@ -534,6 +535,40 @@ workflows:
           filters:
             branches:
               only: main
+`
+		if got != want {
+			t.Fatalf("--- want\n%s\n--- got\n%s", want, got)
+		}
+	})
+
+	t.Run("an entry in another workflow keeps its copy when the anchor's entry goes", func(t *testing.T) {
+		c := mustParse(t, `version: 2.1
+workflows:
+  ci:
+    jobs:
+      - lint:
+          filters: &feature-only
+            branches:
+              ignore: main
+  nightly:
+    jobs:
+      - deploy:
+          filters: *feature-only
+`)
+		if err := mustWorkflow(t, c, "ci").Prune(map[int]bool{0: true}); err != nil {
+			t.Fatal(err)
+		}
+		got := mustMarshal(t, c)
+		want := `version: 2.1
+workflows:
+  ci:
+    jobs: []
+  nightly:
+    jobs:
+      - deploy:
+          filters:
+            branches:
+              ignore: main
 `
 		if got != want {
 			t.Fatalf("--- want\n%s\n--- got\n%s", want, got)
@@ -559,7 +594,7 @@ workflows:
 		}
 	})
 
-	t.Run("requires that come from a merge key are overridden, not edited in place", func(t *testing.T) {
+	t.Run("requires that come from a merge key are scrubbed like the others", func(t *testing.T) {
 		c := mustParse(t, `version: 2.1
 shared: &shared
   requires: [lint]
@@ -579,18 +614,14 @@ workflows:
 		}
 		got := mustMarshal(t, c)
 		want := `version: 2.1
-shared: &shared
+shared:
   requires: [lint]
 workflows:
   w:
     jobs:
-      - a:
-          <<: *shared
-          requires: []
+      - a
       - b:
-          <<: *shared
           context: c
-          requires: []
 `
 		if got != want {
 			t.Fatalf("--- want\n%s\n--- got\n%s", want, got)
@@ -742,10 +773,10 @@ func TestAddSteps(t *testing.T) {
             - run: echo post`,
 		},
 		{
-			name:   "an argument mapping shared by an alias is copied, not edited",
+			name:   "an argument mapping shared by an alias is its own copy: the anchor's entry is not edited",
 			jobs:   "      - lint: &args\n          context: c\n      - docs: *args",
 			target: 1,
-			want: `      - lint: &args
+			want: `      - lint:
           context: c
       - docs:
           context: c
@@ -755,15 +786,27 @@ func TestAddSteps(t *testing.T) {
             - run: echo post`,
 		},
 		{
-			name: "steps that come from a merge key are copied into the entry",
-			jobs: "      - lint:\n          <<: {post-steps: [{run: echo merged}]}",
+			name:   "the anchor's entry may be edited too: the alias is not touched",
+			jobs:   "      - lint: &args\n          context: c\n      - docs: *args",
+			target: 0,
 			want: `      - lint:
-          <<: {post-steps: [{run: echo merged}]}
+          context: c
           pre-steps:
             - run: echo pre
           post-steps:
+            - run: echo post
+      - docs:
+          context: c`,
+		},
+		{
+			name: "steps that come from a merge key are in the entry already",
+			jobs: "      - lint:\n          <<: {post-steps: [{run: echo merged}]}",
+			want: `      - lint:
+          post-steps:
             - {run: echo merged}
-            - run: echo post`,
+            - run: echo post
+          pre-steps:
+            - run: echo pre`,
 		},
 	}
 	for _, tc := range tests {
@@ -1040,7 +1083,7 @@ workflows:
 			"      - run: first\n      - checkout\n      - run: reset\n      - run: second\n",
 			"      - checkout:\n          path: ~/src\n      - run: reset\n      - run: after\n",
 			"      - checkout\n      - run: reset\n      - run: middle\n      - checkout\n",
-			"  shared:\n    docker: [{image: x}]\n    steps: &steps\n      - checkout\n      - run: reset\n  aliased:\n    docker: [{image: x}]\n    steps:\n      - checkout\n      - run: reset\n",
+			"  shared:\n    docker: [{image: x}]\n    steps:\n      - checkout\n      - run: reset\n  aliased:\n    docker: [{image: x}]\n    steps:\n      - checkout\n      - run: reset\n",
 		} {
 			if !strings.Contains(out, w) {
 				t.Errorf("order %v: output lacks:\n%s\nin:\n%s", order, w, out)
@@ -1052,6 +1095,59 @@ workflows:
 	}
 	if _, err := mustParse(t, src).InsertAfterCheckout("missing", reset()); err == nil {
 		t.Error("want an error for a job that is not defined")
+	}
+
+	// `aliased` took its steps from `shared` through an alias. Each job has its
+	// own copy, so an edit to one is not an edit to the other.
+	for _, job := range []string{"shared", "aliased"} {
+		c := mustParse(t, src)
+		if _, err := c.InsertAfterCheckout(job, reset()); err != nil {
+			t.Fatal(err)
+		}
+		if n := strings.Count(mustMarshal(t, c), "run: reset"); n != 1 {
+			t.Errorf("a reset step in %s was written %d times, want 1", job, n)
+		}
+	}
+}
+
+// A job that gets its steps from a merge key has them in its own mapping, so
+// the reset can follow its checkout like any other.
+func TestInsertAfterCheckoutThroughAMergeKey(t *testing.T) {
+	c := mustParse(t, `version: 2.1
+defaults: &defaults
+  docker: [{image: x}]
+  steps:
+    - checkout
+    - run: build
+jobs:
+  merged:
+    <<: *defaults
+  other:
+    <<: *defaults
+workflows:
+  w:
+    jobs: [merged]
+`)
+	got, err := c.InsertAfterCheckout("merged", config.Map("run", "reset"))
+	if err != nil || !got {
+		t.Fatalf("InsertAfterCheckout = %v, %v", got, err)
+	}
+	out := mustMarshal(t, c)
+	want := `jobs:
+  merged:
+    docker: [{image: x}]
+    steps:
+      - checkout
+      - run: reset
+      - run: build
+  other:
+    docker: [{image: x}]
+    steps:
+      - checkout
+      - run: build
+`
+	if !strings.Contains(out, want) {
+		t.Fatalf("output lacks:\n%s\nin:\n%s", want, out)
 	}
 }
 

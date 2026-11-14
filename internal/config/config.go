@@ -1,7 +1,11 @@
 // Package config reads, edits and writes CircleCI configs. It works on
 // go.yaml.in/yaml/v3 nodes, not on Go structs, so what the planner does not
-// touch comes out as it went in: key order, comments, quoting and anchors.
-// (Blank lines are the one thing the YAML library drops.)
+// touch comes out with the meaning it had, and keeps its key order, comments
+// and quoting. (Blank lines are dropped, and the indentation is normalised.)
+//
+// Parse expands every YAML alias and merge key into an independent copy and
+// drops the anchors, so no two parts of a Config share a node: an edit to one
+// job or workflow entry cannot reach another. The emitted YAML has no anchors.
 //
 // The edits are the ones the planner needs: prune the entries of one workflow,
 // append a job and its workflow entry, and add steps to job entries and
@@ -24,7 +28,8 @@ type Config struct {
 	root *yaml.Node
 }
 
-// Parse reads one YAML document that holds a mapping.
+// Parse reads one YAML document that holds a mapping, and expands its aliases
+// and merge keys (see the package comment).
 func Parse(src []byte) (*Config, error) {
 	dec := yaml.NewDecoder(bytes.NewReader(src))
 	var doc yaml.Node
@@ -42,6 +47,9 @@ func Parse(src []byte) (*Config, error) {
 	}
 	if doc.Kind != yaml.DocumentNode || len(doc.Content) != 1 || doc.Content[0].Kind != yaml.MappingNode {
 		return nil, errors.New("parse config: the top level is not a mapping")
+	}
+	if err := expand(&doc); err != nil {
+		return nil, fmt.Errorf("parse config: %w", err)
 	}
 	return &Config{doc: &doc, root: doc.Content[0]}, nil
 }
@@ -69,7 +77,7 @@ func (c *Config) Version() string {
 
 // section returns the mapping under a top-level key, or nil.
 func (c *Config) section(key string) *yaml.Node {
-	v := deref(lookup(c.root, key))
+	v := lookup(c.root, key)
 	if v == nil || v.Kind != yaml.MappingNode {
 		return nil
 	}
@@ -85,11 +93,11 @@ func (c *Config) Workflows() []string {
 	}
 	var names []string
 	for i := 0; i+1 < len(wfs.Content); i += 2 {
-		k, v := wfs.Content[i], deref(wfs.Content[i+1])
-		if k.Kind != yaml.ScalarNode || isMergeKey(k) || v == nil || v.Kind != yaml.MappingNode {
+		k, v := wfs.Content[i], wfs.Content[i+1]
+		if k.Kind != yaml.ScalarNode || v.Kind != yaml.MappingNode {
 			continue
 		}
-		if jobs := deref(lookup(v, "jobs")); jobs != nil && jobs.Kind == yaml.SequenceNode {
+		if jobs := lookup(v, "jobs"); jobs != nil && jobs.Kind == yaml.SequenceNode {
 			names = append(names, k.Value)
 		}
 	}
@@ -106,7 +114,7 @@ func (c *Config) jobDef(name string) *yaml.Node {
 	if jobs == nil {
 		return nil
 	}
-	v := deref(lookup(jobs, name))
+	v := lookup(jobs, name)
 	if v == nil || v.Kind != yaml.MappingNode {
 		return nil
 	}
@@ -118,7 +126,7 @@ func (c *Config) commandDef(name string) *yaml.Node {
 	if cmds == nil {
 		return nil
 	}
-	v := deref(lookup(cmds, name))
+	v := lookup(cmds, name)
 	if v == nil || v.Kind != yaml.MappingNode {
 		return nil
 	}
@@ -130,7 +138,7 @@ func (c *Config) executorDef(name string) *yaml.Node {
 	if ex == nil {
 		return nil
 	}
-	v := deref(lookup(ex, name))
+	v := lookup(ex, name)
 	if v == nil || v.Kind != yaml.MappingNode {
 		return nil
 	}
@@ -142,9 +150,9 @@ func (c *Config) AddJob(name string, def *yaml.Node) error {
 	if c.HasJob(name) {
 		return fmt.Errorf("the config already defines a job named %q", name)
 	}
-	if i := ownIndex(c.root, "jobs"); i >= 0 {
-		jobs := deref(c.root.Content[i+1])
-		if jobs == nil || jobs.Kind != yaml.MappingNode {
+	if i := keyIndex(c.root, "jobs"); i >= 0 {
+		jobs := c.root.Content[i+1]
+		if jobs.Kind != yaml.MappingNode {
 			if isNull(jobs) {
 				jobs = &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
 				c.root.Content[i+1] = jobs
@@ -159,7 +167,7 @@ func (c *Config) AddJob(name string, def *yaml.Node) error {
 	// No jobs section yet: put it just before the workflows.
 	jobs := Map(name, def)
 	pair := []*yaml.Node{Str("jobs"), jobs}
-	at := ownIndex(c.root, "workflows")
+	at := keyIndex(c.root, "workflows")
 	if at < 0 {
 		c.root.Content = append(c.root.Content, pair...)
 		return nil
@@ -216,8 +224,7 @@ func (c *Config) platformOf(def *yaml.Node, depth int) Platform {
 }
 
 func machinePlatform(m *yaml.Node) Platform {
-	m = deref(m)
-	if m == nil || m.Kind != yaml.MappingNode {
+	if m.Kind != yaml.MappingNode {
 		return PlatformUnknown
 	}
 	image, ok := scalarValue(lookup(m, "image"))
@@ -245,7 +252,6 @@ func (c *Config) Workspace(job string) (persists, attaches bool) {
 	seen := map[string]bool{}
 	var scan func(n *yaml.Node, depth int)
 	scan = func(n *yaml.Node, depth int) {
-		n = deref(n)
 		if n == nil || depth > maxDepth {
 			return
 		}
@@ -265,15 +271,15 @@ func (c *Config) Workspace(job string) (persists, attaches bool) {
 		switch n.Kind {
 		case yaml.MappingNode:
 			for i := 0; i+1 < len(n.Content); i += 2 {
-				if k := n.Content[i]; k.Kind == yaml.ScalarNode && !isMergeKey(k) {
+				if k := n.Content[i]; k.Kind == yaml.ScalarNode {
 					visit(k.Value)
 				}
 				scan(n.Content[i+1], depth+1)
 			}
 		case yaml.SequenceNode:
 			for _, item := range n.Content {
-				if d := deref(item); d != nil && d.Kind == yaml.ScalarNode {
-					visit(d.Value)
+				if item.Kind == yaml.ScalarNode {
+					visit(item.Value)
 				}
 				scan(item, depth+1)
 			}
@@ -292,16 +298,8 @@ func (c *Config) InsertAfterCheckout(job string, step *yaml.Node) (bool, error) 
 	if def == nil {
 		return false, fmt.Errorf("job %q is not defined in this config", job)
 	}
-	i := ownIndex(def, "steps")
-	if i < 0 {
-		return false, nil // the steps come from a merge key: leave them alone
-	}
-	steps := def.Content[i+1]
-	if steps.Kind == yaml.AliasNode {
-		steps = clone(steps)
-		def.Content[i+1] = steps
-	}
-	if steps.Kind != yaml.SequenceNode {
+	steps := lookup(def, "steps")
+	if steps == nil || steps.Kind != yaml.SequenceNode {
 		return false, nil
 	}
 	for j, s := range steps.Content {
@@ -318,10 +316,9 @@ func (c *Config) InsertAfterCheckout(job string, step *yaml.Node) (bool, error) 
 	return false, nil
 }
 
-// sameNode compares two nodes by content, ignoring style, comments and anchors.
+// sameNode compares two nodes by content, ignoring style and comments.
 func sameNode(a, b *yaml.Node) bool {
-	a, b = deref(a), deref(b)
-	if a == nil || b == nil || a.Kind != b.Kind || a.Value != b.Value || len(a.Content) != len(b.Content) {
+	if a.Kind != b.Kind || a.Value != b.Value || len(a.Content) != len(b.Content) {
 		return false
 	}
 	for i := range a.Content {
@@ -333,15 +330,11 @@ func sameNode(a, b *yaml.Node) bool {
 }
 
 func isCheckout(step *yaml.Node) bool {
-	s := deref(step)
-	if s == nil {
-		return false
-	}
-	switch s.Kind {
+	switch step.Kind {
 	case yaml.ScalarNode:
-		return s.Value == "checkout"
+		return step.Value == "checkout"
 	case yaml.MappingNode:
-		return len(s.Content) == 2 && s.Content[0].Value == "checkout"
+		return len(step.Content) == 2 && step.Content[0].Value == "checkout"
 	}
 	return false
 }
