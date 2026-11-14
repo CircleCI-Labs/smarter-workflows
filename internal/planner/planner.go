@@ -420,6 +420,11 @@ func (p *planner) build(ctx context.Context, forced map[string]bool, fullReason 
 		if kept[i] && an.will[i] == triUnknown && filterVerdict(e.Filters, p.o.Branch, p.o.Tag) == triUnknown {
 			rep.Warnings = append(rep.Warnings, fmt.Sprintf("job %s: its filters cannot be evaluated here, so it is left out of the gate", e.Name))
 		}
+		if kept[i] && an.will[i] != triNo && e.StatusRequires && !e.Approval && !an.afterApproval[i] {
+			// A job that waits for a failure may never run, and the gate would
+			// wait for it for ever.
+			rep.Warnings = append(rep.Warnings, fmt.Sprintf("%s does not wait for %s: it requires a job status other than success", p.o.GateJob, e.Name))
+		}
 	}
 
 	// The gate waits for every kept job that is certain to run, except the

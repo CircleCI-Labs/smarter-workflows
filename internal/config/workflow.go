@@ -18,8 +18,9 @@ type Entry struct {
 	Alias string
 	// Requires lists the names of the entries this one waits for.
 	Requires []string
-	// StatusRequires is set when a requires item names statuses
-	// (`- build: failed`), so the entry may run even if that job does not.
+	// StatusRequires is set when a requires item names a status other than
+	// success (`- build: failed`), so the entry may run even if that job does
+	// not succeed. `- build: success` is the same as `- build`.
 	StatusRequires bool
 	// Approval is set for `type: approval` entries.
 	Approval bool
@@ -230,17 +231,35 @@ func parseRequires(seq *yaml.Node) (names []string, status bool, err error) {
 	return names, status, nil
 }
 
-// requireItem reads one requires item: a name, or {name: status(es)}.
+// requireItem reads one requires item: a name, or {name: status(es)}. It
+// reports withStatus for a status other than success.
 func requireItem(it *yaml.Node) (name string, withStatus, ok bool) {
 	switch it.Kind {
 	case yaml.ScalarNode:
 		return it.Value, false, true
 	case yaml.MappingNode:
 		if len(it.Content) == 2 && it.Content[0].Kind == yaml.ScalarNode {
-			return it.Content[0].Value, true, true
+			return it.Content[0].Value, !onlySuccess(it.Content[1]), true
 		}
 	}
 	return "", false, false
+}
+
+// onlySuccess reports whether the statuses of a requires item are success and
+// nothing else, which is what a bare job name means.
+func onlySuccess(v *yaml.Node) bool {
+	switch v.Kind {
+	case yaml.ScalarNode:
+		return v.Value == "success"
+	case yaml.SequenceNode:
+		for _, st := range v.Content {
+			if st.Kind != yaml.ScalarNode || st.Value != "success" {
+				return false
+			}
+		}
+		return len(v.Content) > 0
+	}
+	return false
 }
 
 func parseFilters(m *yaml.Node) Filters {

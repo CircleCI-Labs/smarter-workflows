@@ -845,9 +845,11 @@ func TestRobustness_RequiresLongAndFlowForms(t *testing.T) {
 	})
 }
 
-// Expected: the gate requires a status-form job whose filters pass, instead of leaving it out silently.
-func TestRobustness_StatusRequiresJobIsAwaitedByGate(t *testing.T) {
-	rbRun(t, rbCase{
+// The gate does not wait for a job that requires a job status other than
+// success: a job that waits for a failure may never run, and the gate would wait
+// for it for ever. The plan says so in a warning, and still runs the job.
+func TestRobustness_StatusRequiresJobIsNotAwaitedByGate(t *testing.T) {
+	res := rbRun(t, rbCase{
 		cfg:    rbFixture(t, "status_requires.yml"),
 		base:   map[string]string{"services/api/main.go": "package api\n", "cleanup/run.sh": "#!/bin/sh\n"},
 		change: rbEdit("services/api/main.go", "package api\n\n// changed\n"),
@@ -857,8 +859,14 @@ func TestRobustness_StatusRequiresJobIsAwaitedByGate(t *testing.T) {
 			"cleanup": {files: []string{"cleanup/run.sh"}, dirs: []string{"cleanup"}},
 		},
 		mandatory: []string{"cleanup"},
-		want:      rbWant{running: []string{"lint", "build", "cleanup"}, emitted: []string{"lint", "build", "cleanup", "smarter-gate"}, gate: []string{"lint", "build", "cleanup"}},
+		want:      rbWant{running: []string{"lint", "build", "cleanup"}, emitted: []string{"lint", "build", "cleanup", "smarter-gate"}, gate: []string{"lint", "build"}},
 	})
+	if !rbWarned(res, "smarter-gate does not wait for cleanup: it requires a job status other than success") {
+		t.Errorf("warnings = %v, want one that the gate does not wait for cleanup", res.Report.Warnings)
+	}
+	if rbWarned(res, "does not wait for lint") || rbWarned(res, "does not wait for build") {
+		t.Errorf("warnings = %v: only cleanup requires a status", res.Report.Warnings)
+	}
 }
 
 // Case 7: a workflow with `when: << pipeline.parameters.x >>` gets a full run,
