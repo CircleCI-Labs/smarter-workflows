@@ -1,0 +1,22 @@
+# The deploy job has no branch filter, so it runs on every branch.
+version: 2.1
+jobs:
+  security-scan:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - checkout
+  deploy:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - checkout
+workflows:
+  ci:
+    jobs:
+      - security-scan
+      - hold-deploy:
+          type: approval
+      - deploy:
+          context: [deploy]
+          requires: [hold-deploy]

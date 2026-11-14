@@ -1,0 +1,25 @@
+# The deploy context is used by a job that is not allowed to use it.
+version: 2.1
+jobs:
+  security-scan:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - checkout
+  publish:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - checkout
+workflows:
+  ci:
+    jobs:
+      - security-scan
+      - hold-publish:
+          type: approval
+      - publish:
+          context: deploy
+          requires: [hold-publish]
+          filters:
+            branches:
+              only: main
