@@ -1,6 +1,7 @@
 package planner_test
 
 import (
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -361,6 +362,85 @@ workflows:
 	}
 	if got := emittedJobs(t, res, "w"); !slices.Equal(got, []string{"a", "smarter-impact-map", "smarter-gate"}) {
 		t.Fatalf("jobs = %v", got)
+	}
+}
+
+// An entry whose pre-steps or post-steps is not a list (CircleCI would refuse
+// the config) cannot take the trace steps. It is left as it is, with a warning,
+// and the other entries are traced: its map entry will be missing, so later
+// plans always run it. A key with no value is an empty list, and is traced.
+func TestTraceSkipsAnEntryThatCannotTakeTheSteps(t *testing.T) {
+	const cfg = `version: 2.1
+orbs:
+  o: acme/tools@1.2.3
+jobs:
+  good: {docker: [{image: x}], steps: [checkout]}
+  empty: {docker: [{image: x}], steps: [checkout]}
+  bad-post: {docker: [{image: x}], steps: [checkout]}
+  bad-pre: {docker: [{image: x}], steps: [checkout]}
+workflows:
+  w:
+    jobs:
+      - good
+      - empty:
+          pre-steps:
+          post-steps: ~
+      - bad-post:
+          post-steps: not a list
+      - bad-pre:
+          pre-steps: {run: not a list}
+      - o/orbjob:
+          name: orb-bad
+          pre-steps: 3
+      - o/orbjob:
+          name: orb-good
+          pre-steps:
+`
+	o := traceOpts()
+	o.TraceOrbJobs = true
+	res := plan(t, planner.Input{Config: []byte(cfg), Map: &impactmap.Map{Version: 1}, Repo: &fakeRepo{}}, o)
+	if strings.Contains(strings.Join(res.Report.Warnings, "\n"), "internal error") {
+		t.Fatalf("an entry's shape must not turn the plan into a fallback: %v", res.Report.Warnings)
+	}
+	wantTraced := []string{"good", "empty", "orb-good"}
+	if res.Report.Trace == nil || !slices.Equal(res.Report.Trace.Jobs, wantTraced) || !slices.Equal(res.Report.Trace.Requires, wantTraced) {
+		t.Fatalf("trace = %+v, want the jobs %v", res.Report.Trace, wantTraced)
+	}
+	joined := strings.Join(res.Report.Warnings, "\n")
+	for _, want := range []string{
+		`trace: bad-post is not traced, so later plans always run it: post-steps of "bad-post" is not a list`,
+		`trace: bad-pre is not traced, so later plans always run it: pre-steps of "bad-pre" is not a list`,
+		`trace: orb-bad is not traced, so later plans always run it: pre-steps of "orb-bad" is not a list`,
+	} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("warnings lack %q:\n%s", want, joined)
+		}
+	}
+
+	out := rbDoc(t, res.Config)
+	for _, name := range []string{"good", "empty", "orb-good"} {
+		post, _ := rbEntryBody(t, out, "w", name)["post-steps"].([]any)
+		if len(post) != 2 {
+			t.Errorf("%s post-steps = %v, want the collect and persist steps", name, post)
+		}
+	}
+	if pre, _ := rbEntryBody(t, out, "w", "orb-good")["pre-steps"].([]any); len(pre) != 2 || pre[0] != "checkout" {
+		t.Errorf("orb-good pre-steps = %v, want checkout and the reset", pre)
+	}
+	// The ones that cannot take steps are as they were, and their jobs have no reset.
+	if got := rbEntryBody(t, out, "w", "bad-post")["post-steps"]; got != "not a list" {
+		t.Errorf("bad-post post-steps = %v", got)
+	}
+	if got := rbEntryBody(t, out, "w", "bad-pre")["pre-steps"]; !reflect.DeepEqual(got, map[string]any{"run": "not a list"}) {
+		t.Errorf("bad-pre pre-steps = %v", got)
+	}
+	if got := rbEntryBody(t, out, "w", "orb-bad"); got["pre-steps"] != 3 || got["post-steps"] != nil {
+		t.Errorf("orb-bad = %v", got)
+	}
+	for job, wantSteps := range map[string]int{"good": 2, "empty": 2, "bad-post": 1, "bad-pre": 1} {
+		if steps := jobSteps(t, out, job); len(steps) != wantSteps {
+			t.Errorf("job %s has %d steps, want %d (a reset only after the checkout of a traced job)", job, len(steps), wantSteps)
+		}
 	}
 }
 

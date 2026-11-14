@@ -100,9 +100,14 @@ func matchRef(patterns []string, name string) (match, ok bool) {
 	return false, true
 }
 
-// willRun is step 5 for the whole workflow: the verdict of every entry,
-// taking into account that CircleCI ignores a requirement on a job that does
-// not run, and does not run a job whose requirements were all filtered out.
+// willRun is step 5 for the whole workflow: the verdict of every entry.
+//
+// It follows CircleCI's reference (`requires`): a requirement on a job that does
+// not execute, a filter leaving it out for example, is ignored; but a job whose
+// requirements are all filtered out does not execute either. So an entry runs
+// only if its own filters allow it and, when it has requirements, at least one
+// of them runs. That holds all the way up: the verdict of a requirement is its
+// own.
 func willRun(entries []*config.Entry, deps [][]int, unresolved []bool, branch, tag string) []tri {
 	out := make([]tri, len(entries))
 	done := make([]bool, len(entries))
@@ -120,12 +125,12 @@ func willRun(entries []*config.Entry, deps [][]int, unresolved []bool, branch, t
 
 		e := entries[i]
 		v := filterVerdict(e.Filters, branch, tag)
-		if v != triNo && (len(e.Requires) > 0) {
+		if v != triNo && len(e.Requires) > 0 {
 			switch {
 			case e.StatusRequires || unresolved[i]:
 				// A requirement on a status ("build: failed") can start the job
-				// when the other job did not run; an unresolved name could be
-				// anything. Either way the job may or may not run.
+				// when the other job did not succeed, and an unresolved name could
+				// be anything. Either way the job may or may not run.
 				v = min(v, triUnknown)
 			default:
 				best := triNo

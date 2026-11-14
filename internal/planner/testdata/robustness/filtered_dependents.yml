@@ -1,0 +1,31 @@
+version: 2.1
+jobs:
+  lint:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: make lint
+  build-main:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: make build-main
+  ship:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: make ship
+workflows:
+  ci:
+    jobs:
+      - lint
+      - build-main:
+          filters:
+            branches:
+              only: main
+      - ship:
+          requires:
+            - build-main

@@ -1,0 +1,32 @@
+version: 2.1
+jobs:
+  lint:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: make lint
+  test:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: make test
+  docs:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: make docs
+workflows:
+  ci:
+    jobs:
+      - lint
+      - test:
+          requires:
+            - lint
+      - docs
+  nightly:
+    jobs:
+    - lint
+    - docs

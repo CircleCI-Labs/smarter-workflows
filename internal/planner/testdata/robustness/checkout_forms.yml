@@ -1,0 +1,19 @@
+version: 2.1
+jobs:
+  custom-path:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout:
+          path: src
+      - run: make build
+  no-checkout:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - run: echo nothing to check out
+workflows:
+  ci:
+    jobs:
+      - custom-path
+      - no-checkout

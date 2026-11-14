@@ -25,6 +25,8 @@ push to a branch ──► setup: plan job ◄── impact map for the merge-ba
    - the ancestors (`requires`) of every job that runs;
    - jobs that consume a workspace produced by a job that runs;
    - jobs with no trace.
+
+   A job that your own `filters` keep off the branch, or whose required jobs they all keep off it, does not run there whatever the change is, even when it is mandatory. The plan leaves it out and says so in a warning. A requirement on a job that does not run is ignored, as in CircleCI, and the plan drops it.
 4. **Guardrails.** The planner checks the config it generated against the Rego bundle in `policies/`, using CircleCI's own policy engine (`circle-policy-agent`).
    - If a mandatory job is missing, it adds the job and checks again.
    - Any other hard violation turns the plan into a full run.
