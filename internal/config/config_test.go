@@ -1115,3 +1115,122 @@ func TestVersion(t *testing.T) {
 		}
 	}
 }
+
+// Whatever the planner does not touch must keep its meaning. This decodes the
+// config before and after a parse and emit round trip and compares the data.
+func TestRoundTripKeepsTheMeaningOfAwkwardYAML(t *testing.T) {
+	sources := map[string]string{
+		"block scalars": `version: 2.1
+jobs:
+  a:
+    docker: [{image: x}]
+    steps:
+      - run:
+          name: strip
+          command: |-
+            echo one
+            echo two
+      - run:
+          name: keep
+          command: |+
+            echo kept
+
+      - run:
+          name: folded
+          command: >
+            echo this is
+            folded text
+      - run:
+          name: trailing spaces and tabs
+          command: "echo a   \n\techo b\t\n"
+workflows:
+  w:
+    jobs: [a]
+`,
+		"anchors and merge keys": `version: 2.1
+defaults: &defaults
+  docker: [{image: x}]
+  environment: &env
+    A: "1"
+    B: two
+jobs:
+  a:
+    <<: *defaults
+    environment:
+      <<: *env
+      C: three
+    steps: [checkout]
+  b:
+    <<: *defaults
+    steps: [checkout]
+workflows:
+  w:
+    jobs: [a, b]
+`,
+		"quoting, escapes and unicode": `version: 2.1
+jobs:
+  a:
+    docker: [{image: x}]
+    environment:
+      PLAIN: value
+      SINGLE: 'it''s'
+      DOUBLE: "tab\there \"quoted\" \\ back"
+      UNICODE: "café ☃ 日本語"
+      EMPTY: ""
+      NULLISH: ~
+      BOOL: "true"
+      NUMBER: "007"
+      COLON: "a: b"
+      HASH: "a #b"
+    steps: [checkout]
+workflows:
+  w:
+    jobs: [a]
+`,
+		"flow collections and long strings": `version: 2.1
+jobs:
+  a:
+    docker: [{image: x, environment: {A: 1, B: [1, 2, {c: d}]}}]
+    steps:
+      - run: "` + strings.Repeat("a long sentence that goes on and on ", 12) + `"
+workflows:
+  w:
+    jobs: [a]
+`,
+		"numbers and versions": `version: 2.1
+jobs:
+  a:
+    docker: [{image: x}]
+    parallelism: 4
+    resource_class: small
+    environment:
+      FLOAT: 1.10
+      INT: 0x1F
+      OCT: 0o17
+      EXP: 1e3
+    steps: [checkout]
+workflows:
+  w:
+    jobs: [a]
+`,
+	}
+	for name, src := range sources {
+		t.Run(name, func(t *testing.T) {
+			var before, after any
+			if err := yaml.Unmarshal([]byte(src), &before); err != nil {
+				t.Fatalf("the source is not valid YAML: %v", err)
+			}
+			out := mustMarshal(t, mustParse(t, src))
+			if err := yaml.Unmarshal([]byte(out), &after); err != nil {
+				t.Fatalf("the output is not valid YAML: %v\n%s", err, out)
+			}
+			if !reflect.DeepEqual(before, after) {
+				t.Fatalf("the round trip changed the data\n--- in\n%s\n--- out\n%s", src, out)
+			}
+			// And once emitted, emitting again changes nothing.
+			if again := mustMarshal(t, mustParse(t, out)); again != out {
+				t.Fatalf("a second round trip changed the text:\n--- first\n%s\n--- second\n%s", out, again)
+			}
+		})
+	}
+}
