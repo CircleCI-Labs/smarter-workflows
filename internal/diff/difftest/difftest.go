@@ -1,6 +1,7 @@
 // Package difftest builds throwaway git repositories for tests. The repos are
-// hermetic: no global or system git config, a fixed identity and
-// deterministic commit dates, so the same steps produce the same SHAs.
+// hermetic: no global or system git config, no background git work, a fixed
+// identity and deterministic commit dates, so the same steps produce the same
+// SHAs.
 package difftest
 
 import (
@@ -12,6 +13,25 @@ import (
 	"testing"
 )
 
+// gitEnv is the environment of every git process a test starts, the planner's
+// included. It hides the machine's git config, and it turns off the automatic
+// maintenance that git starts after a commit, a fetch or a push. Git starts
+// that maintenance detached: the parent returns at once, and the child keeps
+// writing into the repository (it takes objects/maintenance.lock, then removes
+// it) after the test has moved on. The test removes its temp directory when it
+// ends, and that removal can run while the child still writes, so it fails with
+// "directory not empty". With the maintenance off, no git process outlives the
+// command that started it.
+var gitEnv = []string{
+	"GIT_CONFIG_GLOBAL=" + os.DevNull,
+	"GIT_CONFIG_SYSTEM=" + os.DevNull,
+	"GIT_CONFIG_NOSYSTEM=1",
+	"GIT_CONFIG_COUNT=3",
+	"GIT_CONFIG_KEY_0=maintenance.auto", "GIT_CONFIG_VALUE_0=false",
+	"GIT_CONFIG_KEY_1=gc.auto", "GIT_CONFIG_VALUE_1=0",
+	"GIT_CONFIG_KEY_2=gc.autoDetach", "GIT_CONFIG_VALUE_2=false",
+}
+
 // Repo is a git repository in a test temp directory.
 type Repo struct {
 	t       testing.TB
@@ -19,13 +39,15 @@ type Repo struct {
 	commits int
 }
 
-// New makes an empty repository whose default branch is main.
+// New makes an empty repository whose default branch is main. It sets gitEnv
+// for the rest of the test, so the planner's own git calls are hermetic too.
 func New(t testing.TB) *Repo {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())
-	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
-	t.Setenv("GIT_CONFIG_SYSTEM", os.DevNull)
-	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	for _, kv := range gitEnv {
+		k, v, _ := strings.Cut(kv, "=")
+		t.Setenv(k, v)
+	}
 	r := &Repo{t: t, Dir: t.TempDir()}
 	r.Git("init", "-q", "-b", "main")
 	return r
@@ -38,12 +60,13 @@ func (r *Repo) Git(args ...string) string {
 	return RunGit(r.t, r.Dir, nil, args...)
 }
 
-// RunGit runs git in dir with extra environment variables.
+// RunGit runs git in dir with extra environment variables. It always adds
+// gitEnv, so a command outside New is hermetic too.
 func RunGit(t testing.TB, dir string, env []string, args ...string) string {
 	t.Helper()
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), env...)
+	cmd.Env = append(append(os.Environ(), gitEnv...), env...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)

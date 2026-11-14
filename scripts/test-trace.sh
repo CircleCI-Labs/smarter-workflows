@@ -74,6 +74,13 @@ GIT_AUTHOR_EMAIL=test@example.invalid
 GIT_COMMITTER_NAME="Test Author"
 GIT_COMMITTER_EMAIL=test@example.invalid
 export GIT_CONFIG_NOSYSTEM GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL
+# Git's automatic maintenance starts detached after a commit (and after a fetch
+# or a push) and writes into the repo after git returns, so the removal of a
+# temp repo can race with it. Off here, as in internal/diff/difftest.
+export GIT_CONFIG_COUNT=3
+export GIT_CONFIG_KEY_0=maintenance.auto GIT_CONFIG_VALUE_0=false
+export GIT_CONFIG_KEY_1=gc.auto GIT_CONFIG_VALUE_1=0
+export GIT_CONFIG_KEY_2=gc.autoDetach GIT_CONFIG_VALUE_2=false
 
 fstype=$(stat -f -c %T "$work" 2>/dev/null || echo unknown)
 echo "# $(uname -sr), $fstype filesystem, git $(git --version | sed 's/^git version //')"
