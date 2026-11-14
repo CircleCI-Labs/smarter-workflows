@@ -18,6 +18,7 @@ On this repo, a docs-only branch runs 1 of 8 jobs (the mandatory security scan),
 | How it works | [docs/how-it-works.md](docs/how-it-works.md) |
 | Quickstart | [docs/quickstart.md](docs/quickstart.md) |
 | Limitations | [docs/limitations.md](docs/limitations.md) |
+| Validation | [docs/validation.md](docs/validation.md) |
 | Spec | [docs/spec/v0.1.md](docs/spec/v0.1.md) |
 | Demo monorepo | [examples/demo](examples/demo/README.md) |
 | End-to-end scenarios | [scripts/e2e](scripts/e2e/run-scenarios.sh) |
