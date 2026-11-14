@@ -60,6 +60,7 @@ func runPlan(args []string, stdout, stderr io.Writer) int {
 	traceReset := fs.String("trace-reset", "on", "reset file access times after checkout in traced jobs: on or off")
 	gateJob := fs.String("gate-job", planner.DefaultGateJob, "the name of the gate job")
 	gateImage := fs.String("gate-image", planner.DefaultGateImage, "the docker image of the gate and map jobs")
+	mapKeyPrefix := fs.String("map-key-prefix", planner.DefaultMapKeyPrefix, "the cache key prefix of the saved impact map: <prefix>-<checksum of the commit>; the setup job restores it with the same prefix")
 	smarterBin := fs.String("smarter-bin", "", "where the map job finds this binary (default: the path it runs from)")
 	policyBundle := fs.String("policy-bundle", "", "a policy bundle directory: check the plan against it, repair, or fall back to a full run")
 	policyMeta := fs.String("policy-meta", "", "JSON (or the path of a JSON file) passed to the policies as data.meta (default: built from the CircleCI environment)")
@@ -109,6 +110,7 @@ func runPlan(args []string, stdout, stderr io.Writer) int {
 	opts.TraceOrbJobs = *traceOrb
 	opts.TraceReset = *traceReset == "on"
 	opts.GateJob, opts.GateImage = *gateJob, *gateImage
+	opts.MapKeyPrefix = *mapKeyPrefix
 	opts.Version = version
 	opts.BinPath = *smarterBin
 	if opts.BinPath == "" {
