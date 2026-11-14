@@ -1,0 +1,31 @@
+version: 2.1
+jobs:
+  lint:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: make lint
+  deploy:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: ./deploy/run.sh
+  notify:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: ./notify/run.sh
+workflows:
+  ci:
+    jobs:
+      - lint
+      - deploy:
+          filters:
+            branches:
+              only: main
+      - notify:
+          requires:
+            - deploy: failed

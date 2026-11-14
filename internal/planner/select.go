@@ -6,6 +6,7 @@ import (
 	"path"
 	"slices"
 	"sort"
+	"strings"
 
 	"github.com/CircleCI-Labs/smarter-workflows/internal/config"
 	"github.com/CircleCI-Labs/smarter-workflows/internal/diff"
@@ -87,7 +88,8 @@ func analyse(cfg *config.Config, wf *config.Workflow, branch, tag string) (*anal
 		}
 		memo[i] = 1
 		for _, d := range an.deps[i] {
-			if an.entries[d].Approval || after(d, depth+1) {
+			// An approval that the branch filters out is not there to wait for.
+			if (an.entries[d].Approval && an.will[d] != triNo) || after(d, depth+1) {
 				memo[i] = 2
 				break
 			}
@@ -281,19 +283,17 @@ func capped(items []string, prefix, what string) []string {
 	return out
 }
 
-// selectJobs runs steps 3 and 4. Entries that cannot run on this branch (step
-// 5 says no) are not selected on their own, so a deploy filtered to main does
-// not keep its whole upstream chain alive on every branch. A mandatory or
-// guardrail-forced entry is selected anyway, with its ancestors.
+// selectJobs runs steps 3 and 4. An entry that does not run on this branch
+// (step 5 says no) is never selected: not on its own inputs, not as a mandatory
+// or guardrail-forced job, and not by the closure. So a deploy filtered to main
+// does not keep its whole upstream chain alive on every branch. A selected job
+// may require one that does not run; that one is left out, and so is the
+// requirement on it, which CircleCI would ignore (step 7).
 func (p *planner) selectJobs(an *analysis, cs *changeSet, forced map[string]bool) *selection {
 	n := len(an.entries)
 	sel := &selection{selected: make([]bool, n), reasons: make([][]string, n)}
 	mandatory := toSet(p.o.Mandatory)
-	override := func(i int) bool {
-		name := an.entries[i].Name
-		return mandatory[name] || forced[name]
-	}
-	eligible := func(i int) bool { return an.will[i] != triNo || override(i) }
+	eligible := func(i int) bool { return an.will[i] != triNo }
 	pick := func(i int, why string) bool {
 		if sel.selected[i] || !eligible(i) {
 			return false
@@ -347,7 +347,8 @@ func (an *analysis) skipReason(i int, branch, tag string) string {
 	return "inputs unchanged"
 }
 
-// inertReason says why an entry does not run on this branch or tag.
+// inertReason says why an entry does not run on this branch or tag: its own
+// filters, or no job it requires runs.
 func (an *analysis) inertReason(i int, branch, tag string) string {
 	e := an.entries[i]
 	if filterVerdict(e.Filters, branch, tag) == triNo {
@@ -356,7 +357,17 @@ func (an *analysis) inertReason(i int, branch, tag string) string {
 		}
 		return "does not run: its filters leave out branch " + branch
 	}
-	return "does not run: every job it requires is filtered out"
+	var names []string
+	for _, d := range an.deps[i] {
+		names = append(names, an.entries[d].Name)
+	}
+	switch len(names) {
+	case 0:
+		return "does not run"
+	case 1:
+		return fmt.Sprintf("does not run: it requires %s, which does not run", names[0])
+	}
+	return "does not run: none of the jobs it requires runs (" + strings.Join(names, ", ") + ")"
 }
 
 func toSet(list []string) map[string]bool {

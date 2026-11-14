@@ -1,0 +1,32 @@
+version: 2.1
+jobs:
+  build-main:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: make build-main
+  test:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: make test
+  ship:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: make ship
+workflows:
+  ci:
+    jobs:
+      - build-main:
+          filters:
+            branches:
+              only: main
+      - test
+      - ship:
+          requires:
+            - build-main
+            - test

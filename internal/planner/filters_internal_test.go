@@ -125,6 +125,33 @@ func TestWillRunCascade(t *testing.T) {
 			want:    []tri{triYes, triNo},
 		},
 		{
+			name:    "an approval that is filtered out stops what comes after it",
+			entries: []*config.Entry{entry("hold", only("main")), entry("deploy", config.Filters{}, "hold"), entry("notify", config.Filters{}, "deploy")},
+			deps:    [][]int{nil, {0}, {1}},
+			want:    []tri{triNo, triNo, triNo},
+		},
+		{
+			// CircleCI's reference: a requirement on a job that does not run is
+			// ignored, so deploy runs after test, and so does what follows deploy.
+			name:    "an approval that is filtered out is ignored while another requirement runs",
+			entries: []*config.Entry{entry("hold", only("main")), entry("test", config.Filters{}), entry("deploy", config.Filters{}, "hold", "test"), entry("notify", config.Filters{}, "deploy")},
+			deps:    [][]int{nil, nil, {0, 1}, {2}},
+			want:    []tri{triNo, triYes, triYes, triYes},
+		},
+		{
+			name:    "a chain behind a filtered-out job: none of it runs",
+			entries: []*config.Entry{entry("a", only("main")), entry("b", config.Filters{}, "a"), entry("c", config.Filters{}, "b")},
+			deps:    [][]int{nil, {0}, {1}},
+			want:    []tri{triNo, triNo, triNo},
+		},
+		{
+			name:    "a status requirement on a job that runs leaves the job unknown",
+			entries: []*config.Entry{entry("a", config.Filters{}), entry("b", config.Filters{}, "a")},
+			deps:    [][]int{nil, {0}},
+			status:  []bool{false, true},
+			want:    []tri{triYes, triUnknown},
+		},
+		{
 			name:    "a cycle is unknown, not a hang",
 			entries: []*config.Entry{entry("a", config.Filters{}, "b"), entry("b", config.Filters{}, "a")},
 			deps:    [][]int{{1}, {0}},

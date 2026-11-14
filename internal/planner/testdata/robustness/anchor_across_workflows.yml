@@ -1,0 +1,28 @@
+version: 2.1
+jobs:
+  lint:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: make lint
+  deploy:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: ./deploy/run.sh
+workflows:
+  ci:
+    jobs:
+      - lint:
+          filters: &feature-only
+            branches:
+              ignore: main
+      - deploy:
+          requires:
+            - lint
+  nightly:
+    jobs:
+      - deploy:
+          filters: *feature-only

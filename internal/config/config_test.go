@@ -75,7 +75,7 @@ jobs:
             cat <<EOF2
             x
             EOF2
-  build: &build_defaults
+  build:
     docker:
       - image: cimg/go:1.26
     steps:
@@ -94,7 +94,8 @@ workflows:
               only: /^release\/.*/
       - hold:
           type: approval
-      - other: *build_defaults
+      - other:
+          context: shared
 `
 
 func TestRoundTripKeepsOrderCommentsAndStyle(t *testing.T) {
@@ -179,6 +180,10 @@ workflows:
               v: [a, b]
       - orb/job:
           context: [c1]
+      - explicit:
+          requires:
+            - plain: success
+            - nothing: [success]
 `)
 	w := mustWorkflow(t, c, "w")
 	type brief struct {
@@ -200,6 +205,8 @@ workflows:
 		{ref: "mat", name: "mat", alias: "all-mat", matrix: true},
 		{ref: "dyn", name: "dyn-<< matrix.v >>", matrix: true, dynamic: true},
 		{ref: "orb/job", name: "orb/job"},
+		// `success` is what a bare name means: it is not a status requirement.
+		{ref: "explicit", name: "explicit", requires: []string{"plain", "nothing"}},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("entries:\n got %+v\nwant %+v", got, want)
@@ -376,14 +383,119 @@ workflows:
       - lint
       - api
 `
+	const unchanged = `version: 2.1
+jobs:
+  a:
+    docker:
+      - image: x
+workflows:
+  w:
+    jobs:
+      - lint
+      - api: # the api
+          requires:
+            - lint
+      - web:
+          requires: [lint, api]
+          filters:
+            branches:
+              only: main
+      # docs sits last
+      - docs:
+          requires:
+            - lint
+  other:
+    jobs:
+      - lint
+      - api
+`
+	removing := func(w *config.Workflow, names ...string) map[int]bool {
+		remove := map[int]bool{}
+		for i, e := range w.Entries {
+			for _, n := range names {
+				if e.Name == n {
+					remove[i] = true
+				}
+			}
+		}
+		return remove
+	}
 	tests := []struct {
 		name   string
 		remove []string
+		inert  []string // the removed entries that do not run
 		want   string
 	}{
 		{
-			name:   "remove a sibling: the requires of the others are scrubbed",
+			name:   "remove an entry that nothing requires: the others are not edited",
+			remove: []string{"web"},
+			want: `version: 2.1
+jobs:
+  a:
+    docker:
+      - image: x
+workflows:
+  w:
+    jobs:
+      - lint
+      - api: # the api
+          requires:
+            - lint
+      # docs sits last
+      - docs:
+          requires:
+            - lint
+  other:
+    jobs:
+      - lint
+      - api
+`,
+		},
+		{
+			name:   "remove a chain: an entry and what requires it",
+			remove: []string{"api", "web"},
+			want: `version: 2.1
+jobs:
+  a:
+    docker:
+      - image: x
+workflows:
+  w:
+    jobs:
+      - lint
+      # docs sits last
+      - docs:
+          requires:
+            - lint
+  other:
+    jobs:
+      - lint
+      - api
+`,
+		},
+		{
+			name:   "remove everything",
+			remove: []string{"lint", "api", "web", "docs"},
+			want: `version: 2.1
+jobs:
+  a:
+    docker:
+      - image: x
+workflows:
+  w:
+    jobs: []
+  other:
+    jobs:
+      - lint
+      - api
+`,
+		},
+		{
+			// CircleCI ignores a requirement on a job that does not run, so the
+			// name goes from the entries that stay, and nothing else changes.
+			name:   "a requirement on a removed job that does not run is dropped",
 			remove: []string{"api"},
+			inert:  []string{"api"},
 			want: `version: 2.1
 jobs:
   a:
@@ -408,57 +520,12 @@ workflows:
       - api
 `,
 		},
-		{
-			name:   "an entry that loses all its requires keeps its other keys; one with only requires becomes a bare name",
-			remove: []string{"lint", "web"},
-			want: `version: 2.1
-jobs:
-  a:
-    docker:
-      - image: x
-workflows:
-  w:
-    jobs:
-      - api # the api
-      # docs sits last
-      - docs
-  other:
-    jobs:
-      - lint
-      - api
-`,
-		},
-		{
-			name:   "remove everything",
-			remove: []string{"lint", "api", "web", "docs"},
-			want: `version: 2.1
-jobs:
-  a:
-    docker:
-      - image: x
-workflows:
-  w:
-    jobs: []
-  other:
-    jobs:
-      - lint
-      - api
-`,
-		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			c := mustParse(t, src)
 			w := mustWorkflow(t, c, "w")
-			remove := map[int]bool{}
-			for i, e := range w.Entries {
-				for _, n := range tc.remove {
-					if e.Name == n {
-						remove[i] = true
-					}
-				}
-			}
-			if err := w.Prune(remove); err != nil {
+			if err := w.Prune(removing(w, tc.remove...), removing(w, tc.inert...)); err != nil {
 				t.Fatal(err)
 			}
 			if got := mustMarshal(t, c); got != tc.want {
@@ -474,6 +541,90 @@ workflows:
 				}
 			}
 		})
+	}
+
+	// Any other edit of a requires list could change what runs. Prune refuses,
+	// and leaves the workflow alone.
+	refusals := []struct {
+		name          string
+		remove, inert []string
+		want          string
+	}{
+		{"a removed job that would run", []string{"api"}, nil, "would run"},
+		{"a removed job that would run, whatever the others do", []string{"lint", "api"}, []string{"lint"}, "would run"},
+		{"a job left with nothing to require", []string{"lint"}, []string{"lint"}, "no requirement"},
+		{"a job whose every requirement is gone", []string{"lint", "api"}, []string{"lint", "api"}, "no requirement"},
+	}
+	for _, tc := range refusals {
+		t.Run("refuses: "+tc.name, func(t *testing.T) {
+			c := mustParse(t, src)
+			w := mustWorkflow(t, c, "w")
+			err := w.Prune(removing(w, tc.remove...), removing(w, tc.inert...))
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want a refusal that says %q", err, tc.want)
+			}
+			if after := mustMarshal(t, c); after != unchanged {
+				t.Errorf("a refused prune changed the config:\n%s", after)
+			}
+			if got := names(w); !reflect.DeepEqual(got, []string{"lint", "api", "web", "docs"}) {
+				t.Errorf("entries after a refused prune = %v", got)
+			}
+		})
+	}
+}
+
+// Prune edits nothing unless it can do all of it.
+func TestPruneIsAllOrNothing(t *testing.T) {
+	c := mustParse(t, `version: 2.1
+workflows:
+  w:
+    jobs:
+      - a
+      - b:
+          requires: [a, c]
+      - c
+      - d:
+          requires: [a]
+`)
+	before := mustMarshal(t, c)
+	w := mustWorkflow(t, c, "w")
+	// b could lose a, but d would be left with nothing.
+	if err := w.Prune(map[int]bool{0: true}, map[int]bool{0: true}); err == nil {
+		t.Fatal("Prune left d with no requirement")
+	}
+	if after := mustMarshal(t, c); after != before {
+		t.Errorf("a refused prune edited b:\n%s", after)
+	}
+}
+
+// A requirement with a status goes like any other when its job does not run.
+func TestPruneDropsAStatusRequirementOnAJobThatDoesNotRun(t *testing.T) {
+	c := mustParse(t, `version: 2.1
+workflows:
+  w:
+    jobs:
+      - build
+      - deploy
+      - notify:
+          requires:
+            - build: failed
+            - deploy: [success, canceled]
+`)
+	w := mustWorkflow(t, c, "w")
+	if err := w.Prune(map[int]bool{1: true}, map[int]bool{1: true}); err != nil {
+		t.Fatal(err)
+	}
+	want := `version: 2.1
+workflows:
+  w:
+    jobs:
+      - build
+      - notify:
+          requires:
+            - build: failed
+`
+	if got := mustMarshal(t, c); got != want {
+		t.Fatalf("--- want\n%s\n--- got\n%s", want, got)
 	}
 }
 
@@ -494,7 +645,7 @@ workflows:
           requires: [build]
 `)
 	w := mustWorkflow(t, c, "w")
-	if err := w.Prune(map[int]bool{0: true}); err != nil {
+	if err := w.Prune(map[int]bool{0: true}, nil); err != nil {
 		t.Fatal(err)
 	}
 	if got := w.Entries[len(w.Entries)-1].Requires; !reflect.DeepEqual(got, []string{"build"}) {
@@ -503,7 +654,7 @@ workflows:
 }
 
 func TestPruneWithAnchorsAndMergeKeys(t *testing.T) {
-	t.Run("an anchor defined in a removed entry is inlined where it is still used", func(t *testing.T) {
+	t.Run("an anchor defined in a removed entry: the entries that used it keep their own copy", func(t *testing.T) {
 		c := mustParse(t, `version: 2.1
 workflows:
   w:
@@ -518,10 +669,10 @@ workflows:
           filters: *only_main
 `)
 		w := mustWorkflow(t, c, "w")
-		if err := w.Prune(map[int]bool{0: true}); err != nil {
+		if err := w.Prune(map[int]bool{0: true}, nil); err != nil {
 			t.Fatal(err)
 		}
-		got := mustMarshal(t, c) // mustMarshal re-parses: a dangling alias would fail here
+		got := mustMarshal(t, c)
 		want := `version: 2.1
 workflows:
   w:
@@ -534,6 +685,40 @@ workflows:
           filters:
             branches:
               only: main
+`
+		if got != want {
+			t.Fatalf("--- want\n%s\n--- got\n%s", want, got)
+		}
+	})
+
+	t.Run("an entry in another workflow keeps its copy when the anchor's entry goes", func(t *testing.T) {
+		c := mustParse(t, `version: 2.1
+workflows:
+  ci:
+    jobs:
+      - lint:
+          filters: &feature-only
+            branches:
+              ignore: main
+  nightly:
+    jobs:
+      - deploy:
+          filters: *feature-only
+`)
+		if err := mustWorkflow(t, c, "ci").Prune(map[int]bool{0: true}, nil); err != nil {
+			t.Fatal(err)
+		}
+		got := mustMarshal(t, c)
+		want := `version: 2.1
+workflows:
+  ci:
+    jobs: []
+  nightly:
+    jobs:
+      - deploy:
+          filters:
+            branches:
+              ignore: main
 `
 		if got != want {
 			t.Fatalf("--- want\n%s\n--- got\n%s", want, got)
@@ -550,7 +735,7 @@ workflows:
       - b: *entry
 `)
 		w := mustWorkflow(t, c, "w")
-		if err := w.Prune(map[int]bool{0: true}); err != nil {
+		if err := w.Prune(map[int]bool{0: true}, nil); err != nil {
 			t.Fatal(err)
 		}
 		got := mustMarshal(t, c)
@@ -559,14 +744,15 @@ workflows:
 		}
 	})
 
-	t.Run("requires that come from a merge key are overridden, not edited in place", func(t *testing.T) {
+	t.Run("requires that come from a merge key are edited in the entry that has them", func(t *testing.T) {
 		c := mustParse(t, `version: 2.1
 shared: &shared
-  requires: [lint]
+  requires: [lint, build]
 workflows:
   w:
     jobs:
       - lint
+      - build
       - a:
           <<: *shared
       - b:
@@ -574,31 +760,31 @@ workflows:
           context: c
 `)
 		w := mustWorkflow(t, c, "w")
-		if err := w.Prune(map[int]bool{0: true}); err != nil {
+		for _, e := range w.Entries[2:] {
+			if !reflect.DeepEqual(e.Requires, []string{"lint", "build"}) {
+				t.Fatalf("%s: Requires = %v, want [lint build]", e.Name, e.Requires)
+			}
+		}
+		// lint does not run: a and b each lose it, and the shared block, which
+		// each took a copy of, is as it was.
+		if err := w.Prune(map[int]bool{0: true}, map[int]bool{0: true}); err != nil {
 			t.Fatal(err)
 		}
-		got := mustMarshal(t, c)
 		want := `version: 2.1
-shared: &shared
-  requires: [lint]
+shared:
+  requires: [lint, build]
 workflows:
   w:
     jobs:
+      - build
       - a:
-          <<: *shared
-          requires: []
+          requires: [build]
       - b:
-          <<: *shared
+          requires: [build]
           context: c
-          requires: []
 `
-		if got != want {
+		if got := mustMarshal(t, c); got != want {
 			t.Fatalf("--- want\n%s\n--- got\n%s", want, got)
-		}
-		for _, e := range w.Entries {
-			if len(e.Requires) != 0 {
-				t.Errorf("%s: Requires = %v, want none", e.Name, e.Requires)
-			}
 		}
 	})
 }
@@ -742,10 +928,28 @@ func TestAddSteps(t *testing.T) {
             - run: echo post`,
 		},
 		{
-			name:   "an argument mapping shared by an alias is copied, not edited",
+			name: "a key with no value is an empty list",
+			jobs: "      - lint:\n          post-steps:\n          pre-steps: null",
+			want: `      - lint:
+          post-steps:
+            - run: echo post
+          pre-steps:
+            - run: echo pre`,
+		},
+		{
+			name: "a key that is ~ is an empty list too",
+			jobs: "      - lint:\n          post-steps: ~",
+			want: `      - lint:
+          post-steps:
+            - run: echo post
+          pre-steps:
+            - run: echo pre`,
+		},
+		{
+			name:   "an argument mapping shared by an alias is its own copy: the anchor's entry is not edited",
 			jobs:   "      - lint: &args\n          context: c\n      - docs: *args",
 			target: 1,
-			want: `      - lint: &args
+			want: `      - lint:
           context: c
       - docs:
           context: c
@@ -755,15 +959,27 @@ func TestAddSteps(t *testing.T) {
             - run: echo post`,
 		},
 		{
-			name: "steps that come from a merge key are copied into the entry",
-			jobs: "      - lint:\n          <<: {post-steps: [{run: echo merged}]}",
+			name:   "the anchor's entry may be edited too: the alias is not touched",
+			jobs:   "      - lint: &args\n          context: c\n      - docs: *args",
+			target: 0,
 			want: `      - lint:
-          <<: {post-steps: [{run: echo merged}]}
+          context: c
           pre-steps:
             - run: echo pre
           post-steps:
+            - run: echo post
+      - docs:
+          context: c`,
+		},
+		{
+			name: "steps that come from a merge key are in the entry already",
+			jobs: "      - lint:\n          <<: {post-steps: [{run: echo merged}]}",
+			want: `      - lint:
+          post-steps:
             - {run: echo merged}
-            - run: echo post`,
+            - run: echo post
+          pre-steps:
+            - run: echo pre`,
 		},
 	}
 	for _, tc := range tests {
@@ -783,6 +999,49 @@ func TestAddSteps(t *testing.T) {
 			}
 		})
 	}
+}
+
+// An entry whose pre-steps or post-steps is not a list cannot take steps. It is
+// left exactly as it was, and CheckSteps says so beforehand.
+func TestAddStepsLeavesAnEntryItCannotEditAlone(t *testing.T) {
+	step := func() *yaml.Node { return config.Map("run", "echo hi") }
+	tests := []struct{ name, key, entry string }{
+		{"post-steps is a string", "post-steps", "      - lint:\n          post-steps: echo hi"},
+		{"post-steps is a mapping", "post-steps", "      - lint:\n          post-steps: {run: echo hi}"},
+		{"pre-steps is a number", "pre-steps", "      - lint:\n          context: c\n          pre-steps: 3"},
+		{"post-steps is an empty string", "post-steps", "      - lint:\n          post-steps: ''"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			src := "version: 2.1\nworkflows:\n  w:\n    jobs:\n" + tc.entry + "\n"
+			c := mustParse(t, src)
+			before := mustMarshal(t, c)
+			w := mustWorkflow(t, c, "w")
+			e := w.Entries[0]
+			if err := e.CheckSteps(); err == nil || !strings.Contains(err.Error(), tc.key+` of "lint" is not a list`) {
+				t.Errorf("CheckSteps = %v, want an error about %s", err, tc.key)
+			}
+			add := w.AddPostSteps
+			if tc.key == "pre-steps" {
+				add = w.AddPreSteps
+			}
+			if err := add(e, step()); err == nil {
+				t.Error("adding steps: want an error")
+			}
+			if after := mustMarshal(t, c); after != before {
+				t.Errorf("the entry changed:\n--- before\n%s\n--- after\n%s", before, after)
+			}
+		})
+	}
+
+	t.Run("an entry that can be edited passes the check", func(t *testing.T) {
+		c := mustParse(t, "version: 2.1\nworkflows:\n  w:\n    jobs:\n      - bare\n      - empty:\n      - own:\n          pre-steps: [{run: a}]\n          post-steps:\n")
+		for _, e := range mustWorkflow(t, c, "w").Entries {
+			if err := e.CheckSteps(); err != nil {
+				t.Errorf("%s: CheckSteps = %v", e.Name, err)
+			}
+		}
+	})
 }
 
 func cloneNode(n *yaml.Node) *yaml.Node {
@@ -1040,7 +1299,7 @@ workflows:
 			"      - run: first\n      - checkout\n      - run: reset\n      - run: second\n",
 			"      - checkout:\n          path: ~/src\n      - run: reset\n      - run: after\n",
 			"      - checkout\n      - run: reset\n      - run: middle\n      - checkout\n",
-			"  shared:\n    docker: [{image: x}]\n    steps: &steps\n      - checkout\n      - run: reset\n  aliased:\n    docker: [{image: x}]\n    steps:\n      - checkout\n      - run: reset\n",
+			"  shared:\n    docker: [{image: x}]\n    steps:\n      - checkout\n      - run: reset\n  aliased:\n    docker: [{image: x}]\n    steps:\n      - checkout\n      - run: reset\n",
 		} {
 			if !strings.Contains(out, w) {
 				t.Errorf("order %v: output lacks:\n%s\nin:\n%s", order, w, out)
@@ -1052,6 +1311,59 @@ workflows:
 	}
 	if _, err := mustParse(t, src).InsertAfterCheckout("missing", reset()); err == nil {
 		t.Error("want an error for a job that is not defined")
+	}
+
+	// `aliased` took its steps from `shared` through an alias. Each job has its
+	// own copy, so an edit to one is not an edit to the other.
+	for _, job := range []string{"shared", "aliased"} {
+		c := mustParse(t, src)
+		if _, err := c.InsertAfterCheckout(job, reset()); err != nil {
+			t.Fatal(err)
+		}
+		if n := strings.Count(mustMarshal(t, c), "run: reset"); n != 1 {
+			t.Errorf("a reset step in %s was written %d times, want 1", job, n)
+		}
+	}
+}
+
+// A job that gets its steps from a merge key has them in its own mapping, so
+// the reset can follow its checkout like any other.
+func TestInsertAfterCheckoutThroughAMergeKey(t *testing.T) {
+	c := mustParse(t, `version: 2.1
+defaults: &defaults
+  docker: [{image: x}]
+  steps:
+    - checkout
+    - run: build
+jobs:
+  merged:
+    <<: *defaults
+  other:
+    <<: *defaults
+workflows:
+  w:
+    jobs: [merged]
+`)
+	got, err := c.InsertAfterCheckout("merged", config.Map("run", "reset"))
+	if err != nil || !got {
+		t.Fatalf("InsertAfterCheckout = %v, %v", got, err)
+	}
+	out := mustMarshal(t, c)
+	want := `jobs:
+  merged:
+    docker: [{image: x}]
+    steps:
+      - checkout
+      - run: reset
+      - run: build
+  other:
+    docker: [{image: x}]
+    steps:
+      - checkout
+      - run: build
+`
+	if !strings.Contains(out, want) {
+		t.Fatalf("output lacks:\n%s\nin:\n%s", want, out)
 	}
 }
 

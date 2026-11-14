@@ -420,6 +420,11 @@ func (p *planner) build(ctx context.Context, forced map[string]bool, fullReason 
 		if kept[i] && an.will[i] == triUnknown && filterVerdict(e.Filters, p.o.Branch, p.o.Tag) == triUnknown {
 			rep.Warnings = append(rep.Warnings, fmt.Sprintf("job %s: its filters cannot be evaluated here, so it is left out of the gate", e.Name))
 		}
+		if kept[i] && an.will[i] != triNo && e.StatusRequires && !e.Approval && !an.afterApproval[i] {
+			// A job that waits for a failure may never run, and the gate would
+			// wait for it for ever.
+			rep.Warnings = append(rep.Warnings, fmt.Sprintf("%s does not wait for %s: it requires a job status other than success", p.o.GateJob, e.Name))
+		}
 	}
 
 	// The gate waits for every kept job that is certain to run, except the
@@ -433,13 +438,15 @@ func (p *planner) build(ctx context.Context, forced map[string]bool, fullReason 
 
 	var keptNames []string
 	if removing {
-		remove := map[int]bool{}
+		// CircleCI ignores a requirement on a job that does not run, so Prune may
+		// drop the names of those jobs, and no others, from the jobs that stay.
+		remove, inert := map[int]bool{}, map[int]bool{}
 		for i := range an.entries {
 			if !kept[i] {
-				remove[i] = true
+				remove[i], inert[i] = true, an.will[i] == triNo
 			}
 		}
-		if err := wf.Prune(remove); err != nil {
+		if err := wf.Prune(remove, inert); err != nil {
 			return nil, err
 		}
 	}
@@ -476,12 +483,20 @@ func (p *planner) build(ctx context.Context, forced map[string]bool, fullReason 
 	return &attempt{cfg: out, rep: rep, full: rep.Full}, nil
 }
 
-// planWarnings reports settings that name jobs the workflow does not have.
+// planWarnings reports settings that name jobs the workflow does not have, and
+// mandatory jobs that do not run on this branch or tag. The planner cannot make
+// them run: that would mean editing the filters, or the requirements, of the
+// project's own pipeline.
 func (p *planner) planWarnings(an *analysis) []string {
 	var out []string
 	for _, name := range p.o.Mandatory {
-		if _, ok := an.byName[name]; !ok {
+		i, ok := an.byName[name]
+		switch {
+		case !ok:
 			out = append(out, fmt.Sprintf("mandatory job %s is not in workflow %s", name, p.wf))
+		case an.will[i] == triNo:
+			out = append(out, fmt.Sprintf("mandatory job %s %s; the plan leaves it out and does not force it",
+				name, an.inertReason(i, p.o.Branch, p.o.Tag)))
 		}
 	}
 	for _, name := range sortedKeys(p.o.ExtraInputs) {

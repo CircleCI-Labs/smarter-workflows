@@ -18,8 +18,9 @@ type Entry struct {
 	Alias string
 	// Requires lists the names of the entries this one waits for.
 	Requires []string
-	// StatusRequires is set when a requires item names statuses
-	// (`- build: failed`), so the entry may run even if that job does not.
+	// StatusRequires is set when a requires item names a status other than
+	// success (`- build: failed`), so the entry may run even if that job does
+	// not succeed. `- build: success` is the same as `- build`.
 	StatusRequires bool
 	// Approval is set for `type: approval` entries.
 	Approval bool
@@ -117,11 +118,11 @@ func (c *Config) Workflow(name string) (*Workflow, error) {
 	if wfs == nil {
 		return nil, errors.New("the config has no workflows")
 	}
-	node := deref(lookup(wfs, name))
+	node := lookup(wfs, name)
 	if node == nil || node.Kind != yaml.MappingNode {
 		return nil, fmt.Errorf("the config has no workflow named %q", name)
 	}
-	jobs := deref(lookup(node, "jobs"))
+	jobs := lookup(node, "jobs")
 	if jobs == nil || jobs.Kind != yaml.SequenceNode {
 		return nil, fmt.Errorf("workflow %q has no job list", name)
 	}
@@ -148,26 +149,20 @@ func (w *Workflow) reload() error {
 }
 
 func parseEntry(item *yaml.Node) (*Entry, error) {
-	n := deref(item)
-	if n == nil {
-		return nil, errors.New("alias cycle")
-	}
 	e := &Entry{item: item}
-	switch n.Kind {
+	switch item.Kind {
 	case yaml.ScalarNode:
-		e.Ref = n.Value
+		e.Ref = item.Value
 	case yaml.MappingNode:
-		if len(n.Content) != 2 {
-			return nil, fmt.Errorf("a job entry has %d keys, want 1", len(n.Content)/2)
+		if len(item.Content) != 2 {
+			return nil, fmt.Errorf("a job entry has %d keys, want 1", len(item.Content)/2)
 		}
-		if n.Content[0].Kind != yaml.ScalarNode {
+		if item.Content[0].Kind != yaml.ScalarNode {
 			return nil, errors.New("a job entry has a key that is not a name")
 		}
-		e.Ref = n.Content[0].Value
-		args := deref(n.Content[1])
+		e.Ref = item.Content[0].Value
+		args := item.Content[1]
 		switch {
-		case args == nil:
-			return nil, errors.New("alias cycle")
 		case isNull(args):
 		case args.Kind == yaml.MappingNode:
 			e.args = args
@@ -221,9 +216,8 @@ func parseEntry(item *yaml.Node) (*Entry, error) {
 	return e, nil
 }
 
-func parseRequires(v *yaml.Node) (names []string, status bool, err error) {
-	seq := deref(v)
-	if seq == nil || seq.Kind != yaml.SequenceNode {
+func parseRequires(seq *yaml.Node) (names []string, status bool, err error) {
+	if seq.Kind != yaml.SequenceNode {
 		return nil, false, errors.New("not a list")
 	}
 	for _, it := range seq.Content {
@@ -237,27 +231,40 @@ func parseRequires(v *yaml.Node) (names []string, status bool, err error) {
 	return names, status, nil
 }
 
-// requireItem reads one requires item: a name, or {name: status(es)}.
+// requireItem reads one requires item: a name, or {name: status(es)}. It
+// reports withStatus for a status other than success.
 func requireItem(it *yaml.Node) (name string, withStatus, ok bool) {
-	it = deref(it)
-	if it == nil {
-		return "", false, false
-	}
 	switch it.Kind {
 	case yaml.ScalarNode:
 		return it.Value, false, true
 	case yaml.MappingNode:
 		if len(it.Content) == 2 && it.Content[0].Kind == yaml.ScalarNode {
-			return it.Content[0].Value, true, true
+			return it.Content[0].Value, !onlySuccess(it.Content[1]), true
 		}
 	}
 	return "", false, false
 }
 
-func parseFilters(v *yaml.Node) Filters {
+// onlySuccess reports whether the statuses of a requires item are success and
+// nothing else, which is what a bare job name means.
+func onlySuccess(v *yaml.Node) bool {
+	switch v.Kind {
+	case yaml.ScalarNode:
+		return v.Value == "success"
+	case yaml.SequenceNode:
+		for _, st := range v.Content {
+			if st.Kind != yaml.ScalarNode || st.Value != "success" {
+				return false
+			}
+		}
+		return len(v.Content) > 0
+	}
+	return false
+}
+
+func parseFilters(m *yaml.Node) Filters {
 	f := Filters{Present: true}
-	m := deref(v)
-	if m == nil || m.Kind != yaml.MappingNode {
+	if m.Kind != yaml.MappingNode {
 		f.Expr = true // a string: the expression form
 		return f
 	}
@@ -274,10 +281,9 @@ func parseFilters(v *yaml.Node) Filters {
 	return f
 }
 
-func parseRefFilter(v *yaml.Node) *RefFilter {
+func parseRefFilter(m *yaml.Node) *RefFilter {
 	r := &RefFilter{}
-	m := deref(v)
-	if m == nil || m.Kind != yaml.MappingNode {
+	if m.Kind != yaml.MappingNode {
 		r.Dynamic = true
 		return r
 	}
@@ -312,7 +318,7 @@ func (w *Workflow) Condition() Condition {
 		if v == nil {
 			continue
 		}
-		if d := deref(v); d != nil && d.Kind == yaml.ScalarNode && d.Tag == "!!bool" {
+		if v.Kind == yaml.ScalarNode && v.Tag == "!!bool" {
 			result = LiteralCondition
 			continue
 		}
@@ -333,144 +339,81 @@ func (w *Workflow) HasName(name string) bool {
 	return false
 }
 
-// Prune removes the entries at the given indexes and drops their names from
-// the requires of the entries that stay. It re-reads Entries, so the entry
-// pointers from before the call must not be used afterwards.
-func (w *Workflow) Prune(remove map[int]bool) error {
+// Prune removes the entries at the given indexes. It re-reads Entries, so the
+// entry pointers from before the call must not be used afterwards.
+//
+// inert is the part of remove that does not run on this branch or tag.
+// CircleCI ignores a requirement on a job it does not execute, so Prune drops
+// the name of such a job from the requires of the entries that stay, and what
+// runs is the same. It edits nothing else. If an entry that stays requires
+//   - a removed entry that would run, or
+//   - nothing but removed entries that do not run (CircleCI does not run a job
+//     whose requirements are all filtered out, and with none left it would),
+//
+// Prune returns an error and leaves the workflow as it was. The caller removes
+// whole chains of jobs that would run.
+func (w *Workflow) Prune(remove, inert map[int]bool) error {
 	if len(remove) == 0 {
 		return nil
 	}
-	var removed, kept []*yaml.Node
-	gone := map[string]bool{}
-	keptNames := map[string]bool{}
+	var kept []*yaml.Node
+	keptNames, live, dead := map[string]bool{}, map[string]bool{}, map[string]bool{}
 	for i, item := range w.jobs.Content {
-		if remove[i] {
-			removed = append(removed, item)
-			for _, n := range w.Entries[i].Names() {
-				gone[n] = true
-			}
+		names := w.Entries[i].Names()
+		set := keptNames
+		switch {
+		case !remove[i]:
+			kept = append(kept, item)
+		case inert[i]:
+			set = dead
+		default:
+			set = live
+		}
+		for _, n := range names {
+			set[n] = true
+		}
+	}
+	type edit struct {
+		requires *yaml.Node
+		remain   []*yaml.Node
+	}
+	var edits []edit
+	for i, e := range w.Entries {
+		if remove[i] || len(e.Requires) == 0 {
 			continue
 		}
-		kept = append(kept, item)
-		for _, n := range w.Entries[i].Names() {
-			keptNames[n] = true
+		requires := lookup(e.args, "requires")
+		var remain []*yaml.Node
+		dropped := false
+		for _, it := range requires.Content {
+			name, _, _ := requireItem(it)
+			switch {
+			case keptNames[name] || !(live[name] || dead[name]):
+				remain = append(remain, it)
+			case live[name]:
+				return fmt.Errorf("job %s stays and requires %s, which would be removed and would run", e.Name, name)
+			default:
+				dropped = true
+			}
+		}
+		if dropped && len(remain) == 0 {
+			return fmt.Errorf("job %s requires only jobs that do not run here, so dropping them would leave it with no requirement", e.Name)
+		}
+		if dropped {
+			edits = append(edits, edit{requires, remain})
 		}
 	}
-	for n := range keptNames {
-		delete(gone, n)
+	for _, ed := range edits {
+		ed.requires.Content = ed.remain
 	}
-	inlineAnchors(removed, kept)
 	w.jobs.Content = kept
-	if err := w.reload(); err != nil {
-		return err
-	}
-	for _, e := range w.Entries {
-		if err := w.scrubRequires(e, gone); err != nil {
-			return err
-		}
-	}
 	return w.reload()
 }
 
-// inlineAnchors replaces aliases in the kept entries whose anchor is defined
-// inside a removed entry, so that the output has no alias without an anchor.
-func inlineAnchors(removed, kept []*yaml.Node) {
-	anchors := map[string]bool{}
-	for _, r := range removed {
-		walk(r, func(n *yaml.Node) {
-			if n.Anchor != "" {
-				anchors[n.Anchor] = true
-			}
-		})
-	}
-	if len(anchors) == 0 {
-		return
-	}
-	var fix func(n *yaml.Node)
-	fix = func(n *yaml.Node) {
-		for i, c := range n.Content {
-			if c.Kind == yaml.AliasNode && anchors[c.Value] {
-				n.Content[i] = clone(c)
-				continue
-			}
-			fix(c)
-		}
-	}
-	for i, k := range kept {
-		if k.Kind == yaml.AliasNode && anchors[k.Value] {
-			kept[i] = clone(k)
-			continue
-		}
-		fix(k)
-	}
-}
-
-func (w *Workflow) scrubRequires(e *Entry, gone map[string]bool) error {
-	hit := false
-	for _, r := range e.Requires {
-		if gone[r] {
-			hit = true
-		}
-	}
-	if !hit {
-		return nil
-	}
-	seq := deref(lookup(e.args, "requires"))
-	var remain []*yaml.Node
-	for _, it := range seq.Content {
-		if name, _, ok := requireItem(it); ok && gone[name] {
-			continue
-		}
-		remain = append(remain, it)
-	}
-	args, err := w.ownArgs(e)
-	if err != nil {
-		return err
-	}
-	switch {
-	case len(remain) > 0:
-		ns := *seq
-		ns.Anchor, ns.Alias = "", nil
-		ns.Content = remain
-		setOwn(args, "requires", &ns)
-	case ownIndex(args, "requires") >= 0:
-		delOwn(args, "requires")
-	default: // the list comes from a merge key: override it with an empty one
-		setOwn(args, "requires", Seq())
-	}
-	if len(args.Content) == 0 { // nothing but the name is left
-		w.collapse(e)
-	}
-	return nil
-}
-
-// collapse turns an entry whose argument mapping is empty back into a bare name.
-func (w *Workflow) collapse(e *Entry) {
-	item := e.item
-	if item.Kind != yaml.MappingNode || len(item.Content) != 2 {
-		return
-	}
-	key := item.Content[0]
-	item.Kind, item.Tag, item.Style = yaml.ScalarNode, "!!str", 0
-	item.Value = key.Value
-	if key.LineComment != "" {
-		item.LineComment = key.LineComment
-	}
-	if item.HeadComment == "" {
-		item.HeadComment = key.HeadComment
-	}
-	item.Content = nil
-}
-
-// ownArgs makes the entry's arguments a mapping that only this entry owns, and
-// returns it. A bare name becomes `name: {}`, and an alias is replaced by a
-// copy.
+// ownArgs makes the entry's arguments a mapping and returns it. A bare name
+// becomes `name: {}`, and a null argument list an empty mapping.
 func (w *Workflow) ownArgs(e *Entry) (*yaml.Node, error) {
 	item := e.item
-	if item.Kind == yaml.AliasNode {
-		cp := clone(item)
-		*item = *cp
-	}
 	switch item.Kind {
 	case yaml.ScalarNode:
 		key := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: item.Value, LineComment: item.LineComment}
@@ -482,11 +425,7 @@ func (w *Workflow) ownArgs(e *Entry) (*yaml.Node, error) {
 			return nil, errors.New("a job entry must have one key")
 		}
 		item.Style &^= yaml.FlowStyle
-		v := item.Content[1]
-		switch {
-		case v.Kind == yaml.AliasNode:
-			item.Content[1] = clone(v)
-		case isNull(v):
+		if isNull(item.Content[1]) {
 			item.Content[1] = &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
 		}
 		item.Content[1].Style &^= yaml.FlowStyle
@@ -500,6 +439,25 @@ func (w *Workflow) ownArgs(e *Entry) (*yaml.Node, error) {
 	return e.args, nil
 }
 
+// CheckSteps reports whether AddPreSteps and AddPostSteps can edit the entry:
+// its pre-steps and post-steps, when it has them, must each be a list. A key
+// with no value counts as an empty list. The check does not touch the entry.
+func (e *Entry) CheckSteps() error {
+	for _, key := range []string{"pre-steps", "post-steps"} {
+		if err := stepsProblem(e, key); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func stepsProblem(e *Entry, key string) error {
+	if v := lookup(e.args, key); v != nil && !isNull(v) && v.Kind != yaml.SequenceNode {
+		return fmt.Errorf("%s of %q is not a list", key, e.Name)
+	}
+	return nil
+}
+
 // AddPreSteps puts steps before the entry's own pre-steps.
 func (w *Workflow) AddPreSteps(e *Entry, steps ...*yaml.Node) error {
 	return w.addSteps(e, "pre-steps", true, steps)
@@ -510,26 +468,25 @@ func (w *Workflow) AddPostSteps(e *Entry, steps ...*yaml.Node) error {
 	return w.addSteps(e, "post-steps", false, steps)
 }
 
+// addSteps edits the entry only if it can finish: a key that is not a list
+// leaves the entry as it was.
 func (w *Workflow) addSteps(e *Entry, key string, prepend bool, steps []*yaml.Node) error {
+	if err := stepsProblem(e, key); err != nil {
+		return err
+	}
 	args, err := w.ownArgs(e)
 	if err != nil {
 		return err
 	}
 	var seq *yaml.Node
-	if i := ownIndex(args, key); i >= 0 {
-		if args.Content[i+1].Kind == yaml.AliasNode {
-			args.Content[i+1] = clone(args.Content[i+1])
-		}
+	if i := keyIndex(args, key); i >= 0 {
 		seq = args.Content[i+1]
-	} else if merged := deref(lookup(args, key)); merged != nil {
-		seq = clone(merged)
-		setOwn(args, key, seq)
+		if isNull(seq) { // `post-steps:` with no value is an empty list
+			seq.Kind, seq.Tag, seq.Value, seq.Style = yaml.SequenceNode, "!!seq", "", 0
+		}
 	} else {
 		seq = Seq()
 		args.Content = append(args.Content, Str(key), seq)
-	}
-	if seq.Kind != yaml.SequenceNode {
-		return fmt.Errorf("%s of %q is not a list", key, e.Name)
 	}
 	seq.Style &^= yaml.FlowStyle
 	if prepend {
