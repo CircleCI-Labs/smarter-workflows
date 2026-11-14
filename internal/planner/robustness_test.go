@@ -234,7 +234,10 @@ type rbCheck struct {
 //	safety: the output never runs a job the input does not run on the branch;
 //	report: in select mode, the report's running set is what the output runs;
 //	(d) circleci config validate passes (with REQUIRE_CIRCLECI_CLI=1);
-//	(e) an input that passes the policy bundle gives an output that passes it.
+//	(e) an input that passes the policy bundle gives an output that passes it;
+//	(f) the layout check finds a no-op gate in the output that waits for no job
+//	    status, and no structural problem (a requires that points nowhere, a
+//	    cycle, a workspace attached before it is persisted) that the input did not have.
 //
 // The run semantics are CircleCI's as the docs give them: a job runs when its
 // filters pass and at least one of its requirements runs.
@@ -349,6 +352,38 @@ func rbInvariants(t *testing.T, c rbCheck) {
 
 	// (d)
 	rbValidate(t, c.res.Config)
+
+	// (f)
+	rbLayout(t, c)
+}
+
+// rbLayout is invariant (f): the plan, read by the layout check, has a no-op gate
+// and no structural problem that the input config did not have.
+func rbLayout(t *testing.T, c rbCheck) {
+	t.Helper()
+	ctx := context.Background()
+	in, err := planner.CheckLayout(ctx, c.in, planner.LayoutOptions{Workflow: c.wf})
+	if err != nil {
+		t.Fatalf("layout check of the input: %v", err)
+	}
+	out, err := planner.CheckLayout(ctx, c.res.Config, planner.LayoutOptions{Workflow: c.wf, GateJob: planner.DefaultGateJob})
+	if err != nil {
+		t.Fatalf("layout check of the output: %v", err)
+	}
+	had := map[string]bool{}
+	for _, f := range in.Findings {
+		had[f.Code+" "+f.Job] = true
+	}
+	for _, f := range out.Findings {
+		switch f.Code {
+		case planner.CodeGateMissing, planner.CodeGateNotNoOp, planner.CodeGateAwaitsStatusJob:
+			t.Errorf("(f) the layout check finds %s in the plan: %s", f.Code, f.Message)
+		case planner.CodeDanglingRequires, planner.CodeCycle, planner.CodeConsumerBeforeProducer, planner.CodeDuplicateName:
+			if !had[f.Code+" "+f.Job] {
+				t.Errorf("(f) the plan introduced a layout problem: %s: %s", f.Code, f.Message)
+			}
+		}
+	}
 }
 
 // rbEntries returns the entries of workflow wf in cfg.

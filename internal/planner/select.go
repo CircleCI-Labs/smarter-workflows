@@ -35,7 +35,27 @@ type analysis struct {
 	downstreamMemo map[int][]int
 }
 
+// analyse reads the workflow as a graph. Two entries that answer to one name
+// are an error: no requires can tell which one it means.
 func analyse(cfg *config.Config, wf *config.Workflow, branch, tag string) (*analysis, error) {
+	an, clashes := buildAnalysis(cfg, wf, branch, tag)
+	if len(clashes) > 0 {
+		c := clashes[0]
+		return nil, fmt.Errorf("jobs %d and %d of workflow %q share the name %q", c.first+1, c.second+1, wf.Name, c.name)
+	}
+	return an, nil
+}
+
+// nameClash is a name that two entries answer to.
+type nameClash struct {
+	first, second int
+	name          string
+}
+
+// buildAnalysis is analyse that reports clashing names and goes on: the first
+// entry of a name keeps it. The layout check uses it to report every problem of
+// a workflow, and not only the first.
+func buildAnalysis(cfg *config.Config, wf *config.Workflow, branch, tag string) (*analysis, []nameClash) {
 	n := len(wf.Entries)
 	an := &analysis{
 		entries:        slices.Clone(wf.Entries),
@@ -48,10 +68,12 @@ func analyse(cfg *config.Config, wf *config.Workflow, branch, tag string) (*anal
 		afterApproval:  make([]bool, n),
 		downstreamMemo: map[int][]int{},
 	}
+	var clashes []nameClash
 	for i, e := range wf.Entries {
 		for _, name := range e.Names() {
 			if j, dup := an.byName[name]; dup && j != i {
-				return nil, fmt.Errorf("jobs %d and %d of workflow %q share the name %q", j+1, i+1, wf.Name, name)
+				clashes = append(clashes, nameClash{j, i, name})
+				continue
 			}
 			an.byName[name] = i
 		}
@@ -103,7 +125,7 @@ func analyse(cfg *config.Config, wf *config.Workflow, branch, tag string) (*anal
 	for i := range wf.Entries {
 		an.afterApproval[i] = after(i, 0)
 	}
-	return an, nil
+	return an, clashes
 }
 
 // gateIgnores says whether the gate never waits for an entry of this kind: an
