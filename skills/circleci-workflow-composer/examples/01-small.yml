@@ -1,0 +1,63 @@
+# Small layout: four jobs from the catalog and one gate.
+#
+# - lint, unit-test and security-scan have no requires, so they start together.
+#   security-scan is the mandatory job: a root, so no earlier failure can keep it
+#   from running.
+# - build waits for lint and unit-test (fail fast: a failed cheap check saves the
+#   build).
+# - smarter-gate requires every check job and has no filters. It is the single
+#   required status check.
+#
+# The job bodies are stand-ins. In a real layout they come from the catalog.
+version: 2.1
+
+executors:
+  base:
+    docker:
+      - image: cimg/base:2026.11
+    resource_class: small
+
+jobs:
+  lint:
+    executor: base
+    steps:
+      - checkout
+      - run: echo "lint"
+
+  unit-test:
+    executor: base
+    steps:
+      - checkout
+      - run: echo "unit tests"
+
+  security-scan:
+    executor: base
+    steps:
+      - checkout
+      - run: echo "security scan"
+
+  build:
+    executor: base
+    steps:
+      - checkout
+      - run: echo "build"
+
+  smarter-gate:
+    type: no-op
+
+workflows:
+  ci:
+    jobs:
+      - lint
+      - unit-test
+      - security-scan
+      - build:
+          requires:
+            - lint
+            - unit-test
+      - smarter-gate:
+          requires:
+            - lint
+            - unit-test
+            - security-scan
+            - build

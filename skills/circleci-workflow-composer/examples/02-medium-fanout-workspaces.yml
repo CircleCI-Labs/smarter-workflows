@@ -1,0 +1,129 @@
+# Medium layout: a producer, a fan-out over its workspace, a matrix required by
+# alias, and a gate.
+#
+# - lint, security-scan, build and the unit-test matrix start together.
+# - build persists dist/. integration-test and e2e attach it, so both require
+#   build (the data contract fixes the order).
+# - e2e is the expensive job. It also waits for lint and unit-test: both finish
+#   before build, so the extra edges add no wait and a failed cheap check saves
+#   the e2e run.
+# - The unit-test cells run at the same time, so each persists a file of its own
+#   (the runtime is in the path). Two concurrent jobs that persist the same
+#   filename make attach_workspace fail.
+# - `unit-test` in a requires list means every cell of the matrix (its alias is
+#   the job name).
+# - package attaches both layers and requires the jobs that wrote them.
+# - smarter-gate requires every check job and has no filters.
+version: 2.1
+
+executors:
+  base:
+    docker:
+      - image: cimg/base:2026.11
+    resource_class: small
+
+jobs:
+  lint:
+    executor: base
+    steps:
+      - checkout
+      - run: echo "lint"
+
+  security-scan:
+    executor: base
+    steps:
+      - checkout
+      - run: echo "security scan"
+
+  build:
+    executor: base
+    steps:
+      - checkout
+      - run:
+          name: Build
+          command: |
+            mkdir -p /tmp/workspace/dist
+            echo "build output" > /tmp/workspace/dist/app.txt
+      - persist_to_workspace:
+          root: /tmp/workspace
+          paths:
+            - dist
+
+  unit-test:
+    parameters:
+      runtime:
+        type: string
+    executor: base
+    steps:
+      - checkout
+      - run:
+          name: Test on runtime << parameters.runtime >>
+          command: |
+            mkdir -p /tmp/workspace/coverage
+            echo "coverage" > /tmp/workspace/coverage/unit-<< parameters.runtime >>.txt
+      - persist_to_workspace:
+          root: /tmp/workspace
+          paths:
+            - coverage/unit-<< parameters.runtime >>.txt
+
+  integration-test:
+    executor: base
+    steps:
+      - attach_workspace:
+          at: /tmp/workspace
+      - run: ls /tmp/workspace/dist
+
+  e2e:
+    executor: base
+    steps:
+      - attach_workspace:
+          at: /tmp/workspace
+      - run: ls /tmp/workspace/dist
+
+  package:
+    executor: base
+    steps:
+      - attach_workspace:
+          at: /tmp/workspace
+      - store_artifacts:
+          path: /tmp/workspace/dist
+          destination: dist
+      - store_artifacts:
+          path: /tmp/workspace/coverage
+          destination: coverage
+
+  smarter-gate:
+    type: no-op
+
+workflows:
+  ci:
+    jobs:
+      - lint
+      - security-scan
+      - build
+      - unit-test:
+          matrix:
+            parameters:
+              runtime: ["20", "22"]
+      - integration-test:
+          requires:
+            - build
+      - e2e:
+          requires:
+            - build
+            - lint
+            - unit-test
+      - package:
+          requires:
+            - integration-test
+            - e2e
+            - unit-test
+      - smarter-gate:
+          requires:
+            - lint
+            - security-scan
+            - build
+            - unit-test
+            - integration-test
+            - e2e
+            - package
