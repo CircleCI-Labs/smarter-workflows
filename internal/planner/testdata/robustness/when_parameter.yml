@@ -1,0 +1,26 @@
+version: 2.1
+parameters:
+  run-ci:
+    type: boolean
+    default: true
+jobs:
+  lint:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: make lint
+  test:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: make test
+workflows:
+  ci:
+    when: << pipeline.parameters.run-ci >>
+    jobs:
+      - lint
+      - test:
+          requires:
+            - lint

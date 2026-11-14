@@ -1,0 +1,28 @@
+version: 2.1
+jobs:
+  lint:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: make lint
+  test:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: make test
+workflows:
+  ci:
+    jobs:
+      - lint:
+          pre-steps:
+            - run: echo before-lint
+          post-steps:
+            - run: echo after-lint
+      - test:
+          requires:
+            - lint
+          post-steps:
+            - store_test_results:
+                path: reports

@@ -1,0 +1,34 @@
+version: 2.1
+jobs:
+  lint:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: make lint
+  build:
+    parameters:
+      os:
+        type: string
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: echo << parameters.os >>
+  deploy:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: ./deploy/run.sh
+workflows:
+  ci:
+    jobs:
+      - lint
+      - build:
+          matrix:
+            parameters:
+              os: [linux, macos]
+      - deploy:
+          requires:
+            - build

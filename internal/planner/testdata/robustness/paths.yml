@@ -1,0 +1,26 @@
+version: 2.1
+jobs:
+  web-build:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: make web-build
+  api-test:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: make api-test
+  docs-site:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: make docs-site
+workflows:
+  ci:
+    jobs:
+      - web-build
+      - api-test
+      - docs-site

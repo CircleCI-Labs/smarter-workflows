@@ -1,0 +1,37 @@
+version: 2.1
+jobs:
+  alpha:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: make alpha
+  beta:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: make beta
+  gamma:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: make gamma
+  delta:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: make delta
+workflows:
+  ci:
+    jobs:
+      - alpha
+      - beta
+      - gamma:
+          requires:
+            - alpha
+      - delta:
+          requires:
+            - beta
