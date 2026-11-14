@@ -408,10 +408,11 @@ func (p *planner) build(ctx context.Context, forced map[string]bool, fullReason 
 		job := report.Job{Name: e.Name, Run: sel.selected[i] && an.will[i] != triNo}
 		switch {
 		case sel.selected[i]:
-			job.Reasons = append(job.Reasons, sel.reasons[i]...)
+			// What keeps a job from running comes first: it is the answer to "why not?".
 			if an.will[i] == triNo {
 				job.Reasons = append(job.Reasons, an.inertReason(i, p.o.Branch, p.o.Tag))
 			}
+			job.Reasons = append(job.Reasons, sel.reasons[i]...)
 		default:
 			job.Reasons = []string{an.skipReason(i, p.o.Branch, p.o.Tag)}
 		}
