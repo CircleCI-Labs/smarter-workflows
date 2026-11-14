@@ -27,7 +27,7 @@ push to a branch ──► setup: plan job ◄── impact map for the merge-ba
    - jobs with no trace;
    - job groups: an entry that names a group under `job-groups` runs as one unit, since v0.1 does not look inside it.
 
-   Some entries run no steps: an approval (`type: approval`, on the entry or in the job's definition), a no-op job (`type: no-op`) and a release job (`type: release`). They are never traced and have no inputs, so the jobs around them decide. An approval or a no-op job stays when a job that runs requires it. A release job stays when a job it requires runs: it tracks that job's release.
+   Some entries run no steps: an approval (`type: approval`, on the entry or in the job's definition), a no-op job (`type: no-op`) and a release job (`type: release`). They are never traced and have no inputs, so the jobs around them decide. An approval or a no-op job stays when a job that runs requires it. A release job stays when a job it requires runs: it tracks that job's release. A no-op job that nothing requires, such as an `all-tests-passed` that you use as your required status check, always stays: it waits only for the jobs that stay, or for `smarter-gate` when none of the jobs it waited for does, so it never passes before the selected jobs have.
 
    A job that your own `filters` keep off the branch, or whose required jobs they all keep off it, does not run there whatever the change is, even when it is mandatory. The plan leaves it out and says so in a warning. A requirement on a job that does not run is ignored, as in CircleCI, and the plan drops it.
 4. **Guardrails.** The planner checks the config it generated against the Rego bundle in `policies/`, using CircleCI's own policy engine (`circle-policy-agent`).

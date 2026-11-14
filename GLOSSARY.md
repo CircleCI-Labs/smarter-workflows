@@ -41,6 +41,9 @@ The words this project uses, and what each one means. There are no implementatio
 **No-op job**
 : A job defined with `type: no-op`. It runs nothing and costs no credits. It succeeds when the jobs it requires succeed.
 
+**Gatekeeper**
+: A no-op job that no other job requires, which a project uses as its one required status check (for example `all-tests-passed`). Select mode always keeps it, and cuts what it waits for to the jobs that stay.
+
 **Layout**
 : How the jobs of one workflow wait for each other (`requires`, approvals, filters), as opposed to what each job does. `layout check` reports what is wrong with it.
 
