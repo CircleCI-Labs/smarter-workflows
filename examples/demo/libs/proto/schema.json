@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Greeting",
+  "description": "The response of GET /greeting. The api and the web client both follow it.",
+  "type": "object",
+  "required": ["message", "name"],
+  "properties": {
+    "message": { "type": "string" },
+    "name": { "type": "string" }
+  }
+}
