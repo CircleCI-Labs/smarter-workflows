@@ -18,10 +18,10 @@ A job's equivalent of test coverage is the set of repo files it reads. There are
 
 ## Decision
 
-1. On full runs of the default branch, the planner adds a post-step to every job of the pruned workflow. The post-step records:
-   - the git-tracked files whose atime is newer than their mtime;
-   - the directories that were listed.
-   It first probes that atime works on that filesystem. If it doesn't, the trace is marked incomplete.
+1. On full runs of the default branch, the planner adds two steps to every job of the pruned workflow:
+   - Right after checkout, a reset step sets the atime of every tracked file and directory to the epoch, because checkout itself reads every file. It also probes that atime works on that filesystem.
+   - A post-step records the tracked files and the directories whose atime has since moved past the epoch: the ones the job read or listed.
+   A job whose filesystem fails the probe gets an incomplete trace.
 2. A final job merges the traces into the impact map.
 3. It saves the map to the project cache under a key derived from the commit SHA.
 4. On other branches, the planner restores the map for the merge-base commit, falling back to the newest map.
@@ -31,7 +31,7 @@ A job's equivalent of test coverage is the set of repo files it reads. There are
 
 - No ML, no per-language code, no hand-written globs. The map explains itself: "this job read these files".
 - `noatime` filesystems, busybox `find` and non-Linux executors give incomplete traces, so those jobs always run.
-- Traces miss inputs that were read and then rewritten in the same job (formatters that run with `-w`), and inputs from outside the repo. See ADR 2 for how those are covered.
+- Because a read is "atime past the epoch", an input that is read and then rewritten in the same job (a formatter run with `-w`) still counts as read. Traces still miss inputs from outside the repo: see ADR 2 for how those are covered.
 - Cache entries can expire (default retention) and can be written by any branch. A missing map means a full run. Mandatory jobs and guardrails don't depend on the map. Signing the map on the default branch is planned hardening.
 
 ## Verification (2026-11-13)
