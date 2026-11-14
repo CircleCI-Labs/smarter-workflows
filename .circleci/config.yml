@@ -1,0 +1,86 @@
+# The setup config of this repo: Smarter Workflows runs on its own pipeline.
+#
+# One setup job builds the planner from this checkout (the orb is not published
+# yet), plans .circleci/continue.yml and continues the pipeline with the result.
+# It does what the orb's plan job does, with source build, in shadow mode: the
+# plan and the report are made, and every job still runs.
+version: 2.1
+
+setup: true
+
+jobs:
+  plan:
+    docker:
+      - image: cimg/go:1.27.3@sha256:21bc418e37dd1b5a0019dac909ed2cf08fd09f7ca5823256dd1a497741cc8a4f
+    resource_class: medium
+    steps:
+      - checkout
+      # The planner binary. Its version is the commit, and so is its cache key:
+      # the generated smarter-impact-map job restores the same binary.
+      - run:
+          name: "smarter: pick the version"
+          command: |
+            set -eu
+            mkdir -p /tmp/smarter/bin
+            printf 'dev-%s\n' "$CIRCLE_SHA1" > .smarter-version
+      - restore_cache:
+          keys:
+            - smarter-bin-v1-{{ checksum ".smarter-version" }}-{{ arch }}
+      - run:
+          name: "smarter: build"
+          command: |
+            set -eu
+            if [ -x /tmp/smarter/bin/circleci-smarter ]; then
+              echo "smarter: using the cached binary"
+              exit 0
+            fi
+            CGO_ENABLED=0 go build -ldflags "-X main.version=dev-$CIRCLE_SHA1" -o /tmp/smarter/bin/circleci-smarter ./cmd/circleci-smarter
+      - save_cache:
+          key: smarter-bin-v1-{{ checksum ".smarter-version" }}-{{ arch }}
+          paths:
+            - /tmp/smarter/bin
+      - run:
+          name: "smarter: base"
+          command: |
+            set -eu
+            /tmp/smarter/bin/circleci-smarter version
+            /tmp/smarter/bin/circleci-smarter base --default-branch main > .smarter-key
+      # The impact map of the diff base, or else the newest one.
+      - restore_cache:
+          keys:
+            - smarter-impact-v1-{{ checksum ".smarter-key" }}
+            - smarter-impact-v1-
+      - run:
+          name: "smarter: plan"
+          environment:
+            SMARTER_ARG_TRIGGER_TYPE: "<< pipeline.trigger.type >>"
+          command: |
+            set -eu
+            set -- plan \
+              --config .circleci/continue.yml \
+              --workflow ci \
+              --default-branch main \
+              --mode shadow \
+              --mandatory security-scan \
+              --policy-bundle policies
+            if [ -n "$SMARTER_ARG_TRIGGER_TYPE" ]; then
+              set -- "$@" --trigger-type "$SMARTER_ARG_TRIGGER_TYPE"
+            fi
+            /tmp/smarter/bin/circleci-smarter "$@"
+      - store_artifacts:
+          path: /tmp/smarter/plan
+          destination: smarter-plan
+      - run:
+          name: "smarter: continue"
+          command: |
+            set -eu
+            /tmp/smarter/bin/circleci-smarter continue --config /tmp/smarter/continue.yml
+
+workflows:
+  plan:
+    jobs:
+      - plan:
+          # Tag pipelines plan too: the release jobs of continue.yml run on tags.
+          filters:
+            tags:
+              only: /.*/
