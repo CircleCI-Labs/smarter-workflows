@@ -429,3 +429,17 @@ func TestTraceNameCollisionFallsBackToAFullPlanWithoutTrace(t *testing.T) {
 		t.Fatalf("warnings = %v", res.Report.Warnings)
 	}
 }
+
+func TestTraceNeedsConfigVersion21(t *testing.T) {
+	cfg := strings.Replace(traceConfig, "version: 2.1", "version: 2", 1)
+	res := plan(t, planner.Input{Config: []byte(cfg), Map: &impactmap.Map{Version: 1}, Repo: &fakeRepo{}}, traceOpts())
+	if res.Report.Trace != nil || strings.Contains(string(res.Config), "post-steps") {
+		t.Fatalf("a version 2 config cannot take post-steps:\n%s", res.Config)
+	}
+	if !strings.Contains(strings.Join(res.Report.Warnings, "\n"), `the config is version "2"`) {
+		t.Fatalf("warnings = %v", res.Report.Warnings)
+	}
+	if res.Report.Gate == nil {
+		t.Fatal("the gate is still added")
+	}
+}

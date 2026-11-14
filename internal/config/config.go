@@ -60,6 +60,13 @@ func (c *Config) Marshal() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// Version is the config's `version` value ("2.1"), or "" when it is not a
+// plain scalar.
+func (c *Config) Version() string {
+	v, _ := scalarValue(lookup(c.root, "version"))
+	return v
+}
+
 // section returns the mapping under a top-level key, or nil.
 func (c *Config) section(key string) *yaml.Node {
 	v := deref(lookup(c.root, key))
