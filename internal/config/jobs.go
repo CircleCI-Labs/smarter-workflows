@@ -321,6 +321,23 @@ type workspaceUse struct {
 	paths []string
 }
 
+// WorkspaceUse is what steps do with workspaces.
+type WorkspaceUse struct {
+	Persists, Attaches bool
+	// Paths are the `paths` of the persist_to_workspace steps, as written,
+	// sorted and without duplicates.
+	Paths []string
+}
+
+// EntryWorkspace is what the steps that a workflow entry carries do with
+// workspaces: its pre-steps and post-steps, and any other steps it passes to
+// the job as arguments. A job's own steps are not included (see Workspace and
+// JobDef), and neither is what an orb job does inside.
+func (c *Config) EntryWorkspace(e *Entry) WorkspaceUse {
+	u := c.rootScope().workspace(e.args)
+	return WorkspaceUse{Persists: u.persists, Attaches: u.attaches, Paths: u.paths}
+}
+
 // workspace looks through a job's steps, including the steps of the commands
 // of the scope that they call. Orb commands cannot be read, so they are not
 // followed.

@@ -1858,3 +1858,22 @@ func TestRobustness_PolicyBundleReadsAnApprovalDefinedUnderJobs(t *testing.T) {
 		}
 	})
 }
+
+// A job that persists a workspace in the post-steps of its workflow entry
+// persists it as much as one that does so in its definition: the job that
+// attaches it is selected with it.
+func TestRobustness_WorkspacePersistedInAnEntrysPostSteps(t *testing.T) {
+	res := rbRun(t, rbCase{
+		cfg:    rbFixture(t, "entry_steps_workspace.yml"),
+		base:   map[string]string{"src/x.go": "package src\n", "check/rules.txt": "rules\n"},
+		change: rbEdit("src/x.go", "package src\n\n// changed\n"),
+		reads: map[string]rbReads{
+			"compile": {files: []string{"src/x.go"}, dirs: []string{"src"}},
+			"check":   {files: []string{"check/rules.txt"}, dirs: []string{"check"}},
+		},
+		want: rbWant{running: []string{"compile", "check"}, emitted: []string{"compile", "check", "smarter-gate"}, gate: []string{"compile", "check"}},
+	})
+	if got := reasons(t, res, "check"); !slices.Equal(got, []string{"consumes the workspace of compile"}) {
+		t.Errorf("check reasons = %v", got)
+	}
+}

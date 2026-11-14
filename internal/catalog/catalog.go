@@ -219,8 +219,11 @@ func definitionOf(cfg *config.Config, e *config.Entry) (Executor, []string, Work
 	if !jd.Known {
 		return unknown, []string{"unknown"}, Workspace{}
 	}
+	// The entry's own pre-steps and post-steps run in the job as well.
+	extra := cfg.EntryWorkspace(e)
+	persists := sortedUnique(append(slices.Clone(jd.Persists), extra.Paths...))
 	return Executor{Type: jd.Executor.Type, Image: jd.Executor.Image, ResourceClass: jd.Executor.ResourceClass},
-		jd.Steps, Workspace{Persists: jd.Persists, Attaches: ptr(jd.Attaches)}
+		jd.Steps, Workspace{Persists: persists, Attaches: ptr(jd.Attaches || extra.Attaches)}
 }
 
 func ptr(b bool) *bool { return &b }
