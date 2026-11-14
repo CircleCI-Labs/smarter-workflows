@@ -1,0 +1,57 @@
+# Glossary
+
+The words this project uses, and what each one means. There are no implementation details here. For those, see `docs/spec/` and `docs/adr/`.
+
+**Change**
+: The set of files a branch changes, compared with the commit it branched from on the default branch.
+
+**Planner**
+: The step in the setup workflow that decides, for one change, which jobs of the pipeline run.
+
+**Plan**
+: What the planner decides for one pipeline: the jobs that run, the jobs that are skipped and the reason for each, and the continuation config that carries this out.
+
+**Full run**
+: A pipeline that runs every job. The default branch, scheduled pipelines, changes to the pipeline definition, and any case the planner is unsure about all get a full run.
+
+**Impact map**
+: For each job, the files it read and the directories it listed during the last full run on the default branch. It is rebuilt after every green full run, and branches use it to see which jobs a change can affect.
+
+**Trace**
+: The record of the files one job read, taken at the end of the job. The impact map is built from traces.
+
+**Inputs (of a job)**
+: The files and directories in a job's trace. A job whose inputs a change does not touch is a candidate to skip.
+
+**Shadow mode**
+: The planner makes and reports a plan, but every job still runs. Shadow mode measures what select mode would save, and what it would miss.
+
+**Select mode**
+: The planner runs only the jobs its plan selects.
+
+**Compose mode**
+: A later mode: an agent builds jobs and workflows from approved building blocks, within the guardrails.
+
+**Mandatory job**
+: A job that runs in every pipeline, whatever the change, such as a security scan.
+
+**Gate job**
+: The last job of the workflow, which waits for every selected job. It always runs, so a branch protection rule can require it alone, even when other jobs are skipped.
+
+**Guardrail**
+: A config policy that every generated config must pass. Examples: mandatory jobs, contexts allowed only on certain jobs and branches, an approval before a deploy.
+
+**Pre-flight**
+: The planner's own check of its config against the guardrails, before it continues the pipeline.
+
+**Repair**
+: A change the planner makes to its plan so that it passes a guardrail, such as adding a missing mandatory job. A failure it cannot repair turns the plan into a full run.
+
+**Miss**
+: A job the plan skipped (or, in shadow mode, would have skipped) that would have failed.
+
+**Savings**
+: The credits and minutes that skipped jobs did not spend.
+
+**Catalog**
+: The jobs, commands, executors and orbs the planner may pick from. In select mode, the catalog is the project's own pipeline config.
