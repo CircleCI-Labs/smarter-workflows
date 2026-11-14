@@ -67,11 +67,12 @@ func analyse(cfg *config.Config, wf *config.Workflow, branch, tag string) (*anal
 				an.rdeps[j] = append(an.rdeps[j], i)
 			}
 		}
-		switch {
-		case e.Approval:
-		case cfg.HasJob(e.Ref):
+		switch e.Kind {
+		case config.KindApproval, config.KindNoOp, config.KindRelease:
+			// they run no steps, so they neither persist nor attach
+		case config.KindJob:
 			an.producer[i], an.consumer[i] = cfg.Workspace(e.Ref)
-		default: // an orb job: unknown inside, so assume both
+		default: // an orb job or a job group: unknown inside, so assume both
 			an.producer[i], an.consumer[i] = true, true
 		}
 	}
@@ -100,6 +101,13 @@ func analyse(cfg *config.Config, wf *config.Workflow, branch, tag string) (*anal
 		an.afterApproval[i] = after(i, 0)
 	}
 	return an, nil
+}
+
+// gateIgnores says whether the gate never waits for an entry of this kind: an
+// approval waits for a person, and a no-op job runs no steps, so it can only
+// fail with the jobs it requires, which the gate waits for.
+func gateIgnores(k config.Kind) bool {
+	return k == config.KindApproval || k == config.KindNoOp
 }
 
 // downstream lists every entry that requires i, directly or not.
@@ -215,6 +223,11 @@ func (p *planner) directReasons(e *config.Entry, cs *changeSet, mandatory, force
 	if forced[e.Name] {
 		reasons = append(reasons, fmt.Sprintf("required by the guardrails ([smarter:require-job=%s])", e.Name))
 	}
+	if e.Kind == config.KindJobGroup {
+		// A group is one unit in v0.1: it has no trace, so nothing says which of
+		// its jobs a change reaches, and it runs whatever the change is.
+		return append(reasons, "job group: runs as one unit, as v0.1 does not look inside it")
+	}
 	if e.Matrix {
 		reasons = append(reasons, "matrix entry always runs")
 	}
@@ -304,8 +317,11 @@ func (p *planner) selectJobs(an *analysis, cs *changeSet, forced map[string]bool
 	}
 
 	for i, e := range an.entries {
-		if e.Approval || !eligible(i) {
-			continue // an approval is decided by the closure
+		if !e.Kind.HasSteps() || !eligible(i) {
+			// An approval, a no-op job and a release job run no steps. They have
+			// no trace, so no inputs of their own: the jobs around them decide
+			// (the closure below).
+			continue
 		}
 		if rs := p.directReasons(e, cs, mandatory, forced); len(rs) > 0 {
 			sel.selected[i], sel.reasons[i] = true, rs
@@ -314,7 +330,17 @@ func (p *planner) selectJobs(an *analysis, cs *changeSet, forced map[string]bool
 
 	for changed := true; changed; {
 		changed = false
-		for i := range an.entries {
+		for i, e := range an.entries {
+			if e.Kind == config.KindRelease && !sel.selected[i] {
+				// A release job tracks the release of the job it requires: it is
+				// kept when any of them is selected.
+				for _, d := range an.deps[i] {
+					if sel.selected[d] && pick(i, "tracks the release of "+an.entries[d].Name) {
+						changed = true
+						break
+					}
+				}
+			}
 			if !sel.selected[i] {
 				continue
 			}
@@ -341,8 +367,13 @@ func (an *analysis) skipReason(i int, branch, tag string) string {
 	if an.will[i] == triNo {
 		return an.inertReason(i, branch, tag)
 	}
-	if an.entries[i].Approval {
+	switch an.entries[i].Kind {
+	case config.KindApproval:
 		return "no selected job requires this approval"
+	case config.KindNoOp:
+		return "no selected job requires this no-op job"
+	case config.KindRelease:
+		return "none of the jobs it requires is selected"
 	}
 	return "inputs unchanged"
 }

@@ -1,0 +1,32 @@
+version: 2.1
+jobs:
+  lint:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: make lint
+  build:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: make build
+  deploy:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: ./deploy/run.sh
+workflows:
+  ci:
+    jobs:
+      - lint
+      - build:
+          serial-group: << pipeline.project.slug >>/build-group
+          requires:
+            - lint
+      - deploy:
+          serial-group: deploy/production
+          requires:
+            - build
