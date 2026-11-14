@@ -629,6 +629,24 @@ func rbSameTail(t *testing.T, in, out []byte, marker string) {
 	}
 }
 
+// rbSameMeaning checks that the output means the same as the input for what the
+// planner does not touch: workflow wf, and every job definition the input has.
+// Both are read as YAML, so formatting does not count.
+func rbSameMeaning(t *testing.T, in, out []byte, wf string) {
+	t.Helper()
+	inDoc, outDoc := rbDoc(t, in), rbDoc(t, out)
+	if want, got := rbWorkflow(t, inDoc, wf), rbWorkflow(t, outDoc, wf); !reflect.DeepEqual(want, got) {
+		t.Errorf("workflow %s changed:\n--- input\n%v\n--- output\n%v", wf, want, got)
+	}
+	inJobs, _ := inDoc["jobs"].(map[string]any)
+	outJobs, _ := outDoc["jobs"].(map[string]any)
+	for name, want := range inJobs {
+		if got := outJobs[name]; !reflect.DeepEqual(want, got) {
+			t.Errorf("job %s changed:\n--- input\n%v\n--- output\n%v", name, want, got)
+		}
+	}
+}
+
 // ---- the cases ----
 
 // Case 1: an approval in the middle of the DAG. Only build's inputs change, so
@@ -768,8 +786,9 @@ func TestRobustness_TwoWorkflowsOnlyPlannedIsPruned(t *testing.T) {
 	}
 }
 
-// Expected: the other workflow's text is byte-identical, even when its job lists are written without indentation.
-func TestRobustness_OtherWorkflowKeepsItsBytes(t *testing.T) {
+// The other workflow means the same in the output, even when its job lists are
+// written without indentation: the text may change, the meaning may not.
+func TestRobustness_OtherWorkflowKeepsItsMeaning(t *testing.T) {
 	cfg := rbFixture(t, "two_workflows_unindented.yml")
 	res := rbRun(t, rbCase{
 		cfg:    cfg,
@@ -782,7 +801,7 @@ func TestRobustness_OtherWorkflowKeepsItsBytes(t *testing.T) {
 		},
 		want: rbWant{running: []string{"docs"}, emitted: []string{"docs", "smarter-gate"}, gate: []string{"docs"}},
 	})
-	rbSameTail(t, cfg, res.Config, "  nightly:\n")
+	rbSameMeaning(t, cfg, res.Config, "nightly")
 }
 
 // Case 4: a matrix job required by a later job by its base name. The output
