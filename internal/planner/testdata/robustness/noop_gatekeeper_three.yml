@@ -1,0 +1,40 @@
+version: 2.1
+jobs:
+  test-a:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: make test-a
+  test-b:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: make test-b
+  test-c:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: make test-c
+  security-scan:
+    docker:
+      - image: cimg/base:2026.11
+    steps:
+      - checkout
+      - run: make scan
+  all-tests-passed:
+    type: no-op
+workflows:
+  ci:
+    jobs:
+      - test-a
+      - test-b
+      - test-c
+      - security-scan
+      - all-tests-passed:
+          requires:
+            - test-a
+            - test-b
+            - test-c

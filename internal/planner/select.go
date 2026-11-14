@@ -236,7 +236,13 @@ func (cs *changeSet) loadDirs(ctx context.Context, repo Repo, base, head string)
 type selection struct {
 	selected []bool
 	reasons  [][]string // why an entry is selected, or why it is skipped
+	// gatekeeper is set for a leaf no-op entry that the plan keeps although the
+	// closure did not select it (see analysis.gatekeeper).
+	gatekeeper []bool
 }
+
+// gatekeeperReason is why the report says a gatekeeper stays.
+const gatekeeperReason = "kept: a no-op gatekeeper"
 
 // directReasons is the direct selection (step 3) of one entry. An empty result
 // means "inputs unchanged".
@@ -329,7 +335,7 @@ func capped(items []string, prefix, what string) []string {
 // requirement on it, which CircleCI would ignore (step 7).
 func (p *planner) selectJobs(an *analysis, cs *changeSet, forced map[string]bool) *selection {
 	n := len(an.entries)
-	sel := &selection{selected: make([]bool, n), reasons: make([][]string, n)}
+	sel := &selection{selected: make([]bool, n), reasons: make([][]string, n), gatekeeper: make([]bool, n)}
 	mandatory := toSet(p.o.Mandatory)
 	eligible := func(i int) bool { return an.will[i] != triNo }
 	pick := func(i int, why string) bool {
@@ -384,7 +390,24 @@ func (p *planner) selectJobs(an *analysis, cs *changeSet, forced map[string]bool
 			}
 		}
 	}
+
+	// A gatekeeper is kept whatever else is selected: it is not selected, so it
+	// pulls in nothing, and the plan cuts what it waits for (build).
+	for i := range an.entries {
+		sel.gatekeeper[i] = !sel.selected[i] && an.gatekeeper(i)
+	}
 	return sel
+}
+
+// gatekeeper says whether entry i is a gatekeeper: a no-op job that no entry
+// requires, that waits only for success, and that runs on this branch or tag. It
+// is the shape of a job that a project requires as its one status check
+// (CircleCI's gatekeeper pattern), so select mode must not drop it: the check
+// would wait for ever. A no-op job that some entry requires is a coordinator, and
+// stays only when a selected job requires it.
+func (an *analysis) gatekeeper(i int) bool {
+	e := an.entries[i]
+	return e.Kind == config.KindNoOp && !e.StatusRequires && len(an.rdeps[i]) == 0 && an.will[i] != triNo
 }
 
 // skipReason says why an entry was left out of the plan.
