@@ -3,6 +3,8 @@
 package main
 
 import (
+	"github.com/CircleCI-Labs/smarter-workflows/internal/guard"
+
 	"fmt"
 	"os"
 	"sort"
@@ -55,3 +57,7 @@ func main() {
 	}
 	os.Exit(c.run(os.Args[2:]))
 }
+
+// loadGuardrails builds the guardrail checker for `plan --policy-bundle`. The
+// policy command's file sets it, so plan.go needs no import of internal/policy.
+var loadGuardrails func(bundleDir string, meta map[string]any) (guard.Checker, error)
