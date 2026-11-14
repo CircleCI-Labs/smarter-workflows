@@ -43,6 +43,8 @@ usage: scripts/e2e/run-scenarios.sh [options]
   --only NAME[,NAME...]   run only the scenarios with these names
   --list                  list the scenarios and exit
   --dry-run               build each scenario's commit locally, push nothing
+  --evaluate BRANCH:SHA   check the pipeline of a commit that was already pushed
+                          against one scenario (--only NAME); push and delete nothing
   --jobs N                run N scenarios at the same time (default: 1)
   --base-ref REF          branch the scenarios from REF (default: origin/main)
   --timeout SECONDS       how long one scenario may take (default: 1500)
@@ -63,6 +65,7 @@ target=all
 only=
 list=0
 dry=0
+evaluate=
 jobs=1
 base_ref=origin/main
 timeout=1500
@@ -75,6 +78,7 @@ while [ $# -gt 0 ]; do
     --only) only=${2:?--only needs a value}; shift 2 ;;
     --list) list=1; shift ;;
     --dry-run) dry=1; shift ;;
+    --evaluate) evaluate=${2:?--evaluate needs BRANCH:SHA}; shift 2 ;;
     --jobs) jobs=${2:?--jobs needs a value}; shift 2 ;;
     --base-ref) base_ref=${2:?--base-ref needs a value}; shift 2 ;;
     --timeout) timeout=${2:?--timeout needs a value}; shift 2 ;;
@@ -88,6 +92,7 @@ case $target in demo | self | all) ;; *) echo "run-scenarios: --target is demo, 
 case $jobs in '' | *[!0-9]* | 0) echo "run-scenarios: --jobs is a positive number" >&2; exit 2 ;; esac
 case $timeout in '' | *[!0-9]*) echo "run-scenarios: --timeout is a number of seconds" >&2; exit 2 ;; esac
 case $poll in '' | *[!0-9]*) echo "run-scenarios: --poll is a number of seconds" >&2; exit 2 ;; esac
+case $evaluate in '' | *:*) ;; *) echo "run-scenarios: --evaluate is BRANCH:SHA" >&2; exit 2 ;; esac
 if [ "$poll" -lt 15 ]; then
   echo "run-scenarios: --poll is at least 15 seconds" >&2
   exit 2
@@ -96,7 +101,10 @@ fi
 # --- the two pipeline definitions of the project ------------------------------
 
 # target_info NAME sets t_def (the definition id), t_setup (its setup workflow),
-# t_planned (the workflow the planner continues with) and t_file.
+# t_planned (the workflow the planner continues with) and t_file. The pipeline
+# API does not say which definition made a pipeline, so the pipeline of a
+# definition is the one of the pushed commit that has its setup workflow: the
+# two definitions of this project name their setup workflows differently.
 target_info() {
   case $1 in
     demo)
@@ -229,17 +237,23 @@ if [ "$list" -eq 1 ]; then
   exit 0
 fi
 
-echo "base: $base_ref"
-if [ "$dry" -eq 0 ]; then
-  case $base_ref in
-    origin/*) git fetch -q origin "${base_ref#origin/}" ;;
-  esac
-fi
-base_sha=$(git rev-parse --verify -q "$base_ref^{commit}") || {
-  echo "run-scenarios: cannot resolve $base_ref" >&2
+base_sha=
+if [ -z "$evaluate" ]; then
+  echo "base: $base_ref"
+  if [ "$dry" -eq 0 ]; then
+    case $base_ref in
+      origin/*) git fetch -q origin "${base_ref#origin/}" ;;
+    esac
+  fi
+  base_sha=$(git rev-parse --verify -q "$base_ref^{commit}") || {
+    echo "run-scenarios: cannot resolve $base_ref" >&2
+    exit 2
+  }
+  echo "base commit: $base_sha"
+elif [ "$count" -ne 1 ]; then
+  echo "run-scenarios: --evaluate needs exactly one scenario (--target and --only)" >&2
   exit 2
-}
-echo "base commit: $base_sha"
+fi
 
 # --- one scenario ----------------------------------------------------------------
 
@@ -324,65 +338,73 @@ run_scenario() {
   wt=$work/wt-$idx
   dir=$work/art-$idx
 
-  # 1-2. The branch and its commit, in a worktree of its own. The branch is
-  # scenario/<name>-<unix time>; the time moves on if that name is taken.
-  {
-    flock 9
-    local ts
-    ts=$(now)
-    while git show-ref -q --verify "refs/heads/scenario/$name-$ts"; do ts=$((ts + 1)); done
-    branch=scenario/$name-$ts
-    git worktree add -q --no-track -b "$branch" "$wt" "$base_sha"
-  } 9> "$git_lock"
-  printf '%s\n' "$branch" >> "$work/created"
-  if ! (cd "$wt" && bash -euo pipefail -c "$change") > "$work/$idx.change.log" 2>&1; then
-    sed 's/^/  change: /' "$work/$idx.change.log"
-    status=ERROR; note="the change failed"; finish
-    echo "  ERROR: $note"
-    return 0
-  fi
-  git -C "$wt" add -A
-  if git -C "$wt" diff --cached --quiet; then
-    status=ERROR; note="the change did not change anything"; finish
-    echo "  ERROR: $note"
-    return 0
-  fi
-  git -C "$wt" commit -q -m "$message"
-  sha=$(git -C "$wt" rev-parse HEAD)
-  echo "  branch $branch, commit ${sha:0:9}"
-  git -C "$wt" show --stat --format= HEAD | sed 's/^/  /'
-  if [ "$dry" -eq 1 ]; then
-    status=DRY; note="not pushed"; finish
-    return 0
-  fi
-
-  # The map of the base commit has to exist before the plan job looks for it,
-  # so the scenarios that select jobs wait for it before they push.
   local started deadline
-  started=$(now)
-  deadline=$((started + timeout))
-  case $expect in
-    full | full:* | blocked) ;;
-    *)
-      if [ "$base_ref" = origin/main ]; then
-        local why
-        while ! why=$(map_ready "$t_setup" "$t_planned"); do
-          if [ "$(now)" -ge "$deadline" ]; then
-            status=ERROR; note="the base commit has no impact map: $why"; finish
-            echo "  ERROR: $note"
-            return 0
-          fi
-          echo "  waiting for the map of the base commit: $why"
-          sleep "$poll"
-        done
-      fi
-      ;;
-  esac
+  if [ -n "$evaluate" ]; then
+    branch=${evaluate%%:*}
+    sha=${evaluate#*:}
+    echo "  evaluating the pipeline of $branch at ${sha:0:9}; nothing is pushed or deleted"
+  else
+    # 1-2. The branch and its commit, in a worktree of its own. The branch is
+    # scenario/<name>-<unix time>; the time moves on if that name is taken.
+    {
+      flock 9
+      local ts
+      ts=$(now)
+      while git show-ref -q --verify "refs/heads/scenario/$name-$ts"; do ts=$((ts + 1)); done
+      branch=scenario/$name-$ts
+      git worktree add -q --no-track -b "$branch" "$wt" "$base_sha"
+    } 9> "$git_lock"
+    printf '%s\n' "$branch" >> "$work/created"
+    if ! (cd "$wt" && bash -euo pipefail -c "$change") > "$work/$idx.change.log" 2>&1; then
+      sed 's/^/  change: /' "$work/$idx.change.log"
+      status=ERROR; note="the change failed"; finish
+      echo "  ERROR: $note"
+      return 0
+    fi
+    git -C "$wt" add -A
+    if git -C "$wt" diff --cached --quiet; then
+      status=ERROR; note="the change did not change anything"; finish
+      echo "  ERROR: $note"
+      return 0
+    fi
+    git -C "$wt" commit -q -m "$message"
+    sha=$(git -C "$wt" rev-parse HEAD)
+    echo "  branch $branch, commit ${sha:0:9}"
+    git -C "$wt" show --stat --format= HEAD | sed 's/^/  /'
+    if [ "$dry" -eq 1 ]; then
+      status=DRY; note="not pushed"; finish
+      return 0
+    fi
 
-  # 3. Push. Only scenario/* branches are ever pushed.
-  case $branch in scenario/*) ;; *) echo "refusing to push $branch" >&2; exit 2 ;; esac
-  printf '%s\n' "$branch" >> "$branches"
-  git -C "$wt" push -q origin "refs/heads/$branch:refs/heads/$branch"
+    # The map of the base commit has to exist before the plan job looks for it,
+    # so the scenarios that select jobs wait for it before they push.
+    started=$(now)
+    deadline=$((started + timeout))
+    case $expect in
+      full | full:* | blocked) ;;
+      *)
+        if [ "$base_ref" = origin/main ]; then
+          local why
+          while ! why=$(map_ready "$t_setup" "$t_planned"); do
+            if [ "$(now)" -ge "$deadline" ]; then
+              status=ERROR; note="the base commit has no impact map: $why"; finish
+              echo "  ERROR: $note"
+              return 0
+            fi
+            echo "  waiting for the map of the base commit: $why"
+            sleep "$poll"
+          done
+        fi
+        ;;
+    esac
+
+    # 3. Push. Only scenario/* branches are ever pushed.
+    case $branch in scenario/*) ;; *) echo "refusing to push $branch" >&2; exit 2 ;; esac
+    printf '%s\n' "$branch" >> "$branches"
+    git -C "$wt" push -q origin "refs/heads/$branch:refs/heads/$branch"
+    started=$(now)
+    deadline=$((started + timeout))
+  fi
   started=$(now)
   deadline=$((started + timeout))
 
@@ -454,7 +476,7 @@ run_scenario() {
   if [ -n "$plan" ]; then
     plan_full=$(jq -r '.full' "$plan")
     plan_reason=$(jq -r '.full_reason' "$plan")
-    echo "  plan: mode $(jq -r '.mode' "$plan"), full=$plan_full${plan_reason:+ ($plan_reason)}, map $(jq -r '.map_revision // "none"' "$plan" | cut -c1-9), base $(jq -r '.base // "none"' "$plan" | cut -c1-9)"
+    echo "  plan: mode $(jq -r '.mode' "$plan"), full=$plan_full${plan_reason:+ ($plan_reason)}, map $(jq -r '(.map_revision // "") | if . == "" then "none" else .[0:9] end' "$plan"), base $(jq -r '(.base // "") | if . == "" then "none" else .[0:9] end' "$plan")"
     jq -r '.warnings[]? | "  plan warning: " + .' "$plan"
     jq -r '.guardrails | "  guardrails: " + .status + (if (.repairs | length) > 0 then ", repairs " + (.repairs | join(", ")) else "" end)' "$plan"
     jq -r '.guardrails.violations[]? | select(.hard) | "  hard violation: " + .rule + ": " + .message' "$plan"
@@ -544,6 +566,11 @@ run_scenario() {
           if [ -n "$plan" ] && [ "$plan_full" = true ]; then
             fail "the plan is a full run ($plan_reason), want a selection"
           fi
+          if [ -n "$plan" ] && [ "$(jq -r '.map_revision' "$plan")" != "$(jq -r '.base' "$plan")" ]; then
+            # The base of a scenario is main, whose pipeline built this map: any
+            # other map is a stale one, and what it skips proves nothing.
+            fail "the plan used the impact map of $(jq -r '.map_revision | .[0:9]' "$plan"), not the one of its base $(jq -r '.base | .[0:9]' "$plan")"
+          fi
           expected=$(tr ' ' '\n' <<< "$expect" | grep -v '^$' | sort -u)
           local missing unexpected j
           missing=$(comm -23 <(printf '%s\n' "$expected") <(printf '%s\n' "$actual" | grep -v '^$' || true) || true)
@@ -551,7 +578,7 @@ run_scenario() {
           if [ -n "$missing" ] || [ -n "$unexpected" ]; then
             fail "the jobs that ran are not the expected ones"
             echo "  MISMATCH"
-            echo "    expected: $(tr '\n' ' ' <<< "$expected")"
+            echo "    expected: $(tr '\n' ' ' <<< "$expected" | sed 's/ $//')"
             echo "    actual:   ${ran:-nothing}"
             if [ -n "$plan" ]; then
               for j in $missing; do echo "    - $j did not run; plan: $(reason_of "$plan" "$j")"; done
