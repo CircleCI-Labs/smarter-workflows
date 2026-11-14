@@ -1,6 +1,7 @@
 package planner_test
 
 import (
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -82,17 +83,34 @@ func TestGateRequiresTheJobsThatWillRun(t *testing.T) {
 		}
 	})
 
-	t.Run("the gate job is named and imaged as asked, and small", func(t *testing.T) {
+	t.Run("the gate is a named no-op job with no executor and no steps", func(t *testing.T) {
 		o := opts()
-		o.GateJob, o.GateImage = "pr-gate", "cimg/base:2026.10"
+		o.GateJob = "pr-gate"
 		res := plan(t, input(repo), o)
 		out := string(res.Config)
-		want := "  pr-gate:\n    docker:\n      - image: cimg/base:2026.10\n    resource_class: small\n    steps:\n      - run:\n          name: gate\n          command: |\n            echo \"every job this plan selected has passed\"\n"
+		want := "  pr-gate:\n    type: no-op\n"
 		if !strings.Contains(out, want) {
 			t.Fatalf("output lacks the gate definition:\n%s", out)
 		}
+		// Nothing but the type: no executor, no resource class, no steps.
+		def := rawJob(t, res.Config, "pr-gate")
+		if len(def) != 1 || def["type"] != "no-op" {
+			t.Fatalf("the gate definition is %v, want only type: no-op", def)
+		}
 		if res.Report.Gate.Name != "pr-gate" || emittedJobs(t, res, "ci")[len(emittedJobs(t, res, "ci"))-1] != "pr-gate" {
 			t.Fatalf("gate = %+v", res.Report.Gate)
+		}
+	})
+
+	t.Run("the map image is for the impact-map job only", func(t *testing.T) {
+		o := opts()
+		o.Branch, o.MapImage = "main", "cimg/base:2026.10" // a full run on the default branch traces
+		res := plan(t, input(repo), o)
+		if got := rawJob(t, res.Config, planner.ImpactMapJob)["docker"]; !reflect.DeepEqual(got, []any{map[string]any{"image": "cimg/base:2026.10"}}) {
+			t.Fatalf("the map job's docker = %v, want the map image", got)
+		}
+		if strings.Count(string(res.Config), "cimg/base:2026.10") != 1 {
+			t.Fatalf("the map image appears outside the map job:\n%s", res.Config)
 		}
 	})
 }

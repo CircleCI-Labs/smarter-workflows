@@ -37,9 +37,9 @@ const (
 const (
 	// DefaultGateJob is the name of the gate job.
 	DefaultGateJob = "smarter-gate"
-	// DefaultGateImage is the image of the gate and map jobs: a pinned
-	// monthly cimg/base tag.
-	DefaultGateImage = "cimg/base:2026.11"
+	// DefaultMapImage is the image of the impact-map job: a pinned monthly
+	// cimg/base tag. The gate is a no-op job and has no image.
+	DefaultMapImage = "cimg/base:2026.11"
 	// DefaultFullRunPaths makes a change to the pipeline definition a full run.
 	DefaultFullRunPaths = ".circleci/**"
 	// ImpactMapJob is the name of the job that merges the traces into the map.
@@ -80,8 +80,9 @@ type Options struct {
 	// file; turn it off for tests.
 	TraceReset bool
 
-	GateJob   string
-	GateImage string
+	GateJob string
+	// MapImage is the docker image of the impact-map job (step 8.3).
+	MapImage string
 
 	// MapKeyPrefix starts the cache key of the saved impact map. Pipelines of
 	// one project share its cache, so each one needs its own prefix, and its
@@ -104,7 +105,7 @@ func DefaultOptions() Options {
 		Trace:         TraceAuto,
 		TraceReset:    true,
 		GateJob:       DefaultGateJob,
-		GateImage:     DefaultGateImage,
+		MapImage:      DefaultMapImage,
 		MapKeyPrefix:  DefaultMapKeyPrefix,
 		Version:       "dev",
 		BinPath:       "circleci-smarter",
@@ -132,8 +133,8 @@ func (o Options) Validate() error {
 	if !jobName.MatchString(o.GateJob) {
 		return fmt.Errorf("gate job name %q is not usable", o.GateJob)
 	}
-	if strings.TrimSpace(o.GateImage) == "" || strings.ContainsAny(o.GateImage, " \t\r\n") {
-		return fmt.Errorf("gate image %q is not usable", o.GateImage)
+	if strings.TrimSpace(o.MapImage) == "" || strings.ContainsAny(o.MapImage, " \t\r\n") {
+		return fmt.Errorf("map image %q is not usable", o.MapImage)
 	}
 	if !mapKeyPrefixRE.MatchString(o.MapKeyPrefix) {
 		return fmt.Errorf("map key prefix %q is not usable: start with a letter or digit, then use letters, digits, . _ or -", o.MapKeyPrefix)

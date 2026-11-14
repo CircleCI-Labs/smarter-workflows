@@ -12,14 +12,12 @@ import (
 	"github.com/CircleCI-Labs/smarter-workflows/internal/tracescript"
 )
 
-// gateJob is the definition of the gate (step 6): one small docker job whose
-// single step succeeds. Its value is in what it requires.
-func gateJob(image string) *yaml.Node {
-	return config.Map(
-		"docker", config.Seq(config.Map("image", image)),
-		"resource_class", "small",
-		"steps", config.Seq(config.RunStep("gate", "", "", "echo \"every job this plan selected has passed\"\n")),
-	)
+// gateJob is the definition of the gate (step 6): a no-op job. It has no
+// executor and no steps, so it costs no credits, and its value is in what its
+// workflow entry requires. It is CircleCI's gatekeeper pattern for one required
+// status check.
+func gateJob() *yaml.Node {
+	return config.Map("type", "no-op")
 }
 
 func resetStep() *yaml.Node {
@@ -47,7 +45,7 @@ func shellQuote(s string) string {
 // parameters.
 func (p *planner) impactMapJob() *yaml.Node {
 	return config.Map(
-		"docker", config.Seq(config.Map("image", p.o.GateImage)),
+		"docker", config.Seq(config.Map("image", p.o.MapImage)),
 		"resource_class", "small",
 		"steps", config.Seq(
 			config.RunStep("smarter: write version", "", "",
@@ -69,7 +67,7 @@ func (p *planner) impactMapJob() *yaml.Node {
 
 // addGate adds the gate job and its entry, which requires the given jobs.
 func (p *planner) addGate(cfg *config.Config, wf *config.Workflow, requires []string) error {
-	if err := cfg.AddJob(p.o.GateJob, gateJob(p.o.GateImage)); err != nil {
+	if err := cfg.AddJob(p.o.GateJob, gateJob()); err != nil {
 		return err
 	}
 	return wf.AppendEntry(p.o.GateJob, requires)
