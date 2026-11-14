@@ -1,0 +1,99 @@
+{
+  "version": 1,
+  "mode": "select",
+  "full": false,
+  "full_reason": "",
+  "workflow": "ci",
+  "base": "<base>",
+  "head": "<head>",
+  "branch": "feature",
+  "map_revision": "<base>",
+  "map_created_at": "2026-11-12T18:30:00Z",
+  "changed": [
+    {
+      "path": "services/api/handler.go",
+      "status": "M"
+    }
+  ],
+  "jobs": [
+    {
+      "name": "lint",
+      "run": true,
+      "reasons": [
+        "reads services/api/handler.go"
+      ]
+    },
+    {
+      "name": "security-scan",
+      "run": true,
+      "reasons": [
+        "mandatory job"
+      ]
+    },
+    {
+      "name": "api-test",
+      "run": true,
+      "reasons": [
+        "reads services/api/handler.go"
+      ]
+    },
+    {
+      "name": "web-test",
+      "run": false,
+      "reasons": [
+        "inputs unchanged"
+      ]
+    },
+    {
+      "name": "build",
+      "run": true,
+      "reasons": [
+        "reads services/api/handler.go"
+      ]
+    },
+    {
+      "name": "e2e",
+      "run": true,
+      "reasons": [
+        "consumes the workspace of build"
+      ]
+    },
+    {
+      "name": "docs",
+      "run": false,
+      "reasons": [
+        "inputs unchanged"
+      ]
+    },
+    {
+      "name": "hold-deploy",
+      "run": false,
+      "reasons": [
+        "does not run: its filters leave out branch feature"
+      ]
+    },
+    {
+      "name": "deploy",
+      "run": false,
+      "reasons": [
+        "does not run: its filters leave out branch feature"
+      ]
+    }
+  ],
+  "gate": {
+    "name": "smarter-gate",
+    "requires": [
+      "lint",
+      "security-scan",
+      "api-test",
+      "build",
+      "e2e"
+    ]
+  },
+  "guardrails": {
+    "status": "SKIPPED",
+    "repairs": [],
+    "violations": []
+  },
+  "warnings": []
+}

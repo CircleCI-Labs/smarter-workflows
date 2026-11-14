@@ -1,0 +1,103 @@
+{
+  "version": 1,
+  "mode": "select",
+  "full": true,
+  "full_reason": "no usable impact map: there is no impact map at /tmp/smarter/impact-map.json",
+  "workflow": "ci",
+  "base": "<base>",
+  "head": "<head>",
+  "branch": "feature",
+  "map_revision": "",
+  "map_created_at": "",
+  "changed": [
+    {
+      "path": "docs/guide.md",
+      "status": "M"
+    }
+  ],
+  "jobs": [
+    {
+      "name": "lint",
+      "run": true,
+      "reasons": [
+        "full run"
+      ]
+    },
+    {
+      "name": "security-scan",
+      "run": true,
+      "reasons": [
+        "full run"
+      ]
+    },
+    {
+      "name": "api-test",
+      "run": true,
+      "reasons": [
+        "full run"
+      ]
+    },
+    {
+      "name": "web-test",
+      "run": true,
+      "reasons": [
+        "full run"
+      ]
+    },
+    {
+      "name": "build",
+      "run": true,
+      "reasons": [
+        "full run"
+      ]
+    },
+    {
+      "name": "e2e",
+      "run": true,
+      "reasons": [
+        "full run"
+      ]
+    },
+    {
+      "name": "docs",
+      "run": true,
+      "reasons": [
+        "full run"
+      ]
+    },
+    {
+      "name": "hold-deploy",
+      "run": false,
+      "reasons": [
+        "does not run: its filters leave out branch feature",
+        "full run"
+      ]
+    },
+    {
+      "name": "deploy",
+      "run": false,
+      "reasons": [
+        "does not run: its filters leave out branch feature",
+        "full run"
+      ]
+    }
+  ],
+  "gate": {
+    "name": "smarter-gate",
+    "requires": [
+      "lint",
+      "security-scan",
+      "api-test",
+      "web-test",
+      "build",
+      "e2e",
+      "docs"
+    ]
+  },
+  "guardrails": {
+    "status": "SKIPPED",
+    "repairs": [],
+    "violations": []
+  },
+  "warnings": []
+}
