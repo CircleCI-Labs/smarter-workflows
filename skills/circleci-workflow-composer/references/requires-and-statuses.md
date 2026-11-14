@@ -113,6 +113,8 @@ Rules:
 
 ## 4. Matrix jobs
 
+To require a whole matrix, use its `alias`, which defaults to the job name. To pair cells, template the `name:` with `<< matrix.* >>`. [cfg#matrix-requires]
+
 | You want | Write | Compiles to (compiler-checked) |
 |---|---|---|
 | every cell | `requires: [build]` (the job name, or the matrix `alias`) | every cell |
@@ -200,6 +202,7 @@ Source: `docs/spec/v0.1.md` (steps 4 to 7), `docs/limitations.md`.
 [cfg#requires]: https://circleci.com/docs/reference/configuration-reference/#requires
 [cfg#name]: https://circleci.com/docs/reference/configuration-reference/#name
 [cfg#matrix]: https://circleci.com/docs/reference/configuration-reference/#matrix
+[cfg#matrix-requires]: https://circleci.com/docs/reference/configuration-reference/#dependencies-and-matrix-jobs
 [cfg#job-groups]: https://circleci.com/docs/reference/configuration-reference/#job-groups
 [cfg#tags]: https://circleci.com/docs/reference/configuration-reference/#tags
 [wf#flex]: https://circleci.com/docs/guides/orchestrate/workflows/#flexible-job-dependency
