@@ -299,6 +299,17 @@ func TestDirsExistManyDirectories(t *testing.T) {
 	}
 }
 
+// A test repository must not get git's background maintenance: after a commit
+// it would keep writing into the repository while the test removes it.
+func TestRepoHasNoBackgroundGit(t *testing.T) {
+	r := difftest.New(t)
+	for key, want := range map[string]string{"maintenance.auto": "false", "gc.auto": "0", "gc.autodetach": "false"} {
+		if got := r.Git("config", "--get", key); got != want {
+			t.Errorf("%s = %q, want %q", key, got, want)
+		}
+	}
+}
+
 func TestHeadMessage(t *testing.T) {
 	r := difftest.New(t)
 	r.Write("a", "a")
