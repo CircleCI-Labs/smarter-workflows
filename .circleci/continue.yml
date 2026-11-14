@@ -103,7 +103,9 @@ jobs:
       - install-circleci-cli
       - run:
           name: Validate the orb
-          command: circleci orb validate orb/orb.yml
+          # `circleci orb validate` needs an API token, and CI has none. The
+          # script validates the orb inlined in a config, which needs none.
+          command: scripts/validate-orb.sh orb/orb.yml
       - run:
           name: Validate the setup config and the continuation config
           command: |
