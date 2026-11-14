@@ -2,7 +2,7 @@
 
 What v0.1 does not do yet. Each item is safe: where the planner can't decide, the job runs.
 
-- **One planned workflow.** Other workflows in `continue.yml` pass through untouched.
+- **One planned workflow.** Other workflows in `continue.yml` pass through with the same meaning. YAML anchors, aliases and merge keys are expanded everywhere, and formatting such as indentation may change.
 - **Matrix jobs** always run.
 - **Orb jobs** are traced only with `--trace-orb-jobs`: it adds a `checkout` and a reset as pre-steps, so it only suits orb jobs that check out the repo. Without it they always run.
 - **A `checkout` inside a command** gets no reset, so that job's trace comes out incomplete and the job always runs.

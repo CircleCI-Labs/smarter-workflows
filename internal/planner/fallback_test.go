@@ -5,9 +5,30 @@ import (
 	"strings"
 	"testing"
 
+	"go.yaml.in/yaml/v3"
+
 	"github.com/CircleCI-Labs/smarter-workflows/internal/impactmap"
 	"github.com/CircleCI-Labs/smarter-workflows/internal/planner"
 )
+
+// noAnchors fails if the YAML has an anchor, an alias or a merge key.
+func noAnchors(t *testing.T, cfg []byte) {
+	t.Helper()
+	var doc yaml.Node
+	if err := yaml.Unmarshal(cfg, &doc); err != nil {
+		t.Fatalf("the output is not YAML: %v", err)
+	}
+	var walk func(n *yaml.Node)
+	walk = func(n *yaml.Node) {
+		if n.Kind == yaml.AliasNode || n.Anchor != "" || n.Tag == "!!merge" {
+			t.Errorf("line %d: the output has an anchor, an alias or a merge key (%q)", n.Line, n.Value)
+		}
+		for _, c := range n.Content {
+			walk(c)
+		}
+	}
+	walk(&doc)
+}
 
 // Once the config has loaded, an internal error never fails the planner: it
 // plans a full run, and records why.
@@ -42,6 +63,83 @@ func TestInternalErrorsGiveAFullPlan(t *testing.T) {
 			}
 		})
 	}
+}
+
+// A plan that falls back to a full run after the config has loaded is still a
+// plan: it has the gate, and on the default branch the trace too. Only a config
+// that cannot be emitted at all passes through as it came (the tests below).
+// The config has anchors, aliases and a merge key: the fallback plan is built
+// from the expanded config, so none of them is left in the output.
+func TestAFullFallbackStillGetsTheGateAndTheTrace(t *testing.T) {
+	const cfg = `version: 2.1
+jobs:
+  a: {docker: &img [{image: x}], steps: [checkout]}
+  b: {docker: *img, steps: [checkout]}
+workflows:
+  w:
+    jobs:
+      - a: &args {context: shared}
+      - b:
+          <<: *args
+          requires: [a]
+  other:
+    jobs:
+      - b: *args
+`
+	plan := func(t *testing.T, branch string) *planner.Result {
+		o := opts()
+		o.Workflow, o.Branch = "w", branch
+		// The repository panics when it is asked for the changes, on the first
+		// attempt: the plan falls back to a full run.
+		in := planner.Input{Config: []byte(cfg), Map: monorepoMap(), Repo: &fakeRepo{panicMsg: "kaboom"}}
+		res := plan(t, in, o)
+		if !res.Report.Full || !strings.Contains(res.Report.FullReason, "internal error: planner panic: kaboom") {
+			t.Fatalf("full = %v, reason = %q", res.Report.Full, res.Report.FullReason)
+		}
+		if res.GuardrailsFailed || res.Report.Gate == nil {
+			t.Fatalf("gate = %+v, guardrails failed = %v", res.Report.Gate, res.GuardrailsFailed)
+		}
+		noAnchors(t, res.Config)
+		if got := emittedEntry(t, res, "other", "b").Requires; len(got) != 0 {
+			t.Errorf("the other workflow changed: its entry requires %v", got)
+		}
+		return res
+	}
+
+	t.Run("on a branch: the gate", func(t *testing.T) {
+		res := plan(t, "feature")
+		if got := emittedJobs(t, res, "w"); !slices.Equal(got, []string{"a", "b", "smarter-gate"}) {
+			t.Errorf("emitted jobs = %v", got)
+		}
+		if got := res.Report.Gate.Requires; !slices.Equal(got, []string{"a", "b"}) {
+			t.Errorf("gate requires %v", got)
+		}
+		if res.Report.Trace != nil || strings.Contains(string(res.Config), "smarter: collect trace") {
+			t.Errorf("a branch plan has no trace")
+		}
+	})
+
+	t.Run("on the default branch: the gate and the trace", func(t *testing.T) {
+		res := plan(t, "main")
+		if got := emittedJobs(t, res, "w"); !slices.Equal(got, []string{"a", "b", "smarter-impact-map", "smarter-gate"}) {
+			t.Errorf("emitted jobs = %v", got)
+		}
+		if res.Report.Trace == nil || !slices.Equal(res.Report.Trace.Jobs, []string{"a", "b"}) {
+			t.Fatalf("trace = %+v", res.Report.Trace)
+		}
+		cfg := decodeConfig(t, res.Config)
+		for _, name := range []string{"a", "b"} {
+			// One collect step each: b took its arguments from a's by a merge key.
+			post, _ := workflowEntry(t, cfg, "w", name)["post-steps"].([]any)
+			if len(post) != 2 {
+				t.Errorf("%s post-steps = %v, want the collect and persist steps", name, post)
+			}
+		}
+		// The entry of the other workflow shares nothing with a's arguments.
+		if args := workflowEntry(t, cfg, "other", "b"); args["post-steps"] != nil || args["context"] != "shared" {
+			t.Errorf("the other workflow's entry = %v", args)
+		}
+	})
 }
 
 func TestADuplicateJobNameFallsBackToTheConfigAsItCame(t *testing.T) {
