@@ -1101,3 +1101,17 @@ func TestBuildersPanicOnProgrammingErrors(t *testing.T) {
 		}()
 	}
 }
+
+func TestVersion(t *testing.T) {
+	for src, want := range map[string]string{
+		"version: 2.1\n":     "2.1",
+		"version: 2\n":       "2",
+		"version: \"2.1\"\n": "2.1",
+		"jobs: {}\n":         "",
+		"version: [2]\n":     "",
+	} {
+		if got := mustParse(t, src).Version(); got != want {
+			t.Errorf("Version of %q = %q, want %q", src, got, want)
+		}
+	}
+}

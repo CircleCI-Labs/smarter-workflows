@@ -90,6 +90,10 @@ func (p *planner) traceOn(full bool) bool {
 // job that builds the map from their traces. It returns nil when nothing can be
 // traced, with the reason in warnings.
 func (p *planner) injectTrace(cfg *config.Config, wf *config.Workflow, an *analysis) (*report.Trace, []string, error) {
+	if v := cfg.Version(); v != "2.1" {
+		// pre-steps and post-steps exist from version 2.1 on.
+		return nil, []string{fmt.Sprintf("trace: the config is version %q, and the trace steps need version 2.1", v)}, nil
+	}
 	type target struct {
 		e     *config.Entry
 		local bool
