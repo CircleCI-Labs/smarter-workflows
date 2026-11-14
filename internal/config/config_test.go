@@ -773,6 +773,24 @@ func TestAddSteps(t *testing.T) {
             - run: echo post`,
 		},
 		{
+			name: "a key with no value is an empty list",
+			jobs: "      - lint:\n          post-steps:\n          pre-steps: null",
+			want: `      - lint:
+          post-steps:
+            - run: echo post
+          pre-steps:
+            - run: echo pre`,
+		},
+		{
+			name: "a key that is ~ is an empty list too",
+			jobs: "      - lint:\n          post-steps: ~",
+			want: `      - lint:
+          post-steps:
+            - run: echo post
+          pre-steps:
+            - run: echo pre`,
+		},
+		{
 			name:   "an argument mapping shared by an alias is its own copy: the anchor's entry is not edited",
 			jobs:   "      - lint: &args\n          context: c\n      - docs: *args",
 			target: 1,
@@ -826,6 +844,49 @@ func TestAddSteps(t *testing.T) {
 			}
 		})
 	}
+}
+
+// An entry whose pre-steps or post-steps is not a list cannot take steps. It is
+// left exactly as it was, and CheckSteps says so beforehand.
+func TestAddStepsLeavesAnEntryItCannotEditAlone(t *testing.T) {
+	step := func() *yaml.Node { return config.Map("run", "echo hi") }
+	tests := []struct{ name, key, entry string }{
+		{"post-steps is a string", "post-steps", "      - lint:\n          post-steps: echo hi"},
+		{"post-steps is a mapping", "post-steps", "      - lint:\n          post-steps: {run: echo hi}"},
+		{"pre-steps is a number", "pre-steps", "      - lint:\n          context: c\n          pre-steps: 3"},
+		{"post-steps is an empty string", "post-steps", "      - lint:\n          post-steps: ''"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			src := "version: 2.1\nworkflows:\n  w:\n    jobs:\n" + tc.entry + "\n"
+			c := mustParse(t, src)
+			before := mustMarshal(t, c)
+			w := mustWorkflow(t, c, "w")
+			e := w.Entries[0]
+			if err := e.CheckSteps(); err == nil || !strings.Contains(err.Error(), tc.key+` of "lint" is not a list`) {
+				t.Errorf("CheckSteps = %v, want an error about %s", err, tc.key)
+			}
+			add := w.AddPostSteps
+			if tc.key == "pre-steps" {
+				add = w.AddPreSteps
+			}
+			if err := add(e, step()); err == nil {
+				t.Error("adding steps: want an error")
+			}
+			if after := mustMarshal(t, c); after != before {
+				t.Errorf("the entry changed:\n--- before\n%s\n--- after\n%s", before, after)
+			}
+		})
+	}
+
+	t.Run("an entry that can be edited passes the check", func(t *testing.T) {
+		c := mustParse(t, "version: 2.1\nworkflows:\n  w:\n    jobs:\n      - bare\n      - empty:\n      - own:\n          pre-steps: [{run: a}]\n          post-steps:\n")
+		for _, e := range mustWorkflow(t, c, "w").Entries {
+			if err := e.CheckSteps(); err != nil {
+				t.Errorf("%s: CheckSteps = %v", e.Name, err)
+			}
+		}
+	})
 }
 
 func cloneNode(n *yaml.Node) *yaml.Node {
