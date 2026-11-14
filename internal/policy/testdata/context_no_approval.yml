@@ -1,0 +1,23 @@
+# The deploy job does not wait for an approval.
+version: 2.1
+jobs:
+  security-scan:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - checkout
+  deploy:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - checkout
+workflows:
+  ci:
+    jobs:
+      - security-scan
+      - deploy:
+          context: deploy
+          requires: [security-scan]
+          filters:
+            branches:
+              only: [main]

@@ -1,0 +1,15 @@
+# A URL orb that points at a branch, and one that carries credentials.
+version: 2.1
+orbs:
+  shared: https://example.com/example-org/example-orbs/main/src/orb.yml
+  private: https://user:example-password@example.com/example-org/orbs/main/orb.yml?token=example-token
+jobs:
+  security-scan:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - checkout
+workflows:
+  ci:
+    jobs:
+      - security-scan
