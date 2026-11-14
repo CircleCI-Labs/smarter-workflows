@@ -786,8 +786,9 @@ func TestRobustness_FilteredRequirementIsDroppedWhileAnotherOneRuns(t *testing.T
 // [hold-deploy, test], and hold-deploy is filtered to main. On a branch the
 // approval is ignored, and deploy runs after test, with no approval. That is
 // what CircleCI does with the input, so the plan must not change it: deploy
-// stays, and its requirement on the approval goes with the approval. On main,
-// the approval is there, and the requirement stays.
+// stays, its requirement on the approval goes with the approval, and the gate
+// waits for it, since nothing blocks it. On main, the approval is there, and
+// the requirement stays.
 func TestRobustness_ApprovalFilteredOutIsIgnoredWhileAnotherRequirementRuns(t *testing.T) {
 	cfg := rbFixture(t, "approval_filtered_partial.yml")
 	base := map[string]string{"services/api/main.go": "package api\n", "deploy/run.sh": "#!/bin/sh\n"}
@@ -797,7 +798,7 @@ func TestRobustness_ApprovalFilteredOutIsIgnoredWhileAnotherRequirementRuns(t *t
 	}
 	t.Run("on a branch, deploy runs after test", func(t *testing.T) {
 		res := rbRun(t, rbCase{cfg: cfg, base: base, reads: reads, change: rbEdit("deploy/run.sh", "#!/bin/sh\n# changed\n"),
-			want: rbWant{running: []string{"test", "deploy"}, emitted: []string{"test", "deploy", "smarter-gate"}, gate: []string{"test"}}})
+			want: rbWant{running: []string{"test", "deploy"}, emitted: []string{"test", "deploy", "smarter-gate"}, gate: []string{"test", "deploy"}}})
 		if got := emittedEntry(t, res, "ci", "deploy").Requires; !slices.Equal(got, []string{"test"}) {
 			t.Errorf("deploy requires %v, want [test]", got)
 		}
