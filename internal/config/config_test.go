@@ -383,9 +383,47 @@ workflows:
       - lint
       - api
 `
+	const unchanged = `version: 2.1
+jobs:
+  a:
+    docker:
+      - image: x
+workflows:
+  w:
+    jobs:
+      - lint
+      - api: # the api
+          requires:
+            - lint
+      - web:
+          requires: [lint, api]
+          filters:
+            branches:
+              only: main
+      # docs sits last
+      - docs:
+          requires:
+            - lint
+  other:
+    jobs:
+      - lint
+      - api
+`
+	removing := func(w *config.Workflow, names ...string) map[int]bool {
+		remove := map[int]bool{}
+		for i, e := range w.Entries {
+			for _, n := range names {
+				if e.Name == n {
+					remove[i] = true
+				}
+			}
+		}
+		return remove
+	}
 	tests := []struct {
 		name   string
 		remove []string
+		inert  []string // the removed entries that do not run
 		want   string
 	}{
 		{
@@ -452,23 +490,42 @@ workflows:
       - api
 `,
 		},
-	}
-	removing := func(w *config.Workflow, names ...string) map[int]bool {
-		remove := map[int]bool{}
-		for i, e := range w.Entries {
-			for _, n := range names {
-				if e.Name == n {
-					remove[i] = true
-				}
-			}
-		}
-		return remove
+		{
+			// CircleCI ignores a requirement on a job that does not run, so the
+			// name goes from the entries that stay, and nothing else changes.
+			name:   "a requirement on a removed job that does not run is dropped",
+			remove: []string{"api"},
+			inert:  []string{"api"},
+			want: `version: 2.1
+jobs:
+  a:
+    docker:
+      - image: x
+workflows:
+  w:
+    jobs:
+      - lint
+      - web:
+          requires: [lint]
+          filters:
+            branches:
+              only: main
+      # docs sits last
+      - docs:
+          requires:
+            - lint
+  other:
+    jobs:
+      - lint
+      - api
+`,
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			c := mustParse(t, src)
 			w := mustWorkflow(t, c, "w")
-			if err := w.Prune(removing(w, tc.remove...)); err != nil {
+			if err := w.Prune(removing(w, tc.remove...), removing(w, tc.inert...)); err != nil {
 				t.Fatal(err)
 			}
 			if got := mustMarshal(t, c); got != tc.want {
@@ -486,24 +543,88 @@ workflows:
 		})
 	}
 
-	// Dropping a requirement could make a job run that CircleCI would not run:
-	// Prune refuses, and leaves the workflow alone.
-	for _, remove := range [][]string{{"lint"}, {"api"}, {"lint", "web"}} {
-		t.Run("refuses to leave a requirement behind: remove "+strings.Join(remove, ", "), func(t *testing.T) {
+	// Any other edit of a requires list could change what runs. Prune refuses,
+	// and leaves the workflow alone.
+	refusals := []struct {
+		name          string
+		remove, inert []string
+		want          string
+	}{
+		{"a removed job that would run", []string{"api"}, nil, "would run"},
+		{"a removed job that would run, whatever the others do", []string{"lint", "api"}, []string{"lint"}, "would run"},
+		{"a job left with nothing to require", []string{"lint"}, []string{"lint"}, "no requirement"},
+		{"a job whose every requirement is gone", []string{"lint", "api"}, []string{"lint", "api"}, "no requirement"},
+	}
+	for _, tc := range refusals {
+		t.Run("refuses: "+tc.name, func(t *testing.T) {
 			c := mustParse(t, src)
-			before := mustMarshal(t, c)
 			w := mustWorkflow(t, c, "w")
-			err := w.Prune(removing(w, remove...))
-			if err == nil || !strings.Contains(err.Error(), "which would be removed") {
-				t.Fatalf("error = %v, want a refusal", err)
+			err := w.Prune(removing(w, tc.remove...), removing(w, tc.inert...))
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want a refusal that says %q", err, tc.want)
 			}
-			if after := mustMarshal(t, c); after != before {
-				t.Errorf("a refused prune changed the config:\n--- before\n%s\n--- after\n%s", before, after)
+			if after := mustMarshal(t, c); after != unchanged {
+				t.Errorf("a refused prune changed the config:\n%s", after)
 			}
 			if got := names(w); !reflect.DeepEqual(got, []string{"lint", "api", "web", "docs"}) {
 				t.Errorf("entries after a refused prune = %v", got)
 			}
 		})
+	}
+}
+
+// Prune edits nothing unless it can do all of it.
+func TestPruneIsAllOrNothing(t *testing.T) {
+	c := mustParse(t, `version: 2.1
+workflows:
+  w:
+    jobs:
+      - a
+      - b:
+          requires: [a, c]
+      - c
+      - d:
+          requires: [a]
+`)
+	before := mustMarshal(t, c)
+	w := mustWorkflow(t, c, "w")
+	// b could lose a, but d would be left with nothing.
+	if err := w.Prune(map[int]bool{0: true}, map[int]bool{0: true}); err == nil {
+		t.Fatal("Prune left d with no requirement")
+	}
+	if after := mustMarshal(t, c); after != before {
+		t.Errorf("a refused prune edited b:\n%s", after)
+	}
+}
+
+// A requirement with a status goes like any other when its job does not run.
+func TestPruneDropsAStatusRequirementOnAJobThatDoesNotRun(t *testing.T) {
+	c := mustParse(t, `version: 2.1
+workflows:
+  w:
+    jobs:
+      - build
+      - deploy
+      - notify:
+          requires:
+            - build: failed
+            - deploy: [success, canceled]
+`)
+	w := mustWorkflow(t, c, "w")
+	if err := w.Prune(map[int]bool{1: true}, map[int]bool{1: true}); err != nil {
+		t.Fatal(err)
+	}
+	want := `version: 2.1
+workflows:
+  w:
+    jobs:
+      - build
+      - notify:
+          requires:
+            - build: failed
+`
+	if got := mustMarshal(t, c); got != want {
+		t.Fatalf("--- want\n%s\n--- got\n%s", want, got)
 	}
 }
 
@@ -524,7 +645,7 @@ workflows:
           requires: [build]
 `)
 	w := mustWorkflow(t, c, "w")
-	if err := w.Prune(map[int]bool{0: true}); err != nil {
+	if err := w.Prune(map[int]bool{0: true}, nil); err != nil {
 		t.Fatal(err)
 	}
 	if got := w.Entries[len(w.Entries)-1].Requires; !reflect.DeepEqual(got, []string{"build"}) {
@@ -548,7 +669,7 @@ workflows:
           filters: *only_main
 `)
 		w := mustWorkflow(t, c, "w")
-		if err := w.Prune(map[int]bool{0: true}); err != nil {
+		if err := w.Prune(map[int]bool{0: true}, nil); err != nil {
 			t.Fatal(err)
 		}
 		got := mustMarshal(t, c)
@@ -584,7 +705,7 @@ workflows:
       - deploy:
           filters: *feature-only
 `)
-		if err := mustWorkflow(t, c, "ci").Prune(map[int]bool{0: true}); err != nil {
+		if err := mustWorkflow(t, c, "ci").Prune(map[int]bool{0: true}, nil); err != nil {
 			t.Fatal(err)
 		}
 		got := mustMarshal(t, c)
@@ -614,7 +735,7 @@ workflows:
       - b: *entry
 `)
 		w := mustWorkflow(t, c, "w")
-		if err := w.Prune(map[int]bool{0: true}); err != nil {
+		if err := w.Prune(map[int]bool{0: true}, nil); err != nil {
 			t.Fatal(err)
 		}
 		got := mustMarshal(t, c)
@@ -623,14 +744,15 @@ workflows:
 		}
 	})
 
-	t.Run("requires that come from a merge key count: the entry they name cannot go", func(t *testing.T) {
+	t.Run("requires that come from a merge key are edited in the entry that has them", func(t *testing.T) {
 		c := mustParse(t, `version: 2.1
 shared: &shared
-  requires: [lint]
+  requires: [lint, build]
 workflows:
   w:
     jobs:
       - lint
+      - build
       - a:
           <<: *shared
       - b:
@@ -638,16 +760,31 @@ workflows:
           context: c
 `)
 		w := mustWorkflow(t, c, "w")
-		for _, e := range w.Entries[1:] {
-			if !reflect.DeepEqual(e.Requires, []string{"lint"}) {
-				t.Fatalf("%s: Requires = %v, want [lint]", e.Name, e.Requires)
+		for _, e := range w.Entries[2:] {
+			if !reflect.DeepEqual(e.Requires, []string{"lint", "build"}) {
+				t.Fatalf("%s: Requires = %v, want [lint build]", e.Name, e.Requires)
 			}
 		}
-		if err := w.Prune(map[int]bool{0: true}); err == nil {
-			t.Fatal("Prune dropped the requirement that a and b take from the merge key")
-		}
-		if err := w.Prune(map[int]bool{0: true, 1: true, 2: true}); err != nil {
+		// lint does not run: a and b each lose it, and the shared block, which
+		// each took a copy of, is as it was.
+		if err := w.Prune(map[int]bool{0: true}, map[int]bool{0: true}); err != nil {
 			t.Fatal(err)
+		}
+		want := `version: 2.1
+shared:
+  requires: [lint, build]
+workflows:
+  w:
+    jobs:
+      - build
+      - a:
+          requires: [build]
+      - b:
+          requires: [build]
+          context: c
+`
+		if got := mustMarshal(t, c); got != want {
+			t.Fatalf("--- want\n%s\n--- got\n%s", want, got)
 		}
 	})
 }

@@ -6,6 +6,7 @@ import (
 	"path"
 	"slices"
 	"sort"
+	"strings"
 
 	"github.com/CircleCI-Labs/smarter-workflows/internal/config"
 	"github.com/CircleCI-Labs/smarter-workflows/internal/diff"
@@ -284,10 +285,9 @@ func capped(items []string, prefix, what string) []string {
 // selectJobs runs steps 3 and 4. An entry that does not run on this branch
 // (step 5 says no) is never selected: not on its own inputs, not as a mandatory
 // or guardrail-forced job, and not by the closure. So a deploy filtered to main
-// does not keep its whole upstream chain alive on every branch, and a job is
-// never kept without an ancestor it needs. Step 5 gives every job a verdict
-// that is no better than that of the jobs it requires, so everything a selected
-// job requires can be selected too.
+// does not keep its whole upstream chain alive on every branch. A selected job
+// may require one that does not run; that one is left out, and so is the
+// requirement on it, which CircleCI would ignore (step 7).
 func (p *planner) selectJobs(an *analysis, cs *changeSet, forced map[string]bool) *selection {
 	n := len(an.entries)
 	sel := &selection{selected: make([]bool, n), reasons: make([][]string, n)}
@@ -347,7 +347,7 @@ func (an *analysis) skipReason(i int, branch, tag string) string {
 }
 
 // inertReason says why an entry does not run on this branch or tag: its own
-// filters, or a job it requires that does not run.
+// filters, or no job it requires runs.
 func (an *analysis) inertReason(i int, branch, tag string) string {
 	e := an.entries[i]
 	if filterVerdict(e.Filters, branch, tag) == triNo {
@@ -356,12 +356,17 @@ func (an *analysis) inertReason(i int, branch, tag string) string {
 		}
 		return "does not run: its filters leave out branch " + branch
 	}
+	var names []string
 	for _, d := range an.deps[i] {
-		if an.will[d] == triNo {
-			return fmt.Sprintf("does not run: it requires %s, which does not run", an.entries[d].Name)
-		}
+		names = append(names, an.entries[d].Name)
 	}
-	return "does not run"
+	switch len(names) {
+	case 0:
+		return "does not run"
+	case 1:
+		return fmt.Sprintf("does not run: it requires %s, which does not run", names[0])
+	}
+	return "does not run: none of the jobs it requires runs (" + strings.Join(names, ", ") + ")"
 }
 
 func toSet(list []string) map[string]bool {

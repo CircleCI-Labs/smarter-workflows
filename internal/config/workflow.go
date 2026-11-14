@@ -342,41 +342,69 @@ func (w *Workflow) HasName(name string) bool {
 // Prune removes the entries at the given indexes. It re-reads Entries, so the
 // entry pointers from before the call must not be used afterwards.
 //
-// Prune never edits an entry that stays. If one of them requires an entry that
-// goes, Prune returns an error and leaves the workflow as it was: dropping the
-// name would change what the entry waits for, and could make it run when
-// CircleCI would not have run it (a job without its approval, or one whose
-// required job is filtered out). The caller removes whole chains.
-func (w *Workflow) Prune(remove map[int]bool) error {
+// inert is the part of remove that does not run on this branch or tag.
+// CircleCI ignores a requirement on a job it does not execute, so Prune drops
+// the name of such a job from the requires of the entries that stay, and what
+// runs is the same. It edits nothing else. If an entry that stays requires
+//   - a removed entry that would run, or
+//   - nothing but removed entries that do not run (CircleCI does not run a job
+//     whose requirements are all filtered out, and with none left it would),
+//
+// Prune returns an error and leaves the workflow as it was. The caller removes
+// whole chains of jobs that would run.
+func (w *Workflow) Prune(remove, inert map[int]bool) error {
 	if len(remove) == 0 {
 		return nil
 	}
 	var kept []*yaml.Node
-	gone, keptNames := map[string]bool{}, map[string]bool{}
+	keptNames, live, dead := map[string]bool{}, map[string]bool{}, map[string]bool{}
 	for i, item := range w.jobs.Content {
-		if remove[i] {
-			for _, n := range w.Entries[i].Names() {
-				gone[n] = true
-			}
-			continue
+		names := w.Entries[i].Names()
+		set := keptNames
+		switch {
+		case !remove[i]:
+			kept = append(kept, item)
+		case inert[i]:
+			set = dead
+		default:
+			set = live
 		}
-		kept = append(kept, item)
-		for _, n := range w.Entries[i].Names() {
-			keptNames[n] = true
+		for _, n := range names {
+			set[n] = true
 		}
 	}
-	for n := range keptNames {
-		delete(gone, n)
+	type edit struct {
+		requires *yaml.Node
+		remain   []*yaml.Node
 	}
+	var edits []edit
 	for i, e := range w.Entries {
-		if remove[i] {
+		if remove[i] || len(e.Requires) == 0 {
 			continue
 		}
-		for _, r := range e.Requires {
-			if gone[r] {
-				return fmt.Errorf("job %s stays and requires %s, which would be removed", e.Name, r)
+		requires := lookup(e.args, "requires")
+		var remain []*yaml.Node
+		dropped := false
+		for _, it := range requires.Content {
+			name, _, _ := requireItem(it)
+			switch {
+			case keptNames[name] || !(live[name] || dead[name]):
+				remain = append(remain, it)
+			case live[name]:
+				return fmt.Errorf("job %s stays and requires %s, which would be removed and would run", e.Name, name)
+			default:
+				dropped = true
 			}
 		}
+		if dropped && len(remain) == 0 {
+			return fmt.Errorf("job %s requires only jobs that do not run here, so dropping them would leave it with no requirement", e.Name)
+		}
+		if dropped {
+			edits = append(edits, edit{requires, remain})
+		}
+	}
+	for _, ed := range edits {
+		ed.requires.Content = ed.remain
 	}
 	w.jobs.Content = kept
 	return w.reload()
