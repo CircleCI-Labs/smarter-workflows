@@ -167,7 +167,11 @@ func (p *Plan) Markdown() string {
 	}
 	b.WriteString("\n\n")
 
-	b.WriteString("| Job | Run | Reason |\n|---|---|---|\n")
+	column := "Run"
+	if p.Mode == "shadow" {
+		column = "Select mode" // nothing is skipped in shadow mode: this is what select would do
+	}
+	fmt.Fprintf(&b, "| Job | %s | Reason |\n|---|---|---|\n", column)
 	for _, j := range p.Jobs {
 		verdict, reason := "skip", ""
 		if j.Run {

@@ -152,7 +152,7 @@ func TestMarkdown(t *testing.T) {
 			mod:  func(p *report.Plan) { p.Mode = "shadow" },
 			want: `**Smarter Workflows, shadow mode:** every job runs; select mode would run 1 of 2.
 
-| Job | Run | Reason |
+| Job | Select mode | Reason |
 |---|---|---|
 | api-test | run | reads services/api/main.go |
 | docs | skip | inputs unchanged |
