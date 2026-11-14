@@ -48,6 +48,36 @@ type Entry struct {
 	args *yaml.Node // the mapping of arguments, or nil
 }
 
+// MatrixParameters returns the parameters of the entry's matrix: each name
+// with the values it takes, as plain Go values (strings, numbers, booleans). It
+// is nil for an entry with no matrix, or no parameters.
+func (e *Entry) MatrixParameters() map[string][]any {
+	params := lookup(lookup(e.args, "matrix"), "parameters")
+	if params == nil || params.Kind != yaml.MappingNode {
+		return nil
+	}
+	out := map[string][]any{}
+	for i := 0; i+1 < len(params.Content); i += 2 {
+		k, v := params.Content[i], params.Content[i+1]
+		if k.Kind != yaml.ScalarNode {
+			continue
+		}
+		var values []any
+		items := []*yaml.Node{v}
+		if v.Kind == yaml.SequenceNode {
+			items = v.Content
+		}
+		for _, item := range items {
+			var x any
+			if err := item.Decode(&x); err == nil {
+				values = append(values, x)
+			}
+		}
+		out[k.Value] = values
+	}
+	return out
+}
+
 // Requirement is one item of an entry's `requires`: a name and the statuses of
 // that entry it waits for.
 type Requirement struct {

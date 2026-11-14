@@ -75,28 +75,30 @@ func Run(ctx context.Context, in Input, opts Options) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	name, err := chooseWorkflow(cfg, opts.Workflow)
+	name, err := ChooseWorkflow(cfg, opts.Workflow)
 	if err != nil {
-		return nil, &UsageError{Msg: err.Error()}
+		return nil, err
 	}
 	p := &planner{in: in, o: opts, wf: name}
 	return p.run(ctx), nil
 }
 
-func chooseWorkflow(cfg *config.Config, want string) (string, error) {
+// ChooseWorkflow picks the workflow to work on: the one that is named, or the
+// only one. Anything else is a UsageError.
+func ChooseWorkflow(cfg *config.Config, want string) (string, error) {
 	names := cfg.Workflows()
 	switch {
 	case want != "":
 		if !slices.Contains(names, want) {
-			return "", fmt.Errorf("the config has no workflow %q (it has: %s)", want, strings.Join(names, ", "))
+			return "", &UsageError{Msg: fmt.Sprintf("the config has no workflow %q (it has: %s)", want, strings.Join(names, ", "))}
 		}
 		return want, nil
 	case len(names) == 1:
 		return names[0], nil
 	case len(names) == 0:
-		return "", errors.New("the config has no workflow with a job list")
+		return "", &UsageError{Msg: "the config has no workflow with a job list"}
 	}
-	return "", fmt.Errorf("the config has %d workflows (%s): name the one to plan with --workflow", len(names), strings.Join(names, ", "))
+	return "", &UsageError{Msg: fmt.Sprintf("the config has %d workflows (%s): name the one to plan with --workflow", len(names), strings.Join(names, ", "))}
 }
 
 type planner struct {
