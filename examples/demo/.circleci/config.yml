@@ -1,0 +1,92 @@
+# The setup config of the demo monorepo: the reference setup job of this
+# repository (../../../.circleci/config.yml) with the demo's own settings.
+#
+# One setup job builds the planner from this checkout (the orb is not published
+# yet), plans examples/demo/.circleci/continue.yml in select mode and continues
+# the pipeline with the result.
+#
+# The repository's own pipeline runs in the same project and shares its cache.
+# So this pipeline keeps its impact map under its own key prefix,
+# smarter-demo-impact-v1, in both the restore here and the map job the planner
+# adds. Restore keys match by prefix, so the prefix must not start with the
+# default one (smarter-impact-v1): that one's fallback would restore it.
+version: 2.1
+
+setup: true
+
+jobs:
+  plan:
+    docker:
+      - image: cimg/go:1.27.3
+    resource_class: medium
+    steps:
+      - checkout
+      # The planner binary. Its version is the commit, and so is its cache key:
+      # the generated smarter-impact-map job restores the same binary.
+      - run:
+          name: "smarter: pick the version"
+          command: |
+            set -eu
+            mkdir -p /tmp/smarter/bin
+            printf 'dev-%s\n' "$CIRCLE_SHA1" > .smarter-version
+      - restore_cache:
+          keys:
+            - smarter-bin-v1-{{ checksum ".smarter-version" }}-{{ arch }}
+      - run:
+          name: "smarter: build"
+          command: |
+            set -eu
+            if [ -x /tmp/smarter/bin/circleci-smarter ]; then
+              echo "smarter: using the cached binary"
+              exit 0
+            fi
+            CGO_ENABLED=0 go build -ldflags "-X main.version=dev-$CIRCLE_SHA1" -o /tmp/smarter/bin/circleci-smarter ./cmd/circleci-smarter
+      - save_cache:
+          key: smarter-bin-v1-{{ checksum ".smarter-version" }}-{{ arch }}
+          paths:
+            - /tmp/smarter/bin
+      - run:
+          name: "smarter: base"
+          command: |
+            set -eu
+            /tmp/smarter/bin/circleci-smarter version
+            /tmp/smarter/bin/circleci-smarter base --default-branch main > .smarter-key
+      # The impact map of the diff base, or else the newest one of this
+      # pipeline's own prefix.
+      - restore_cache:
+          keys:
+            - smarter-demo-impact-v1-{{ checksum ".smarter-key" }}
+            - smarter-demo-impact-v1-
+      - run:
+          name: "smarter: plan"
+          environment:
+            SMARTER_ARG_TRIGGER_TYPE: "<< pipeline.trigger.type >>"
+          command: |
+            set -eu
+            set -- plan \
+              --config examples/demo/.circleci/continue.yml \
+              --workflow demo \
+              --default-branch main \
+              --mode select \
+              --mandatory security-scan \
+              --policy-bundle policies \
+              --full-run-paths 'examples/demo/.circleci/**' \
+              --map-key-prefix smarter-demo-impact-v1 \
+              --trace-orb-jobs
+            if [ -n "$SMARTER_ARG_TRIGGER_TYPE" ]; then
+              set -- "$@" --trigger-type "$SMARTER_ARG_TRIGGER_TYPE"
+            fi
+            /tmp/smarter/bin/circleci-smarter "$@"
+      - store_artifacts:
+          path: /tmp/smarter/plan
+          destination: smarter-plan
+      - run:
+          name: "smarter: continue"
+          command: |
+            set -eu
+            /tmp/smarter/bin/circleci-smarter continue --config /tmp/smarter/continue.yml
+
+workflows:
+  demo-plan:
+    jobs:
+      - plan
