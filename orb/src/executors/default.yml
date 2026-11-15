@@ -1,0 +1,6 @@
+description: >
+  Linux with git, curl, jq and the shell tools the planner needs (cimg/base).
+  The plan job runs on it unless you pick another executor.
+docker:
+  - image: cimg/base:2026.11
+resource_class: small

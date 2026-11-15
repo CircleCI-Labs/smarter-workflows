@@ -1,0 +1,69 @@
+description: >
+  Put circleci-smarter at /tmp/smarter/bin/circleci-smarter and on PATH.
+  Source build compiles it from the current checkout (this repo's own
+  pipeline). Source release downloads a release; none is published yet, so
+  it fails. Both write .smarter-version (the planner version and a newline)
+  and cache the binary under the key smarter-bin-v1-CHECKSUM-ARCH, where CHECKSUM is the
+  checksum of .smarter-version; the generated smarter-impact-map job restores it.
+parameters:
+  version:
+    type: string
+    default: ""
+    description: The release tag to install for source release, for example v0.1.0. Ignored for source build.
+  source:
+    type: enum
+    enum: [release, build]
+    default: release
+    description: Where the binary comes from.
+steps:
+  - run:
+      name: "smarter: pick the version"
+      environment:
+        SMARTER_ARG_SOURCE: "<< parameters.source >>"
+        SMARTER_ARG_VERSION: "<< parameters.version >>"
+      command: |
+        set -eu
+        mkdir -p /tmp/smarter/bin
+        if [ "$SMARTER_ARG_SOURCE" = build ]; then
+          printf 'dev-%s\n' "$CIRCLE_SHA1" > .smarter-version
+        else
+          if [ -z "$SMARTER_ARG_VERSION" ]; then
+            echo "smarter: set version to a release tag" >&2
+            exit 1
+          fi
+          printf '%s\n' "$SMARTER_ARG_VERSION" > .smarter-version
+        fi
+  - restore_cache:
+      keys:
+        - smarter-bin-v1-{{ checksum ".smarter-version" }}-{{ arch }}
+  - run:
+      name: "smarter: build or download"
+      environment:
+        SMARTER_ARG_SOURCE: "<< parameters.source >>"
+      command: |
+        set -eu
+        bin=/tmp/smarter/bin/circleci-smarter
+        if [ -x "$bin" ]; then
+          echo "smarter: using the cached binary"
+          exit 0
+        fi
+        if [ "$SMARTER_ARG_SOURCE" = build ]; then
+          if ! command -v go > /dev/null 2>&1; then
+            echo "smarter: source build needs Go; run this job on the go executor" >&2
+            exit 1
+          fi
+          CGO_ENABLED=0 go build -ldflags "-X main.version=dev-$CIRCLE_SHA1" -o /tmp/smarter/bin/circleci-smarter ./cmd/circleci-smarter
+        else
+          echo "smarter: release binaries are not published yet; use source build" >&2
+          exit 1
+        fi
+  - save_cache:
+      key: smarter-bin-v1-{{ checksum ".smarter-version" }}-{{ arch }}
+      paths:
+        - /tmp/smarter/bin
+  - run:
+      name: "smarter: put it on PATH"
+      command: |
+        set -eu
+        printf 'export PATH=/tmp/smarter/bin:"$PATH"\n' | tee -a "$BASH_ENV" > /dev/null
+        /tmp/smarter/bin/circleci-smarter version
