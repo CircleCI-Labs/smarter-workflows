@@ -1,62 +1,61 @@
 description: >
   Put circleci-smarter at /tmp/smarter/bin/circleci-smarter and on PATH.
-  Source build compiles it from the current checkout (this repo's own
-  pipeline). Source release downloads a release; none is published yet, so
-  it fails. Both write .smarter-version (the planner version and a newline)
-  and cache the binary under the key smarter-bin-v1-CHECKSUM-ARCH, where CHECKSUM is the
-  checksum of .smarter-version; the generated smarter-impact-map job restores it.
+  Source release (the default) downloads the binary of a GitHub release for the
+  architecture of the job, checks it against SHA256SUMS, and checks the keyless
+  cosign signature of SHA256SUMS: it must come from the release pipeline of the
+  Smarter Workflows project, for the main branch or for the tag of the release.
+  Source build compiles the binary from the current checkout (this repo's own
+  pipeline) and needs Go. Both write .smarter-version (the planner version and a
+  newline) and cache the binary under the key
+  smarter-bin-v1-CHECKSUM-ARCH, where CHECKSUM is the checksum of
+  .smarter-version; the generated smarter-impact-map job restores it.
 parameters:
-  version:
-    type: string
-    default: ""
-    description: The release tag to install for source release, for example v0.1.0. Ignored for source build.
   source:
     type: enum
     enum: [release, build]
     default: release
-    description: Where the binary comes from.
+    description: >
+      Where the binary comes from. release downloads it, build compiles it from
+      the current checkout and needs Go on the job.
+  version:
+    type: string
+    default: ""
+    description: >
+      The release to install for source release, a tag such as v0.2.0. Empty
+      installs the release that this version of the orb was published with.
+      Ignored for source build.
+  verify-signature:
+    type: boolean
+    default: true
+    description: >
+      Check the keyless cosign signature of SHA256SUMS before trusting the
+      release (source release). false still checks the SHA-256 of the
+      download, which catches a damaged file but not a replaced release.
 steps:
   - run:
       name: "smarter: pick the version"
+      shell: /bin/sh
       environment:
+        SMARTER_INSTALL_STEP: pick
         SMARTER_ARG_SOURCE: "<< parameters.source >>"
         SMARTER_ARG_VERSION: "<< parameters.version >>"
-      command: |
-        set -eu
-        mkdir -p /tmp/smarter/bin
-        if [ "$SMARTER_ARG_SOURCE" = build ]; then
-          printf 'dev-%s\n' "$CIRCLE_SHA1" > .smarter-version
-        else
-          if [ -z "$SMARTER_ARG_VERSION" ]; then
-            echo "smarter: set version to a release tag" >&2
-            exit 1
-          fi
-          printf '%s\n' "$SMARTER_ARG_VERSION" > .smarter-version
-        fi
-  - restore_cache:
-      keys:
-        - smarter-bin-v1-{{ checksum ".smarter-version" }}-{{ arch }}
+      command: <<include(scripts/install.sh)>>
+  # Only source build restores the binary: a release is checked every time.
+  - when:
+      condition:
+        equal: [build, << parameters.source >>]
+      steps:
+        - restore_cache:
+            keys:
+              - smarter-bin-v1-{{ checksum ".smarter-version" }}-{{ arch }}
   - run:
       name: "smarter: build or download"
+      shell: /bin/sh
       environment:
+        SMARTER_INSTALL_STEP: get
         SMARTER_ARG_SOURCE: "<< parameters.source >>"
-      command: |
-        set -eu
-        bin=/tmp/smarter/bin/circleci-smarter
-        if [ -x "$bin" ]; then
-          echo "smarter: using the cached binary"
-          exit 0
-        fi
-        if [ "$SMARTER_ARG_SOURCE" = build ]; then
-          if ! command -v go > /dev/null 2>&1; then
-            echo "smarter: source build needs Go; run this job on the go executor" >&2
-            exit 1
-          fi
-          CGO_ENABLED=0 go build -ldflags "-X main.version=dev-$CIRCLE_SHA1" -o /tmp/smarter/bin/circleci-smarter ./cmd/circleci-smarter
-        else
-          echo "smarter: release binaries are not published yet; use source build" >&2
-          exit 1
-        fi
+        SMARTER_ARG_VERIFY: "<< parameters.verify-signature >>"
+      command: <<include(scripts/install.sh)>>
   - save_cache:
       key: smarter-bin-v1-{{ checksum ".smarter-version" }}-{{ arch }}
       paths:
