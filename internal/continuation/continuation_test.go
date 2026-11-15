@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	testKey    = "test-continuation-key-0f9e8d7c"
+	testKey    = "test-continuation-key-0f9e8d7c" // gitleaks:allow (fake key for tests)
 	testConfig = "version: 2.1\n# CONFIG-MARKER\nworkflows:\n  ci:\n    jobs: [build]\n"
 )
 
