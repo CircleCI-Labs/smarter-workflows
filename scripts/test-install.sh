@@ -218,6 +218,7 @@ export PATH
 fake_cosign_sha=$(sum256 "$fix/cosign")
 # install.sh calls cosign_sha256: the pin is the SHA-256 of the fake.
 # shellcheck disable=SC2329
+# shellcheck disable=SC2317 # called indirectly by the install script under test
 cosign_sha256() { echo "$fake_cosign_sha"; }
 
 # release_fixture VERSION: the assets of a release, a signature for main and
@@ -378,9 +379,11 @@ try "a binary that says it is another version" "says it is version v0.9.9, not v
 release_fixture v0.2.0
 
 # shellcheck disable=SC2329
+# shellcheck disable=SC2317 # called indirectly by the install script under test
 cosign_sha256() { echo 0000000000000000000000000000000000000000000000000000000000000000; }
 try "a cosign that is not the pinned one" "does not match its pinned SHA-256" v0.2.0
 # shellcheck disable=SC2329
+# shellcheck disable=SC2317 # called indirectly by the install script under test
 cosign_sha256() { echo "$fake_cosign_sha"; }
 
 FAKE_UNAME_M=aarch64
