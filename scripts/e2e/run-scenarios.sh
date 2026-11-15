@@ -34,6 +34,8 @@ set -euo pipefail
 export LC_ALL=C
 
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# shellcheck source=scripts/e2e/timing.sh
+source "$here/timing.sh"
 
 usage() {
   cat << 'EOF'
@@ -159,22 +161,6 @@ cci() {
     sleep 3
   done
   return 1
-}
-
-# sum_job_run_seconds JSON: seconds of every non-approval job in a workflow.
-sum_job_run_seconds() {
-  jq '[.items[] | select(.type != "approval" and .started_at != null and .stopped_at != null)
-    | ((.stopped_at | sub("\\.[0-9]+"; "Z") | fromdateiso8601) -
-       (.started_at | sub("\\.[0-9]+"; "Z") | fromdateiso8601))] | add // 0' <<< "$1"
-}
-
-# workflow_wall_seconds NAME PIPELINE_WORKFLOWS_JSON
-workflow_wall_seconds() {
-  jq -rn --arg n "$1" '
-    (input.items[] | select(.name == $n)) as $wf
-    | if $wf == null or ($wf.created_at // "") == "" or ($wf.stopped_at // "") == "" then 0
-      else ((($wf.stopped_at | sub("\\.[0-9]+"; "Z") | fromdateiso8601) -
-             ($wf.created_at | sub("\\.[0-9]+"; "Z") | fromdateiso8601)) | floor) end' <<< "$2"
 }
 
 now() { date +%s; }
@@ -375,7 +361,7 @@ run_scenario() {
   [ -n "$run" ] || run=1
 
   local status=FAIL note="" ran="" pnum="" branch sha wt pid dir
-  local job_sec=0 wall_sec=0 plan_sec=0
+  local job_sec=$E2E_TIMING_NA wall_sec=$E2E_TIMING_NA plan_sec=$E2E_TIMING_NA
   local problems=()
   finish() {
     printf '%s\n' "$status$us$tgt$us$name$us$expect$us$ran$us$pnum$us$note$us$run$us$job_sec$us$wall_sec$us$plan_sec" > "$work/$idx.res"
@@ -552,16 +538,15 @@ run_scenario() {
     bad=$(jq -r '.items[] | select(.type != "approval" and .status != "success") | .name + " (" + .status + ")"' <<< "$wf_jobs_json")
     ran=$(tr '\n' ' ' <<< "$actual" | sed 's/ $//')
     echo "  ran: ${ran:-nothing} (+ smarter-gate)"
-    job_sec=$(sum_job_run_seconds "$wf_jobs_json")
+    if [ "$dry" -eq 0 ]; then
+      job_sec=$(sum_job_run_seconds "$wf_jobs_json")
+    fi
   fi
   if [ "$dry" -eq 0 ] && [ -n "$wfs" ]; then
     wall_sec=$(workflow_wall_seconds "$t_planned" "$wfs")
   fi
   if [ "$dry" -eq 0 ] && [ -n "$setup_jobs" ]; then
-    plan_sec=$(jq '[.items[] | select(.name == "plan")][0]
-      | if . == null or .started_at == null or .stopped_at == null then 0
-        else ((.stopped_at | sub("\\.[0-9]+"; "Z") | fromdateiso8601) -
-              (.started_at | sub("\\.[0-9]+"; "Z") | fromdateiso8601)) end' <<< "$setup_jobs")
+    plan_sec=$(plan_job_seconds "$setup_jobs")
   fi
 
   case $expect in
@@ -696,8 +681,10 @@ print_savings_summary() {
   local full_med name tgt med saved pct
   [ -n "$csv" ] || return
   [ -s "$timing" ] || return
-  full_med=$(awk -F'\t' '$6 == "PASS" && $4 ~ /^full/ && $5 > 0 { print $5 }' "$timing" | median_of)
-  [ "$full_med" -gt 0 ] 2> /dev/null || full_med=0
+  full_med=$(awk -F'\t' '$6 == "PASS" && $4 ~ /^full/ && $5 ~ /^[0-9]+$/ { print $5 }' "$timing" | median_of)
+  if ! [ "$full_med" -gt 0 ] 2> /dev/null; then
+    full_med=$E2E_TIMING_NA
+  fi
   echo
   echo "### Median job seconds (benchmark savings)"
   echo
@@ -706,16 +693,16 @@ print_savings_summary() {
   while IFS=$'\t' read -r name tgt; do
   [ -n "$name" ] || continue
   med=$(awk -F'\t' -v n="$name" -v t="$tgt" \
-    '$1 == n && $2 == t && $6 == "PASS" && $5 > 0 { print $5 }' "$timing" | median_of)
-  case $med in
-    '' | *[!0-9]*) med=0 ;;
-  esac
-  if [ "$full_med" -gt 0 ] && [ "$med" -gt 0 ]; then
+    '$1 == n && $2 == t && $6 == "PASS" && $5 ~ /^[0-9]+$/ { print $5 }' "$timing" | median_of)
+  if ! [ "$med" -gt 0 ] 2> /dev/null; then
+    med=$E2E_TIMING_NA
+  fi
+  if [ "$full_med" != "$E2E_TIMING_NA" ] && [ "$med" != "$E2E_TIMING_NA" ]; then
     saved=$((full_med - med))
     pct=$(awk -v s="$saved" -v f="$full_med" 'BEGIN { if (f > 0) printf "%.0f", 100 * s / f; else print "0" }')
     printf '| %s | %s | %s | %s | %s%% |\n' "$name" "$tgt" "$med" "$full_med" "$pct"
   else
-    printf '| %s | %s | %s | %s | — |\n' "$name" "$tgt" "${med:-0}" "${full_med:-0}"
+    printf '| %s | %s | %s | %s | — |\n' "$name" "$tgt" "$med" "$full_med"
   fi
   done < <(awk -F'\t' '{ print $1 FS $2 }' "$timing" | sort -u)
 }
