@@ -23,7 +23,7 @@ Demo monorepo (`examples/demo`, 13 jobs, select mode). The two `worker-test` mat
 | shared schema | lint, api-test, web-test, security-scan, worker-test ×2 | 99 s |
 | api service, or a new file in it | lint, api-test, build, e2e (consumes build's workspace), security-scan, worker-test ×2 | 122–170 s |
 | a job with `resource_class: xlarge` | nothing: the setup job stops at the guardrails, and the check fails | 0 s |
-| a deleted file under `services/web` | lint, web-bundle, security-scan, worker-test ×2 | — |
+| a deleted file under `services/web` | lint, web-test, web-bundle, security-scan, worker-test ×2 | — |
 | a rename under `services/api` | lint, api-test, build, e2e, security-scan, worker-test ×2 | — |
 | docs and the API in one commit | docs-check, lint, api-test, build, e2e, security-scan, worker-test ×2 | — |
 | only `scripts/e2e.sh` | build, e2e, security-scan, worker-test ×2 | — |
