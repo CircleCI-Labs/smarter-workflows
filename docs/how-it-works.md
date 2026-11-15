@@ -1,3 +1,9 @@
+---
+page-title: How it works
+page-audience: admin
+page-description: How the planner learns an impact map on the default branch, plans a branch from it, checks the plan against the guardrails, and ends with a gate.
+---
+
 # How Smarter Workflows works
 
 ## The loop
@@ -70,6 +76,8 @@ From the first real impact map:
 | `.circleci/continue.yml` | all 8 | the pipeline definition changed |
 
 The docs-only branch in select mode spent 46 s of job time, against 280 s for the full run, about 84% less compute.
+
+The numbers are from before the pipeline gained the job `docs-site-build`, which builds the docs site and reads `docs/`. A docs-only change now runs that job too.
 
 ## Tools for agents
 

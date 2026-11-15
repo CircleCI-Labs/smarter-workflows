@@ -1,6 +1,15 @@
-# Quickstart (private preview)
+---
+page-title: Quickstart
+page-audience: admin
+page-description: Add Smarter Workflows to a CircleCI project in shadow mode, read the plan reports, and switch to select mode when they convince you.
+---
 
-The orb isn't published yet. Until it is, copy the setup job from this repo's [`.circleci/config.yml`](../.circleci/config.yml); it builds the planner from source.
+# Quickstart
+
+> [!NOTE]
+> CircleCI Labs project, `0.x`, not supported by CircleCI support. [What is tested](../README.md#what-is-tested) shows what CI checks, and [Limitations](limitations.md) lists what v0.1 does not do yet.
+
+The orb is not published yet. Once it is, the setup job is the one in the [README quickstart](../README.md#quickstart). Until then, copy the setup job from this repository's [`.circleci/config.yml`](../.circleci/config.yml); it builds the planner from source.
 
 1. **Move your pipeline** (jobs, workflows, orbs, executors) to `.circleci/continue.yml`. That file is the catalog the planner picks from. Nothing else in it changes.
 2. **Add the setup config** in `.circleci/config.yml`: `setup: true`, one workflow, one `plan` job. The job runs:
@@ -9,15 +18,16 @@ The orb isn't published yet. Until it is, copy the setup job from this repo's [`
    - `circleci-smarter plan --config .circleci/continue.yml --workflow <your workflow> --mode shadow --mandatory <jobs>`;
    - `store_artifacts` for `/tmp/smarter/plan`;
    - `circleci-smarter continue --config /tmp/smarter/continue.yml`.
-3. **Turn on setup workflows** under Project Settings → Advanced, if they aren't on.
+3. **Turn on setup workflows** under Project Settings → Advanced, if they are not on.
 4. **Push to the default branch.** The first full run traces every job and saves the first impact map.
-5. **Push branches** and read `smarter-plan/plan.md` in each plan job's artifacts. Shadow mode still runs everything.
+5. **Push branches** and read `smarter-plan/plan.md` in the artifacts of each plan job. Shadow mode still runs everything.
 6. **Pick the required check** in your branch protection rules: the planned workflow's check (GitHub App projects report one check per workflow), or `smarter-gate` if you use per-job statuses. `smarter-gate` is a no-op job: it costs no credits.
 7. **Switch to select mode** (`--mode select`) when the shadow reports convince you.
 
 ## Optional: guardrails
 
 Copy [`policies/`](../policies/), edit the settings at the top of `guardrails.rego`, and pass `--policy-bundle policies` to `plan`. Every plan is then checked before it continues. On the Scale plan you can also push the same bundle as org policy:
+
 - limit it to the projects that opt in;
 - start with every rule in `soft_rules`;
 - leave the `_test.rego` file out of the pushed directory.

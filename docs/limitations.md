@@ -1,6 +1,12 @@
+---
+page-title: Limitations
+page-audience: admin
+page-description: What v0.1 does not do yet, and why each limit is safe: where the planner cannot decide, the job runs.
+---
+
 # Limitations (v0.1)
 
-What v0.1 does not do yet. Each item is safe: where the planner can't decide, the job runs.
+What v0.1 does not do yet. Each item is safe: where the planner cannot decide, the job runs.
 
 - **One planned workflow.** Other workflows in `continue.yml` pass through with the same meaning. YAML anchors, aliases and merge keys are expanded everywhere, and formatting such as indentation may change.
 - **The gate is a no-op job**, so it runs no steps and cannot check anything itself. It only passes when the jobs it requires pass. `--gate-image` no longer picks its image (the gate has none): it is a deprecated alias of `--map-image`, the image of the impact-map job.
@@ -11,8 +17,8 @@ What v0.1 does not do yet. Each item is safe: where the planner can't decide, th
 - **A `checkout` inside a command** gets no reset, so that job's trace comes out incomplete and the job always runs.
 - **Expression filters** (string filters) are reported, and left out of the gate.
 - **A job that requires only filtered-out jobs by a status** (`- deploy: failed`, with `deploy` filtered out on the branch) may or may not run, so the plan cannot leave it out or drop its requirement: it is a full run.
-- **Inputs from outside the repo** aren't traced: the network, time, secrets, images. Full runs on the default branch, mandatory jobs and `--extra-inputs` cover them.
-- **The impact map lives in the project cache.** Any branch can write a cache entry, so a forged map could skip jobs. Mandatory jobs and guardrails don't depend on the map. Signing maps on the default branch is planned.
+- **Inputs from outside the repo** are not traced: the network, time, secrets, images. Full runs on the default branch, mandatory jobs and `--extra-inputs` cover them.
+- **The impact map lives in the project cache.** Any branch can write a cache entry, so a forged map could skip jobs. Mandatory jobs and guardrails do not depend on the map. Signing maps on the default branch is planned.
 - **Setup job time.** The plan job takes about a minute here, because it builds the planner from source. A released binary would make it a few seconds.
 - **The report's job count** includes jobs that filters exclude on the branch.
 - **Planned next:**
