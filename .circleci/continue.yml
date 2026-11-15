@@ -136,6 +136,9 @@ jobs:
       - run:
           name: Tests of the orb install script
           command: scripts/test-install.sh
+      - run:
+          name: GitHub slug from CI environment
+          command: scripts/test-github-slug.sh
 
   release-dry-run:
     docker:
@@ -210,6 +213,8 @@ jobs:
     docker:
       - image: cimg/go:1.27.3
     resource_class: small
+    environment:
+      GITHUB_REPOSITORY: CircleCI-Labs/smarter-workflows
     steps:
       - checkout
       # The build comes first: a site that does not build is not published.
@@ -270,6 +275,8 @@ jobs:
     docker:
       - image: cimg/go:1.27.3
     resource_class: medium
+    environment:
+      GITHUB_REPOSITORY: CircleCI-Labs/smarter-workflows
     steps:
       - checkout
       - run:

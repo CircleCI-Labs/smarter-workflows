@@ -11,8 +11,13 @@ trap 'rm -rf "$out"' EXIT
 export RELEASE_OUT="$out"
 export RELEASE_SKIP_SIGN=1
 export CIRCLE_TAG=v0.0.1
-export CIRCLE_PROJECT_USERNAME=CircleCI-Labs
+export CIRCLE_PROJECT_USERNAME=CircleCI-Labs-Standalone
 export CIRCLE_PROJECT_REPONAME=smarter-workflows
+export CIRCLE_REPOSITORY_URL=git@github.com:CircleCI-Labs/smarter-workflows.git
+
+. "$root/scripts/github-slug.sh"
+got=$(github_slug_from_env)
+test "$got" = CircleCI-Labs/smarter-workflows
 
 "$root/scripts/release.sh"
 

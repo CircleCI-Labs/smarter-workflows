@@ -28,6 +28,8 @@ root=$(cd "$(dirname "$0")/.." && pwd)
 
 # shellcheck source=orb/src/scripts/install.sh
 . "$root/orb/src/scripts/install.sh"
+# shellcheck source=scripts/github-slug.sh
+. "$root/scripts/github-slug.sh"
 
 say() { printf '==> %s\n' "$*"; }
 die() { printf 'release: %s\n' "$*" >&2; exit 1; }
@@ -133,7 +135,7 @@ publish_github() {
     return 0
   fi
   [ "${RELEASE_SKIP_SIGN:-}" != 1 ] || die "refusing to publish an unsigned release"
-  slug=${CIRCLE_PROJECT_USERNAME:?}/${CIRCLE_PROJECT_REPONAME:?}
+  slug=$(github_slug_from_env) || die "cannot resolve the GitHub repository"
   sha=${CIRCLE_SHA1:-$(git -C "$root" rev-parse HEAD)}
   assets="$out/SHA256SUMS"
   for f in "$out"/circleci-smarter_"${version}"_*; do
