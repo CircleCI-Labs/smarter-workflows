@@ -79,7 +79,7 @@ Read the docs at [circleci-labs.github.io/smarter-workflows](https://circleci-la
 |---|---|
 | Set it up | [Quickstart](docs/quickstart.md) |
 | Understand how it decides | [How it works](docs/how-it-works.md), [Glossary](GLOSSARY.md) |
-| Judge the risk | [Limitations](docs/limitations.md), [Validation](docs/validation.md) |
+| Judge the risk | [Limitations](docs/limitations.md), [Validation](docs/validation.md), [Threat model](docs/threat-model.md) |
 | Try it on an example | [Demo monorepo](examples/demo/README.md), [end-to-end scenarios](scripts/e2e/run-scenarios.sh) |
 | Compose workflows with an agent | [Composer skill](skills/circleci-workflow-composer/SKILL.md), [Compose eval](examples/compose-eval/README.md) |
 | Look up a command or a file format | [Spec v0.1](docs/spec/v0.1.md) |
