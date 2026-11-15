@@ -148,6 +148,11 @@ data-copied-label="Copied!"
 &lt;td&gt;also trace orb jobs (assumes their executor is Linux)&lt;/td&gt;
 &lt;/tr&gt;
 &lt;tr&gt;
+&lt;td&gt;&lt;code&gt;--trace-jobs&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;(empty)&lt;/td&gt;
+&lt;td&gt;comma-separated job-name globs: trace Linux jobs whose executor cannot be read (for example self-hosted runners); never traces Windows or macOS&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
 &lt;td&gt;&lt;code&gt;--gate-job&lt;/code&gt;&lt;/td&gt;
 &lt;td&gt;&lt;code&gt;smarter-gate&lt;/code&gt;&lt;/td&gt;
 &lt;td&gt;the name of the gate job, which is a no-op job (step 6)&lt;/td&gt;
@@ -710,7 +715,7 @@ When &lt;code&gt;when&lt;/code&gt;/&lt;code&gt;unless&lt;/code&gt; can be evalua
 &lt;li&gt;&lt;code&gt;persist_to_workspace&lt;/code&gt; with root &lt;code&gt;/tmp/smarter&lt;/code&gt; and paths &lt;code&gt;[traces]&lt;/code&gt;.&lt;/li&gt;
 &lt;/ul&gt;
 &lt;/li&gt;
-&lt;li&gt;If the spike (W3) shows that &lt;code&gt;checkout&lt;/code&gt; itself reads files, also insert a step right after &lt;code&gt;checkout&lt;/code&gt; in those local job definitions that resets the atime of tracked files to epoch 0. The planner cannot reach the &lt;code&gt;checkout&lt;/code&gt; inside an orb job, so with &lt;code&gt;--trace-orb-jobs&lt;/code&gt; an orb entry gets &lt;code&gt;pre-steps&lt;/code&gt; &lt;code&gt;[checkout, &amp;lt;that reset step&amp;gt;]&lt;/code&gt; instead: it checks out first, then resets, and the orb job&amp;rsquo;s own &lt;code&gt;checkout&lt;/code&gt; follows.&lt;/li&gt;
+&lt;li&gt;If the spike (W3) shows that &lt;code&gt;checkout&lt;/code&gt; itself reads files, also insert a step right after the first &lt;code&gt;checkout&lt;/code&gt; of the job: a top-level step, or right after a local command invocation whose definition contains &lt;code&gt;checkout&lt;/code&gt; (including nested commands, up to a depth limit). For &lt;code&gt;checkout: {path: X}&lt;/code&gt;, the reset and collect steps get &lt;code&gt;CIRCLE_WORKING_DIRECTORY&lt;/code&gt; set to that path. The planner cannot reach the &lt;code&gt;checkout&lt;/code&gt; inside an orb job, so with &lt;code&gt;--trace-orb-jobs&lt;/code&gt; an orb entry gets &lt;code&gt;pre-steps&lt;/code&gt; &lt;code&gt;[checkout, &amp;lt;that reset step&amp;gt;]&lt;/code&gt; instead: it checks out first, then resets, and the orb job&amp;rsquo;s own &lt;code&gt;checkout&lt;/code&gt; follows. Jobs with no checkout are not traced. The plan report lists every workflow job in &lt;code&gt;trace_coverage&lt;/code&gt;, with a reason when it is not traced (unknown executor, no checkout, job group, matrix, orb without &lt;code&gt;--trace-orb-jobs&lt;/code&gt;, and so on).&lt;/li&gt;
 &lt;li&gt;Add the job &lt;code&gt;smarter-impact-map&lt;/code&gt;. It requires every traced entry that is not downstream of an approval. Its steps:
 &lt;ol&gt;
 &lt;li&gt;write &lt;code&gt;.smarter-version&lt;/code&gt; (the planner&amp;rsquo;s own version, as a literal);&lt;/li&gt;

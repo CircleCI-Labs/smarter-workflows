@@ -579,7 +579,14 @@ data-copied-label="Copied!"
 &lt;a href="#several-pipelines-in-one-project" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;All pipelines of a project share its cache. Give each setup config its own &lt;code&gt;map-key-prefix&lt;/code&gt; (default &lt;code&gt;smarter-impact-v1&lt;/code&gt;) on the plan job. Restore keys match by prefix, so no prefix may start with another one followed by a dash: &lt;code&gt;smarter-impact-v1&lt;/code&gt; would restore the maps of &lt;code&gt;smarter-impact-v1-demo&lt;/code&gt;. &lt;code&gt;smarter-demo-impact-v1&lt;/code&gt; is fine.&lt;/p&gt;
 &lt;h2 data-hextra-search-id="requirements"&gt;Requirements&lt;span class="hx:absolute hx:-mt-20" id="requirements"&gt;&lt;/span&gt;
 &lt;a href="#requirements" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ul&gt;
-&lt;li&gt;&lt;strong&gt;Linux jobs&lt;/strong&gt; (docker or machine) for tracing. Other jobs always run.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Linux jobs&lt;/strong&gt; (docker or machine with a known Linux image) for tracing. Other jobs always run unless you declare them with &lt;code&gt;plan --trace-jobs&lt;/code&gt; (comma-separated name globs), for example self-hosted runner jobs. The plan report lists traced and untraced jobs.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 data-hextra-search-id="getting-the-most-out-of-tracing"&gt;Getting the most out of tracing&lt;span class="hx:absolute hx:-mt-20" id="getting-the-most-out-of-tracing"&gt;&lt;/span&gt;
+&lt;a href="#getting-the-most-out-of-tracing" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h3&gt;&lt;ul&gt;
+&lt;li&gt;Put &lt;code&gt;checkout&lt;/code&gt; in the job steps when you can. When it lives in a &lt;strong&gt;local command&lt;/strong&gt; instead, the planner still inserts the reset right after that command runs.&lt;/li&gt;
+&lt;li&gt;Prefer &lt;strong&gt;GNU-friendly&lt;/strong&gt; images (&lt;code&gt;cimg/*&lt;/code&gt;, Ubuntu machine images). &lt;strong&gt;Busybox/Alpine&lt;/strong&gt; tool images work too: the reset and collect scripts fall back to &lt;code&gt;stat&lt;/code&gt; and busybox &lt;code&gt;touch&lt;/code&gt; forms.&lt;/li&gt;
+&lt;li&gt;List &lt;strong&gt;runner or custom-executor&lt;/strong&gt; jobs with &lt;code&gt;--trace-jobs&lt;/code&gt; when the config does not pin a Linux image the planner can read.&lt;/li&gt;
+&lt;li&gt;Read &lt;strong&gt;&lt;code&gt;trace_coverage&lt;/code&gt;&lt;/strong&gt; in &lt;code&gt;plan.json&lt;/code&gt; (or the table in &lt;code&gt;plan.md&lt;/code&gt;) after a shadow run on main to see which jobs are untraced and why.&lt;/li&gt;
 &lt;li&gt;&lt;strong&gt;The default branch builds regularly.&lt;/strong&gt; Maps live in the project cache, so they expire with its retention.&lt;/li&gt;
 &lt;li&gt;&lt;strong&gt;Approved images, if your org enforces them.&lt;/strong&gt; Some orgs&amp;rsquo; config policies allow only exact image tags, so an image pinned by digest can be rejected.&lt;/li&gt;
 &lt;/ul&gt;</description></item><item><title>Spec v0.1</title><link>https://circleci-labs.github.io/smarter-workflows/docs/reference/spec/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://circleci-labs.github.io/smarter-workflows/docs/reference/spec/</guid><description>
@@ -730,6 +737,11 @@ data-copied-label="Copied!"
 &lt;td&gt;&lt;code&gt;--trace-orb-jobs&lt;/code&gt;&lt;/td&gt;
 &lt;td&gt;false&lt;/td&gt;
 &lt;td&gt;also trace orb jobs (assumes their executor is Linux)&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;--trace-jobs&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;(empty)&lt;/td&gt;
+&lt;td&gt;comma-separated job-name globs: trace Linux jobs whose executor cannot be read (for example self-hosted runners); never traces Windows or macOS&lt;/td&gt;
 &lt;/tr&gt;
 &lt;tr&gt;
 &lt;td&gt;&lt;code&gt;--gate-job&lt;/code&gt;&lt;/td&gt;
@@ -1294,7 +1306,7 @@ When &lt;code&gt;when&lt;/code&gt;/&lt;code&gt;unless&lt;/code&gt; can be evalua
 &lt;li&gt;&lt;code&gt;persist_to_workspace&lt;/code&gt; with root &lt;code&gt;/tmp/smarter&lt;/code&gt; and paths &lt;code&gt;[traces]&lt;/code&gt;.&lt;/li&gt;
 &lt;/ul&gt;
 &lt;/li&gt;
-&lt;li&gt;If the spike (W3) shows that &lt;code&gt;checkout&lt;/code&gt; itself reads files, also insert a step right after &lt;code&gt;checkout&lt;/code&gt; in those local job definitions that resets the atime of tracked files to epoch 0. The planner cannot reach the &lt;code&gt;checkout&lt;/code&gt; inside an orb job, so with &lt;code&gt;--trace-orb-jobs&lt;/code&gt; an orb entry gets &lt;code&gt;pre-steps&lt;/code&gt; &lt;code&gt;[checkout, &amp;lt;that reset step&amp;gt;]&lt;/code&gt; instead: it checks out first, then resets, and the orb job&amp;rsquo;s own &lt;code&gt;checkout&lt;/code&gt; follows.&lt;/li&gt;
+&lt;li&gt;If the spike (W3) shows that &lt;code&gt;checkout&lt;/code&gt; itself reads files, also insert a step right after the first &lt;code&gt;checkout&lt;/code&gt; of the job: a top-level step, or right after a local command invocation whose definition contains &lt;code&gt;checkout&lt;/code&gt; (including nested commands, up to a depth limit). For &lt;code&gt;checkout: {path: X}&lt;/code&gt;, the reset and collect steps get &lt;code&gt;CIRCLE_WORKING_DIRECTORY&lt;/code&gt; set to that path. The planner cannot reach the &lt;code&gt;checkout&lt;/code&gt; inside an orb job, so with &lt;code&gt;--trace-orb-jobs&lt;/code&gt; an orb entry gets &lt;code&gt;pre-steps&lt;/code&gt; &lt;code&gt;[checkout, &amp;lt;that reset step&amp;gt;]&lt;/code&gt; instead: it checks out first, then resets, and the orb job&amp;rsquo;s own &lt;code&gt;checkout&lt;/code&gt; follows. Jobs with no checkout are not traced. The plan report lists every workflow job in &lt;code&gt;trace_coverage&lt;/code&gt;, with a reason when it is not traced (unknown executor, no checkout, job group, matrix, orb without &lt;code&gt;--trace-orb-jobs&lt;/code&gt;, and so on).&lt;/li&gt;
 &lt;li&gt;Add the job &lt;code&gt;smarter-impact-map&lt;/code&gt;. It requires every traced entry that is not downstream of an approval. Its steps:
 &lt;ol&gt;
 &lt;li&gt;write &lt;code&gt;.smarter-version&lt;/code&gt; (the planner&amp;rsquo;s own version, as a literal);&lt;/li&gt;
@@ -2146,7 +2158,8 @@ data-copied-label="Copied!"
 &lt;li&gt;&lt;strong&gt;A release job&lt;/strong&gt; (&lt;code&gt;type: release&lt;/code&gt;) is never traced. It stays when a job it requires runs, and then so does everything it requires.&lt;/li&gt;
 &lt;li&gt;&lt;strong&gt;Matrix jobs&lt;/strong&gt; always run.&lt;/li&gt;
 &lt;li&gt;&lt;strong&gt;Orb jobs&lt;/strong&gt; are traced only with &lt;code&gt;--trace-orb-jobs&lt;/code&gt;: it adds a &lt;code&gt;checkout&lt;/code&gt; and a reset as pre-steps, so it only suits orb jobs that check out the repo. Without it they always run.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;A &lt;code&gt;checkout&lt;/code&gt; inside a command&lt;/strong&gt; gets no reset, so that job&amp;rsquo;s trace comes out incomplete and the job always runs.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Self-hosted runners and other opaque Linux executors&lt;/strong&gt; (&lt;code&gt;machine: true&lt;/code&gt; without an image, &lt;code&gt;namespace/resource_class&lt;/code&gt;, parameterised executors) are not traced unless you list them with &lt;code&gt;--trace-jobs&lt;/code&gt; (comma-separated name globs). Windows and macOS entries are never traced, even when listed.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Plan reports explain untraced jobs&lt;/strong&gt; in &lt;code&gt;plan.json&lt;/code&gt; (&lt;code&gt;trace_coverage&lt;/code&gt;) and &lt;code&gt;plan.md&lt;/code&gt;, so you can see unknown executors, missing checkout, job groups, matrix jobs and the like.&lt;/li&gt;
 &lt;li&gt;&lt;strong&gt;Expression filters&lt;/strong&gt; (string filters) are reported, and left out of the gate.&lt;/li&gt;
 &lt;li&gt;&lt;strong&gt;Workflow &lt;code&gt;when&lt;/code&gt;/&lt;code&gt;unless&lt;/code&gt;&lt;/strong&gt; are evaluated only when every value is known from &lt;code&gt;--parameters&lt;/code&gt;, &lt;code&gt;--branch&lt;/code&gt;, &lt;code&gt;--tag&lt;/code&gt; and &lt;code&gt;--trigger-type&lt;/code&gt;. Unsupported forms still mean a full run. When the condition is false, the workflow is not pruned and gets no gate (CircleCI skips it).&lt;/li&gt;
 &lt;li&gt;&lt;strong&gt;A job that requires only filtered-out jobs by a status&lt;/strong&gt; (&lt;code&gt;- deploy: failed&lt;/code&gt;, with &lt;code&gt;deploy&lt;/code&gt; filtered out on the branch) may or may not run, so the plan cannot leave it out or drop its requirement: it is a full run.&lt;/li&gt;
