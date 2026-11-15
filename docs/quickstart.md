@@ -41,6 +41,10 @@ workflows:
 
 If the continuation config uses workflow `when`/`unless` on `pipeline.parameters.*`, pass a JSON file of the values the continuation will receive: set `parameters` on the `smarter/plan` job to that path (for example `.circleci/pipeline-parameters.json`). The planner uses them when selecting jobs and writes `/tmp/smarter/plan/parameters.json` for `continue`.
 
+## Pipeline parameters
+
+If the continuation config uses workflow `when`/`unless` on `pipeline.parameters.*`, pass a JSON file of the values the continuation will receive: set `parameters` on the `smarter/plan` job to that path (for example `.circleci/pipeline-parameters.json`). The planner uses them when selecting jobs and writes `/tmp/smarter/plan/parameters.json` for `continue`.
+
 ## Optional: guardrails
 
 Copy [`policies/`](../policies/), edit the settings at the top of `guardrails.rego`, and pass `policy-bundle: policies` on the plan job (or `--policy-bundle policies` with an inline setup job). Every plan is then checked before it continues. On the Scale plan you can also push the same bundle as org policy:

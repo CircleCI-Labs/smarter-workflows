@@ -7,7 +7,9 @@ description: >
   against your guardrails and continues the pipeline. On the default branch it
   runs everything, traces which repo files each job reads and rebuilds the
   impact map. Add the plan job to a setup config and start with mode shadow,
-  which plans and reports but still runs every job.
+  which plans and reports but still runs every job. Optional job parameter
+  `parameters` points at a JSON file of pipeline parameter values for configs
+  that use workflow when/unless on pipeline.parameters.
 
 display:
   home_url: https://github.com/CircleCI-Labs/smarter-workflows

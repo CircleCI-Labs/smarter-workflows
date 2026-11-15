@@ -86,6 +86,13 @@ parameters:
     type: string
     default: ""
     description: JSON for data.meta of the guardrails; empty builds it from the environment (plan --policy-meta).
+  parameters:
+    type: string
+    default: ""
+    description: >
+      Path to a JSON file of pipeline parameter values for the continuation
+      (plan --parameters). The planner uses them for workflow when/unless and
+      writes parameters.json under the plan report directory for continue.
   resource_class:
     type: enum
     enum: [small, medium, medium+, large]
@@ -131,6 +138,7 @@ steps:
         SMARTER_ARG_MAP_IMAGE: "<< parameters.map-image >>"
         SMARTER_ARG_POLICY_BUNDLE: "<< parameters.policy-bundle >>"
         SMARTER_ARG_POLICY_META: "<< parameters.policy-meta >>"
+        SMARTER_ARG_PARAMETERS: "<< parameters.parameters >>"
       command: |
         set -eu
         set -- plan \
@@ -149,6 +157,7 @@ steps:
         [ -z "$SMARTER_ARG_MAP_IMAGE" ] || set -- "$@" --map-image "$SMARTER_ARG_MAP_IMAGE"
         [ -z "$SMARTER_ARG_POLICY_BUNDLE" ] || set -- "$@" --policy-bundle "$SMARTER_ARG_POLICY_BUNDLE"
         [ -z "$SMARTER_ARG_POLICY_META" ] || set -- "$@" --policy-meta "$SMARTER_ARG_POLICY_META"
+        [ -z "$SMARTER_ARG_PARAMETERS" ] || set -- "$@" --parameters "$SMARTER_ARG_PARAMETERS"
         case $SMARTER_ARG_FORCE_FULL in *=true | *=1) set -- "$@" --force-full ;; esac
         case $SMARTER_ARG_TRACE_ORB_JOBS in *=true | *=1) set -- "$@" --trace-orb-jobs ;; esac
         /tmp/smarter/bin/circleci-smarter "$@"
@@ -157,6 +166,10 @@ steps:
       destination: smarter-plan
   - run:
       name: "smarter: continue"
+      environment:
+        SMARTER_ARG_PARAMETERS: "<< parameters.parameters >>"
       command: |
         set -eu
-        /tmp/smarter/bin/circleci-smarter continue --config /tmp/smarter/continue.yml
+        set -- continue --config /tmp/smarter/continue.yml
+        [ -z "$SMARTER_ARG_PARAMETERS" ] || set -- "$@" --parameters /tmp/smarter/plan/parameters.json
+        /tmp/smarter/bin/circleci-smarter "$@"
