@@ -50,21 +50,11 @@ func TestEmbeddedScriptsAreSafeToInline(t *testing.T) {
 	}
 }
 
-// The orb is one file, so its commands carry a copy of each script. They must
-// stay the same as the embedded ones, and run the way the planner runs them.
-func TestOrbInlinesTheScripts(t *testing.T) {
-	data, err := os.ReadFile("../../orb/orb.yml")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var orb struct {
-		Commands map[string]struct {
-			Steps []map[string]any `yaml:"steps"`
-		} `yaml:"commands"`
-	}
-	if err := yaml.Unmarshal(data, &orb); err != nil {
-		t.Fatal(err)
-	}
+// The orb keeps a copy of each script in its source tree (orb/src/scripts), and
+// its commands include them when the orb is packed. The copies must stay the
+// same as the embedded ones, and the commands must run them the way the planner
+// runs them.
+func TestOrbIncludesTheScripts(t *testing.T) {
 	cases := []struct {
 		command, file, script, name, when string
 	}{
@@ -73,17 +63,32 @@ func TestOrbInlinesTheScripts(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.command, func(t *testing.T) {
-			steps := orb.Commands[c.command].Steps
-			if len(steps) == 0 {
+			copied, err := os.ReadFile("../../orb/src/scripts/" + c.file)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(copied) != c.script {
+				t.Errorf("orb/src/scripts/%s differs from internal/tracescript/%s: copy the file over it", c.file, c.file)
+			}
+			data, err := os.ReadFile("../../orb/src/commands/" + c.command + ".yml")
+			if err != nil {
+				t.Fatal(err)
+			}
+			var cmd struct {
+				Steps []map[string]any `yaml:"steps"`
+			}
+			if err := yaml.Unmarshal(data, &cmd); err != nil {
+				t.Fatal(err)
+			}
+			if len(cmd.Steps) == 0 {
 				t.Fatalf("orb command %s has no steps", c.command)
 			}
-			run, _ := steps[0]["run"].(map[string]any)
+			run, _ := cmd.Steps[0]["run"].(map[string]any)
 			if run == nil {
 				t.Fatalf("the first step of %s is not a run step", c.command)
 			}
-			if got, _ := run["command"].(string); got != c.script {
-				t.Errorf("the command of %s differs from internal/tracescript/%s: "+
-					"copy the script into the run step, indented by 12 spaces", c.command, c.file)
+			if want := "<<include(scripts/" + c.file + ")>>"; run["command"] != want {
+				t.Errorf("command = %v, want %q", run["command"], want)
 			}
 			if run["name"] != c.name {
 				t.Errorf("name = %v, want %q", run["name"], c.name)

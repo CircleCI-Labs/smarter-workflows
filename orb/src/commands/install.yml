@@ -1,0 +1,68 @@
+description: >
+  Put circleci-smarter at /tmp/smarter/bin/circleci-smarter and on PATH.
+  Source release (the default) downloads the binary of a GitHub release for the
+  architecture of the job, checks it against SHA256SUMS, and checks the keyless
+  cosign signature of SHA256SUMS: it must come from the release pipeline of the
+  Smarter Workflows project, for the main branch or for the tag of the release.
+  Source build compiles the binary from the current checkout (this repo's own
+  pipeline) and needs Go. Both write .smarter-version (the planner version and a
+  newline) and cache the binary under the key
+  smarter-bin-v1-CHECKSUM-ARCH, where CHECKSUM is the checksum of
+  .smarter-version; the generated smarter-impact-map job restores it.
+parameters:
+  source:
+    type: enum
+    enum: [release, build]
+    default: release
+    description: >
+      Where the binary comes from. release downloads it, build compiles it from
+      the current checkout and needs Go on the job.
+  version:
+    type: string
+    default: ""
+    description: >
+      The release to install for source release, a tag such as v0.2.0. Empty
+      installs the release that this version of the orb was published with.
+      Ignored for source build.
+  verify-signature:
+    type: boolean
+    default: true
+    description: >
+      Check the keyless cosign signature of SHA256SUMS before trusting the
+      release (source release). false still checks the SHA-256 of the
+      download, which catches a damaged file but not a replaced release.
+steps:
+  - run:
+      name: "smarter: pick the version"
+      shell: /bin/sh
+      environment:
+        SMARTER_INSTALL_STEP: pick
+        SMARTER_ARG_SOURCE: "<< parameters.source >>"
+        SMARTER_ARG_VERSION: "<< parameters.version >>"
+      command: <<include(scripts/install.sh)>>
+  # Only source build restores the binary: a release is checked every time.
+  - when:
+      condition:
+        equal: [build, << parameters.source >>]
+      steps:
+        - restore_cache:
+            keys:
+              - smarter-bin-v1-{{ checksum ".smarter-version" }}-{{ arch }}
+  - run:
+      name: "smarter: build or download"
+      shell: /bin/sh
+      environment:
+        SMARTER_INSTALL_STEP: get
+        SMARTER_ARG_SOURCE: "<< parameters.source >>"
+        SMARTER_ARG_VERIFY: "<< parameters.verify-signature >>"
+      command: <<include(scripts/install.sh)>>
+  - save_cache:
+      key: smarter-bin-v1-{{ checksum ".smarter-version" }}-{{ arch }}
+      paths:
+        - /tmp/smarter/bin
+  - run:
+      name: "smarter: put it on PATH"
+      command: |
+        set -eu
+        printf 'export PATH=/tmp/smarter/bin:"$PATH"\n' | tee -a "$BASH_ENV" > /dev/null
+        /tmp/smarter/bin/circleci-smarter version

@@ -1,0 +1,6 @@
+description: >
+  The same with a Go toolchain (cimg/go), for the install command's source
+  build. A release install does not need it.
+docker:
+  - image: cimg/go:1.27.3
+resource_class: medium

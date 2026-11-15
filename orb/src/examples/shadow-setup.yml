@@ -1,0 +1,21 @@
+description: >
+  A minimal setup config: one plan job in shadow mode on your continuation
+  catalog. Replace the workflow name, mandatory jobs and policy bundle to match
+  your project.
+usage:
+  version: 2.1
+  setup: true
+  orbs:
+    smarter: cci-labs/smarter-workflows@1.0.0
+  workflows:
+    plan:
+      jobs:
+        - smarter/plan:
+            config: .circleci/continue.yml
+            workflow: ci
+            mode: shadow
+            mandatory: security-scan
+            policy-bundle: policies
+            resource_class: medium
+            executor: smarter/go
+            source: build

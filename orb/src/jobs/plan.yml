@@ -1,0 +1,175 @@
+description: >
+  The setup job. It installs the planner, finds the diff base, restores the
+  impact map, plans, stores the plan report and continues the pipeline with
+  the planned config.
+parameters:
+  executor:
+    type: executor
+    default: default
+    description: Where the job runs. Use the go executor with source build.
+  source:
+    type: enum
+    enum: [release, build]
+    default: release
+    description: Where the planner binary comes from, see the install command.
+  version:
+    type: string
+    default: ""
+    description: The release tag to install for source release.
+  config:
+    type: string
+    default: .circleci/continue.yml
+    description: The full continuation config, the catalog the planner picks from (plan --config).
+  workflow:
+    type: string
+    default: ""
+    description: The workflow to plan; needed when the config has several (plan --workflow).
+  default-branch:
+    type: string
+    default: main
+    description: The default branch (plan --default-branch).
+  trigger-type:
+    type: string
+    default: ""
+    description: The pipeline trigger type, from the pipeline.trigger.type value; schedule means a full run (plan --trigger-type).
+  mode:
+    type: enum
+    enum: [shadow, select]
+    default: shadow
+    description: shadow plans and reports but runs every job; select runs only the planned jobs (plan --mode).
+  mandatory:
+    type: string
+    default: ""
+    description: Comma-separated names of jobs that always run (plan --mandatory).
+  full-run-paths:
+    type: string
+    default: .circleci/**
+    description: Comma-separated globs; a change to any of them means a full run (plan --full-run-paths).
+  extra-inputs:
+    type: string
+    default: ""
+    description: Inputs the trace cannot see, as job=glob|glob,job2=glob (plan --extra-inputs).
+  ignore-paths:
+    type: string
+    default: ""
+    description: Comma-separated globs that never select a job (plan --ignore-paths).
+  force-full:
+    type: boolean
+    default: false
+    description: Always plan a full run (plan --force-full).
+  trace:
+    type: enum
+    enum: [auto, "on", "off"]
+    default: auto
+    description: Trace the jobs; auto means on for full runs on the default branch (plan --trace).
+  trace-orb-jobs:
+    type: boolean
+    default: false
+    description: Also trace jobs that come from orbs (plan --trace-orb-jobs).
+  gate-job:
+    type: string
+    default: smarter-gate
+    description: The name of the gate job, a no-op job that waits for every job the plan runs (plan --gate-job).
+  map-key-prefix:
+    type: string
+    default: smarter-impact-v1
+    description: The start of the impact map's cache key, for the restore here and the save in the map job. Give each pipeline of a project its own (plan --map-key-prefix).
+  map-image:
+    type: string
+    default: ""
+    description: The image of the impact-map job; empty keeps the planner's pinned default (plan --map-image). The gate is a no-op job and has no image.
+  policy-bundle:
+    type: string
+    default: ""
+    description: A directory of Rego guardrails; set it to check the plan before continuing (plan --policy-bundle).
+  policy-meta:
+    type: string
+    default: ""
+    description: JSON for data.meta of the guardrails; empty builds it from the environment (plan --policy-meta).
+  parameters:
+    type: string
+    default: ""
+    description: >
+      Path to a JSON file of pipeline parameter values for the continuation
+      (plan --parameters). The planner uses them for workflow when/unless and
+      writes parameters.json under the plan report directory for continue.
+  resource_class:
+    type: enum
+    enum: [small, medium, medium+, large]
+    default: small
+    description: >
+      CircleCI resource class for this job. Use medium with the go executor when
+      building from source; release installs can stay on small.
+executor: << parameters.executor >>
+resource_class: << parameters.resource_class >>
+steps:
+  - checkout
+  - install:
+      version: << parameters.version >>
+      source: << parameters.source >>
+  - run:
+      name: "smarter: base"
+      environment:
+        SMARTER_ARG_DEFAULT_BRANCH: "<< parameters.default-branch >>"
+      command: |
+        set -eu
+        /tmp/smarter/bin/circleci-smarter base --default-branch "$SMARTER_ARG_DEFAULT_BRANCH" > .smarter-key
+  - restore_cache:
+      keys:
+        - << parameters.map-key-prefix >>-{{ checksum ".smarter-key" }}
+        - << parameters.map-key-prefix >>-
+  - run:
+      name: "smarter: plan"
+      environment:
+        SMARTER_ARG_CONFIG: "<< parameters.config >>"
+        SMARTER_ARG_WORKFLOW: "<< parameters.workflow >>"
+        SMARTER_ARG_DEFAULT_BRANCH: "<< parameters.default-branch >>"
+        SMARTER_ARG_TRIGGER_TYPE: "<< parameters.trigger-type >>"
+        SMARTER_ARG_MODE: "<< parameters.mode >>"
+        SMARTER_ARG_MANDATORY: "<< parameters.mandatory >>"
+        SMARTER_ARG_FULL_RUN_PATHS: "<< parameters.full-run-paths >>"
+        SMARTER_ARG_EXTRA_INPUTS: "<< parameters.extra-inputs >>"
+        SMARTER_ARG_IGNORE_PATHS: "<< parameters.ignore-paths >>"
+        SMARTER_ARG_FORCE_FULL: "force-full=<< parameters.force-full >>"
+        SMARTER_ARG_TRACE: "<< parameters.trace >>"
+        SMARTER_ARG_TRACE_ORB_JOBS: "trace-orb-jobs=<< parameters.trace-orb-jobs >>"
+        SMARTER_ARG_GATE_JOB: "<< parameters.gate-job >>"
+        SMARTER_ARG_MAP_KEY_PREFIX: "<< parameters.map-key-prefix >>"
+        SMARTER_ARG_MAP_IMAGE: "<< parameters.map-image >>"
+        SMARTER_ARG_POLICY_BUNDLE: "<< parameters.policy-bundle >>"
+        SMARTER_ARG_POLICY_META: "<< parameters.policy-meta >>"
+        SMARTER_ARG_PARAMETERS: "<< parameters.parameters >>"
+      command: |
+        set -eu
+        set -- plan \
+          --config "$SMARTER_ARG_CONFIG" \
+          --default-branch "$SMARTER_ARG_DEFAULT_BRANCH" \
+          --mode "$SMARTER_ARG_MODE" \
+          --full-run-paths "$SMARTER_ARG_FULL_RUN_PATHS" \
+          --trace "$SMARTER_ARG_TRACE" \
+          --gate-job "$SMARTER_ARG_GATE_JOB" \
+          --map-key-prefix "$SMARTER_ARG_MAP_KEY_PREFIX"
+        [ -z "$SMARTER_ARG_WORKFLOW" ] || set -- "$@" --workflow "$SMARTER_ARG_WORKFLOW"
+        [ -z "$SMARTER_ARG_TRIGGER_TYPE" ] || set -- "$@" --trigger-type "$SMARTER_ARG_TRIGGER_TYPE"
+        [ -z "$SMARTER_ARG_MANDATORY" ] || set -- "$@" --mandatory "$SMARTER_ARG_MANDATORY"
+        [ -z "$SMARTER_ARG_EXTRA_INPUTS" ] || set -- "$@" --extra-inputs "$SMARTER_ARG_EXTRA_INPUTS"
+        [ -z "$SMARTER_ARG_IGNORE_PATHS" ] || set -- "$@" --ignore-paths "$SMARTER_ARG_IGNORE_PATHS"
+        [ -z "$SMARTER_ARG_MAP_IMAGE" ] || set -- "$@" --map-image "$SMARTER_ARG_MAP_IMAGE"
+        [ -z "$SMARTER_ARG_POLICY_BUNDLE" ] || set -- "$@" --policy-bundle "$SMARTER_ARG_POLICY_BUNDLE"
+        [ -z "$SMARTER_ARG_POLICY_META" ] || set -- "$@" --policy-meta "$SMARTER_ARG_POLICY_META"
+        [ -z "$SMARTER_ARG_PARAMETERS" ] || set -- "$@" --parameters "$SMARTER_ARG_PARAMETERS"
+        case $SMARTER_ARG_FORCE_FULL in *=true | *=1) set -- "$@" --force-full ;; esac
+        case $SMARTER_ARG_TRACE_ORB_JOBS in *=true | *=1) set -- "$@" --trace-orb-jobs ;; esac
+        /tmp/smarter/bin/circleci-smarter "$@"
+  - store_artifacts:
+      path: /tmp/smarter/plan
+      destination: smarter-plan
+  - run:
+      name: "smarter: continue"
+      environment:
+        SMARTER_ARG_PARAMETERS: "<< parameters.parameters >>"
+      command: |
+        set -eu
+        set -- continue --config /tmp/smarter/continue.yml
+        [ -z "$SMARTER_ARG_PARAMETERS" ] || set -- "$@" --parameters /tmp/smarter/plan/parameters.json
+        /tmp/smarter/bin/circleci-smarter "$@"

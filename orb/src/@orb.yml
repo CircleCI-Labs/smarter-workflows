@@ -1,0 +1,16 @@
+version: 2.1
+
+description: >
+  Smarter Workflows (CircleCI Labs experiment, private preview, not supported).
+  A setup workflow runs the circleci-smarter planner, which prunes the pipeline
+  of .circleci/continue.yml to the jobs a change can reach, checks the result
+  against your guardrails and continues the pipeline. On the default branch it
+  runs everything, traces which repo files each job reads and rebuilds the
+  impact map. Add the plan job to a setup config and start with mode shadow,
+  which plans and reports but still runs every job. Optional job parameter
+  `parameters` points at a JSON file of pipeline parameter values for configs
+  that use workflow when/unless on pipeline.parameters.
+
+display:
+  home_url: https://github.com/CircleCI-Labs/smarter-workflows
+  source_url: https://github.com/CircleCI-Labs/smarter-workflows/tree/main/orb/src

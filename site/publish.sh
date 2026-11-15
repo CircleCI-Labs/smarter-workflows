@@ -19,8 +19,11 @@
 set -euo pipefail
 
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+repo_root=$(cd "${here}/.." && pwd)
+# shellcheck source=scripts/github-slug.sh
+. "${repo_root}/scripts/github-slug.sh"
 branch="${PUBLISH_BRANCH:-gh-pages}"
-remote="${PUBLISH_REMOTE:-https://github.com/${CIRCLE_PROJECT_USERNAME:-}/${CIRCLE_PROJECT_REPONAME:-}.git}"
+remote=$(github_https_remote_from_env) || { echo "publish: cannot resolve the GitHub repository" >&2; exit 1; }
 sha="${CIRCLE_SHA1:-$(git -C "${here}" rev-parse HEAD)}"
 
 [ -f "${here}/public/index.html" ] || { echo "publish: no site in ${here}/public: run hugo first" >&2; exit 1; }
@@ -31,10 +34,6 @@ if [ -z "${GITHUB_TOKEN:-}" ]; then
   echo "publish: skipped: GITHUB_TOKEN is not set (context smarter-workflows-release). The site was built and checked only."
   exit 0
 fi
-case "${remote}" in
-  https://github.com//*) echo "publish: set PUBLISH_REMOTE outside CircleCI" >&2; exit 1 ;;
-esac
-
 tmp=$(mktemp -d)
 trap 'rm -rf "${tmp}"' EXIT
 printf '#!/bin/sh\necho "${GITHUB_TOKEN}"\n' > "${tmp}/askpass"
