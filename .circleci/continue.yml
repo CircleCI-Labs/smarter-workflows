@@ -365,6 +365,7 @@ workflows:
   benchmark:
     when: pipeline.trigger.type == "schedule"
     jobs:
+      - security-scan
       - benchmark:
           context:
             - smarter-workflows-ai
