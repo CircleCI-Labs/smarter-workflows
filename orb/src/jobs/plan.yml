@@ -66,6 +66,10 @@ parameters:
     type: boolean
     default: false
     description: Also trace jobs that come from orbs (plan --trace-orb-jobs).
+  trace-jobs:
+    type: string
+    default: ""
+    description: Comma-separated job-name globs for Linux jobs whose executor cannot be read, for example self-hosted runners (plan --trace-jobs).
   gate-job:
     type: string
     default: smarter-gate
@@ -133,6 +137,7 @@ steps:
         SMARTER_ARG_FORCE_FULL: "force-full=<< parameters.force-full >>"
         SMARTER_ARG_TRACE: "<< parameters.trace >>"
         SMARTER_ARG_TRACE_ORB_JOBS: "trace-orb-jobs=<< parameters.trace-orb-jobs >>"
+        SMARTER_ARG_TRACE_JOBS: "<< parameters.trace-jobs >>"
         SMARTER_ARG_GATE_JOB: "<< parameters.gate-job >>"
         SMARTER_ARG_MAP_KEY_PREFIX: "<< parameters.map-key-prefix >>"
         SMARTER_ARG_MAP_IMAGE: "<< parameters.map-image >>"
@@ -152,6 +157,7 @@ steps:
         [ -z "$SMARTER_ARG_WORKFLOW" ] || set -- "$@" --workflow "$SMARTER_ARG_WORKFLOW"
         [ -z "$SMARTER_ARG_TRIGGER_TYPE" ] || set -- "$@" --trigger-type "$SMARTER_ARG_TRIGGER_TYPE"
         [ -z "$SMARTER_ARG_MANDATORY" ] || set -- "$@" --mandatory "$SMARTER_ARG_MANDATORY"
+        [ -z "$SMARTER_ARG_TRACE_JOBS" ] || set -- "$@" --trace-jobs "$SMARTER_ARG_TRACE_JOBS"
         [ -z "$SMARTER_ARG_EXTRA_INPUTS" ] || set -- "$@" --extra-inputs "$SMARTER_ARG_EXTRA_INPUTS"
         [ -z "$SMARTER_ARG_IGNORE_PATHS" ] || set -- "$@" --ignore-paths "$SMARTER_ARG_IGNORE_PATHS"
         [ -z "$SMARTER_ARG_MAP_IMAGE" ] || set -- "$@" --map-image "$SMARTER_ARG_MAP_IMAGE"

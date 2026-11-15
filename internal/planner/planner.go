@@ -511,11 +511,14 @@ func (p *planner) build(ctx context.Context, forced map[string]bool, fullReason 
 	}
 
 	if allowTrace && p.traceOn(rep.Full) {
-		tr, notes, err := p.injectTrace(cfg, wf, an)
+		tr, notes, cov, err := p.injectTrace(cfg, wf, an)
 		if err != nil {
 			return nil, err
 		}
 		rep.Warnings = append(rep.Warnings, notes...)
+		if len(cov) > 0 {
+			rep.TraceCoverage = cov
+		}
 		if tr != nil {
 			rep.Trace = tr
 			keptNames = append(keptNames, ImpactMapJob)

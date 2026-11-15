@@ -58,6 +58,7 @@ func runPlan(args []string, stdout, stderr io.Writer) int {
 	forceFull := fs.Bool("force-full", false, "plan a full run")
 	trace := fs.String("trace", "auto", "add the trace steps: auto (full runs on the default branch), on or off")
 	traceOrb := fs.Bool("trace-orb-jobs", false, "also trace orb jobs (assumes their executor is Linux)")
+	traceJobs := fs.String("trace-jobs", "", "comma-separated job-name globs for Linux jobs whose executor cannot be read (for example self-hosted runners)")
 	traceReset := fs.String("trace-reset", "on", "reset file access times after checkout in traced jobs: on or off")
 	gateJob := fs.String("gate-job", planner.DefaultGateJob, "the name of the gate job (a no-op job: no executor, no credits)")
 	// The gate used to be a docker job that took its image from --gate-image,
@@ -119,6 +120,7 @@ func runPlan(args []string, stdout, stderr io.Writer) int {
 	opts.IgnorePaths = planner.SplitList(*ignorePaths)
 	opts.Trace = planner.TraceMode(*trace)
 	opts.TraceOrbJobs = *traceOrb
+	opts.TraceJobs = planner.SplitList(*traceJobs)
 	opts.TraceReset = *traceReset == "on"
 	opts.GateJob, opts.MapImage = *gateJob, mapImage
 	opts.MapKeyPrefix = *mapKeyPrefix

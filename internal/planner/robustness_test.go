@@ -1415,12 +1415,13 @@ func TestRobustness_CheckoutPathAndNoCheckout(t *testing.T) {
 	if got, want := rbSteps(t, rbJob(t, doc, "no-checkout")["steps"]), []string{"run"}; !slices.Equal(got, want) {
 		t.Errorf("no-checkout steps = %v, want %v", got, want)
 	}
-	for _, name := range []string{"custom-path", "no-checkout"} {
-		if rbCount(rbSteps(t, rbEntryBody(t, doc, "ci", name)["post-steps"]), rbCollect) != 1 {
-			t.Errorf("%s has no single collect step", name)
-		}
+	if rbCount(rbSteps(t, rbEntryBody(t, doc, "ci", "custom-path")["post-steps"]), rbCollect) != 1 {
+		t.Errorf("custom-path has no single collect step")
 	}
-	if got := emittedEntry(t, res, "ci", planner.ImpactMapJob).Requires; !slices.Equal(got, []string{"custom-path", "no-checkout"}) {
+	if rbEntryBody(t, doc, "ci", "no-checkout")["post-steps"] != nil {
+		t.Errorf("no-checkout must not be traced")
+	}
+	if got := emittedEntry(t, res, "ci", planner.ImpactMapJob).Requires; !slices.Equal(got, []string{"custom-path"}) {
 		t.Errorf("the map job requires %v", got)
 	}
 }

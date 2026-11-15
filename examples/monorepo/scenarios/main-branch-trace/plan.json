@@ -108,8 +108,86 @@
       "build",
       "e2e",
       "docs"
+    ],
+    "coverage": [
+      {
+        "name": "lint",
+        "traced": true
+      },
+      {
+        "name": "security-scan",
+        "traced": true
+      },
+      {
+        "name": "api-test",
+        "traced": true
+      },
+      {
+        "name": "web-test",
+        "traced": true
+      },
+      {
+        "name": "build",
+        "traced": true
+      },
+      {
+        "name": "e2e",
+        "traced": true
+      },
+      {
+        "name": "docs",
+        "traced": true
+      },
+      {
+        "name": "hold-deploy",
+        "traced": false,
+        "reason": "no runnable steps"
+      },
+      {
+        "name": "deploy",
+        "traced": true
+      }
     ]
   },
+  "trace_coverage": [
+    {
+      "name": "lint",
+      "traced": true
+    },
+    {
+      "name": "security-scan",
+      "traced": true
+    },
+    {
+      "name": "api-test",
+      "traced": true
+    },
+    {
+      "name": "web-test",
+      "traced": true
+    },
+    {
+      "name": "build",
+      "traced": true
+    },
+    {
+      "name": "e2e",
+      "traced": true
+    },
+    {
+      "name": "docs",
+      "traced": true
+    },
+    {
+      "name": "hold-deploy",
+      "traced": false,
+      "reason": "no runnable steps"
+    },
+    {
+      "name": "deploy",
+      "traced": true
+    }
+  ],
   "guardrails": {
     "status": "SKIPPED",
     "repairs": [],

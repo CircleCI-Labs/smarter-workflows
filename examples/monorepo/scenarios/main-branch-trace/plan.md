@@ -11,3 +11,17 @@
 | docs | run | full run |
 | hold-deploy | run | full run |
 | deploy | run | full run |
+
+**Trace coverage**
+
+| Job | Traced | Reason |
+|---|---|---|
+| lint | yes |  |
+| security-scan | yes |  |
+| api-test | yes |  |
+| web-test | yes |  |
+| build | yes |  |
+| e2e | yes |  |
+| docs | yes |  |
+| hold-deploy | no | no runnable steps |
+| deploy | yes |  |
