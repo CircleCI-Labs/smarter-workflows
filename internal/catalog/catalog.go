@@ -259,8 +259,8 @@ func inputsOf(m *impactmap.Map, name string) Inputs {
 		return in
 	}
 	in.Traced, in.Complete = true, j.Complete
-	in.Files, in.Dirs = len(j.Files), len(j.Dirs)
-	in.TopDirs = topDirs(j.Files)
+	in.Files, in.Dirs = j.FileCount(), j.DirCount()
+	in.TopDirs = topDirs(j.FilePaths())
 	return in
 }
 

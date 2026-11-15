@@ -130,7 +130,7 @@ func TestMerge(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if m.Version != 1 || m.Revision != "abc123" || m.CreatedAt != "2026-11-12T18:30:00Z" {
+			if m.Version != Version || m.Revision != "abc123" || m.CreatedAt != "2026-11-12T18:30:00Z" {
 				t.Fatalf("header = %+v", m)
 			}
 			wantMethod := tc.method
@@ -167,11 +167,18 @@ func TestMarshalParseRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(b), "a<b>&.go") {
-		t.Fatalf("HTML characters must not be escaped:\n%s", b)
+	if !isGzip(b) {
+		t.Fatal("v2 Marshal must write gzip")
 	}
-	if !strings.HasSuffix(string(b), "\n") {
-		t.Fatal("want a trailing newline")
+	canon, err := m.MarshalJSONCanonical()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(canon), "a<b>&.go") {
+		t.Fatalf("HTML characters must not be escaped:\n%s", canon)
+	}
+	if !strings.HasSuffix(string(canon), "\n") {
+		t.Fatal("want a trailing newline in canonical JSON")
 	}
 	back, err := Parse(b)
 	if err != nil {
@@ -193,7 +200,7 @@ func TestParse(t *testing.T) {
 		check   func(t *testing.T, m *Map)
 	}{
 		{name: "not json", in: "{", wantErr: "impact map"},
-		{name: "wrong version", in: `{"version":2,"jobs":{}}`, wantErr: "unsupported version 2"},
+		{name: "wrong version", in: `{"version":3,"jobs":{}}`, wantErr: "unsupported version 3"},
 		{name: "missing version", in: `{"jobs":{}}`, wantErr: "unsupported version 0"},
 		{
 			name: "null jobs is an empty map",
@@ -338,6 +345,54 @@ func TestParseTraceRejectsTooManyPaths(t *testing.T) {
 	}
 	if _, err := ParseTrace(strings.NewReader(b.String())); err == nil || !strings.Contains(err.Error(), "more than") {
 		t.Fatalf("error = %v, want a path limit error", err)
+	}
+}
+
+func TestConvertMonorepoExampleMap(t *testing.T) {
+	if os.Getenv("WRITE_MONOREPO_MAP") == "" {
+		t.Skip("set WRITE_MONOREPO_MAP=1 to regenerate examples/monorepo/impact-map.json.gz")
+	}
+	t.Chdir("../../examples/monorepo")
+	raw, err := os.ReadFile("impact-map.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := Parse(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gz, err := m.Marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile("impact-map.json.gz", gz, 0o640); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestParseV1StillWorks(t *testing.T) {
+	v1 := `{"version":1,"revision":"x","created_at":"2026-11-12T18:30:00Z","method":"atime","jobs":{"a":{"files":["z.go"],"dirs":["."],"complete":true,"nodes":1}}}`
+	m, err := Parse([]byte(v1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Version != VersionV1 || !m.Jobs["a"].ReadsFile("z.go") {
+		t.Fatalf("got %+v", m)
+	}
+}
+
+func TestEncodeIndexDeltasRoundTrip(t *testing.T) {
+	in := []int{0, 2, 5, 99, 100}
+	enc, err := encodeIndexDeltas(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := decodeIndexDeltas(enc, 101, MaxIndicesPerJob)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, in) {
+		t.Fatalf("got %v", got)
 	}
 }
 
