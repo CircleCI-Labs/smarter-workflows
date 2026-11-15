@@ -1,0 +1,41 @@
+# The sidebar of the docs site: its order, its groups and the labels of its pages (CONTRIBUTING.md, "Documentation site").
+#
+#   == Group title | Group lead (optional) | Source directory (optional)   starts a sidebar group. The lead becomes the group index
+#                                           description. A link to the source directory (docs/adr/) goes to the group index.
+#   ==                                      ends the group: the pages below it are top-level pages again.
+#   path | Sidebar label | Description (optional) | Slug (optional)   a page. The description is used when the page has no
+#                                           page-description. The slug is the last part of its address (default: its file name
+#                                           without .md): two README.md files, or SKILL.md, need one.
+#
+# stage.sh fails on a Markdown file below docs/ that is not listed here, and on a listed file that does not exist, so a new,
+# renamed or removed page always shows up in this file. STAGE_LENIENT=1 turns both errors into warnings.
+# The landing page (README.md) is not listed: it is the home page of the site.
+
+== Get started
+docs/quickstart.md | Quickstart
+examples/demo/README.md | Demo monorepo | A small polyglot monorepo that runs on Smarter Workflows, so that you can watch the planner pick jobs from a change. | demo
+
+==
+docs/how-it-works.md | How it works
+docs/limitations.md | Limitations
+docs/validation.md | Validation
+
+== Agents | Let an agent compose a workflow from the jobs of a pipeline, and check that the result is sound.
+skills/circleci-workflow-composer/SKILL.md | Composer skill | The skill that teaches an agent to assemble CircleCI jobs into a correct workflow layout, and to check it with the planner tools. | composer-skill
+examples/compose-eval/README.md | Compose eval | Three cases that test whether an agent with the composer skill composes a correct workflow, graded by a script with no model involved. | compose-eval
+
+== Reference
+docs/spec/v0.1.md | Spec v0.1 | | spec
+GLOSSARY.md | Glossary | The words this project uses, and what each one means.
+
+== Decisions | The architecture decision records: what was decided, why, and what follows from it. | docs/adr
+docs/adr/0001-select-jobs-not-tests.md | 1. Select jobs, not tests | Decide at the level of jobs and workflows, and leave the choice of tests to the tools that make it.
+docs/adr/0002-skip-only-when-proven.md | 2. Skip only when proven | Skip a job only when the impact map proves that the change cannot reach it.
+docs/adr/0003-impact-map-from-traces-on-main.md | 3. Impact map from traces | Build the impact map from the file-access traces of full runs on the default branch.
+docs/adr/0004-catalog-is-native-circleci-config.md | 4. Native catalog | The catalog is the project's own CircleCI config, not a new format.
+docs/adr/0005-go-cli-extension.md | 5. Go CLI extension | One static Go binary that also works as a circleci CLI extension.
+docs/adr/0006-preflight-repair-then-full.md | 6. Guardrail pre-flight | Every plan passes the guardrails before it continues: check, repair, or fall back to a full run.
+
+== Contribute
+CONTRIBUTING.md | Contributing | How to report a bug, propose a change and open a pull request for Smarter Workflows, a CircleCI Labs project.
+SECURITY.md | Security policy | How to report a vulnerability, and which versions get fixes. | security
