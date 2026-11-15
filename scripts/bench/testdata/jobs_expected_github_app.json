@@ -1,0 +1,14 @@
+[
+  {
+    "name": "lint",
+    "status": "success",
+    "duration_s": 31,
+    "rerun_success": false
+  },
+  {
+    "name": "security-scan",
+    "status": "success",
+    "duration_s": 19,
+    "rerun_success": false
+  }
+]
