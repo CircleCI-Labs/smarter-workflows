@@ -1,0 +1,13 @@
+[
+  {
+    "name": "go-lint",
+    "status": "success",
+    "duration_s": 45
+  },
+  {
+    "name": "go-test",
+    "status": "failed",
+    "duration_s": 120,
+    "flaky": true
+  }
+]
