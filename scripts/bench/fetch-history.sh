@@ -15,6 +15,11 @@
 
 set -eu
 
+dir=$(cd "$(dirname "$0")" && pwd)
+# shellcheck source=libparse.sh
+# shellcheck disable=SC1091
+. "$dir/libparse.sh"
+
 if [ -z "${CIRCLE_TOKEN:-}" ] && [ -n "${CIRCLECI_TOKEN:-}" ]; then
   export CIRCLE_TOKEN="$CIRCLECI_TOKEN"
 fi
@@ -43,8 +48,17 @@ if ! command -v circleci >/dev/null 2>&1; then
   exit 1
 fi
 
+# api_get prints JSON on success; warns on stderr and returns non-zero on failure.
 api_get() {
-  circleci api "$1"
+  _err="$(mktemp)"
+  if out="$(circleci api "$1" 2>"$_err")"; then
+    rm -f "$_err"
+    printf '%s\n' "$out"
+    return 0
+  fi
+  printf 'fetch-history: warning: %s: %s\n' "$1" "$(tr '\n' ' ' <"$_err")" >&2
+  rm -f "$_err"
+  return 1
 }
 
 default_branch() {
@@ -66,7 +80,7 @@ changed_json() {
   base="$1"
   commit="$2"
   if [ -z "$base" ]; then
-    echo "[]"
+    printf '%s\n' '[]'
     return
   fi
   git -C "$CLONE_DIR" diff --name-status "$base" "$commit" | jq -Rs '
@@ -84,53 +98,54 @@ changed_json() {
   '
 }
 
-# commit_from_pipeline picks the checkout SHA (GitHub App or classic).
-commit_from_pipeline() {
-  jq -r '.vcs.revision // .trigger_parameters["git.checkout_sha"] // empty'
-}
-
-branch_from_pipeline() {
-  jq -r '.vcs.branch // .trigger_parameters["git.branch"] // ""'
-}
-
-# jobs_from_workflow maps workflow job API items to history jobs.
-jobs_from_workflow() {
-  jq '
-    [.items[] | select(.type == "build") | {
-      name,
-      status: (if .status == "success" then "success" elif .status == "failed" then "failed" else .status end),
-      duration_s: ((.duration // 0) / 1000),
-      rerun_success: (.rerun_success // false)
-    }]
-  '
-}
-
-# mark_flaky_jobs sets flaky:true when a failed job later succeeded on rerun.
-# FLAKY_FIXTURE is optional JSON from job detail API (tests pass fixtures).
-mark_flaky_jobs() {
-  jq '
-    map(
-      if .status == "failed" and (.rerun_success // false) then . + {flaky: true} | del(.rerun_success)
-      else . | del(.rerun_success)
-      end
-    )
-  '
+# jobs_for_pipeline collects every workflow named WORKFLOW in the pipeline (reruns)
+# and merges job outcomes for flaky detection.
+jobs_for_pipeline() {
+  pipe_id="$1"
+  wf_page=""
+  if ! wf_page="$(api_get "api/v2/pipeline/${pipe_id}/workflow")"; then
+    return 1
+  fi
+  wfs="$(printf '%s\n' "$wf_page" | workflows_named "$WORKFLOW")"
+  count="$(printf '%s\n' "$wfs" | jq 'length')"
+  if [ "$count" -eq 0 ]; then
+    return 1
+  fi
+  bundle="[]"
+  i=0
+  while [ "$i" -lt "$count" ]; do
+    wf="$(printf '%s\n' "$wfs" | jq -c ".[$i]")"
+    wf_id="$(printf '%s\n' "$wf" | jq -r '.id')"
+    wf_at="$(printf '%s\n' "$wf" | jq -r '.created_at')"
+    jobs_page=""
+    if ! jobs_page="$(api_get "api/v2/workflow/${wf_id}/job")"; then
+      printf 'fetch-history: warning: workflow %s jobs skipped\n' "$wf_id" >&2
+      i=$((i + 1))
+      continue
+    fi
+    slice="$(printf '%s\n' "$jobs_page" | jq -c --arg at "$wf_at" '{created_at: $at, items: .items}')"
+    bundle="$(printf '%s\n' "$bundle" | jq -c --argjson s "$slice" '. + [$s]')"
+    i=$((i + 1))
+  done
+  if [ "$(printf '%s\n' "$bundle" | jq 'length')" -eq 0 ]; then
+    return 1
+  fi
+  printf '%s\n' "$bundle" | merge_workflow_reruns
 }
 
 record_one() {
   pipeline_json="$1"
-  jobs_page="$2"
-  sha="$(printf '%s' "$pipeline_json" | commit_from_pipeline)"
-  branch="$(printf '%s' "$pipeline_json" | branch_from_pipeline)"
+  jobs_json="$2"
+  sha="$(printf '%s\n' "$pipeline_json" | commit_from_pipeline)"
+  branch="$(printf '%s\n' "$pipeline_json" | branch_from_pipeline)"
   base="$(merge_base "$sha")"
   changed="$(changed_json "$base" "$sha")"
-  jobs="$(printf '%s' "$jobs_page" | jobs_from_workflow | mark_flaky_jobs)"
   jq -n \
     --arg commit "$sha" \
     --arg base "$base" \
     --arg branch "$branch" \
     --argjson changed "$changed" \
-    --argjson jobs "$jobs" \
+    --argjson jobs "$jobs_json" \
     '{commit: $commit, base: $base, branch: $branch, changed: $changed, jobs: $jobs}'
 }
 
@@ -138,60 +153,46 @@ record_one() {
 
 tmp="$(mktemp)"
 trap 'rm -f "$tmp"' EXIT INT HUP
-echo "[]" | jq '.' >"$tmp"
+printf '%s\n' '[]' | jq '.' >"$tmp"
 next_token=""
 seen=0
 
 while [ "$seen" -lt "$LIMIT" ]; do
-  if [ -n "$next_token" ]; then
-    page="$(api_get "api/v2/project/${PROJECT_SLUG}/pipeline?page-token=${next_token}")"
-  else
-    page="$(api_get "api/v2/project/${PROJECT_SLUG}/pipeline")"
+  page=""
+  if ! page="$(api_get "api/v2/project/${PROJECT_SLUG}/pipeline${next_token:+?page-token=${next_token}}")"; then
+    printf 'fetch-history: warning: pipeline list failed; stopping\n' >&2
+    break
   fi
 
-  n="$(echo "$page" | jq '.items | length')"
+  n="$(printf '%s\n' "$page" | jq '.items | length')"
   if [ "$n" -eq 0 ]; then
     break
   fi
 
   i=0
   while [ "$i" -lt "$n" ] && [ "$seen" -lt "$LIMIT" ]; do
-    pipeline="$(echo "$page" | jq -c ".items[$i]")"
+    pipeline="$(printf '%s\n' "$page" | jq -c ".items[$i]")"
     i=$((i + 1))
-    sha="$(printf '%s' "$pipeline" | commit_from_pipeline)"
+    sha="$(printf '%s\n' "$pipeline" | commit_from_pipeline)"
     if [ -z "$sha" ]; then
       continue
     fi
-    pipe_id="$(echo "$pipeline" | jq -r '.id')"
-    wf_page="$(api_get "api/v2/pipeline/${pipe_id}/workflow")"
-    wf_id="$(echo "$wf_page" | jq -r --arg w "$WORKFLOW" '.items[] | select(.name == $w) | .id' | head -n 1)"
-    if [ -z "$wf_id" ] || [ "$wf_id" = "null" ]; then
+    pipe_id="$(printf '%s\n' "$pipeline" | jq -r '.id')"
+    jobs=""
+    if ! jobs="$(jobs_for_pipeline "$pipe_id")"; then
+      printf 'fetch-history: warning: pipeline %s skipped\n' "$pipe_id" >&2
       continue
     fi
-    jobs_page="$(api_get "api/v2/workflow/${wf_id}/job")"
-    # Enrich failed jobs with rerun_success from the job detail API.
-    jobs_page="$(echo "$jobs_page" | jq '
-      .items |= map(
-        if .status == "failed" then . + {rerun_success: false} else . end
-      )
-    ')"
-    for jid in $(echo "$jobs_page" | jq -r '.items[] | select(.status=="failed") | .id'); do
-      detail="$(api_get "api/v2/job/${jid}")"
-      ok="$(echo "$detail" | jq -r '([.retries[]? | select(.status=="success")] | length > 0)')"
-      jobs_page="$(echo "$jobs_page" | jq --arg id "$jid" --argjson ok "$ok" '
-        .items |= map(if .id == $id then . + {rerun_success: $ok} else . end)
-      ')"
-    done
-    entry="$(record_one "$pipeline" "$jobs_page")"
+    entry="$(record_one "$pipeline" "$jobs")"
     jq --argjson e "$entry" '. + [$e]' "$tmp" >"${tmp}.new" && mv "${tmp}.new" "$tmp"
     seen=$((seen + 1))
   done
 
-  next_token="$(echo "$page" | jq -r '.next_page_token // empty')"
+  next_token="$(printf '%s\n' "$page" | next_page_token_from_pipelines)"
   if [ -z "$next_token" ]; then
     break
   fi
 done
 
 cp "$tmp" "$OUT"
-echo "fetch-history: wrote $seen commits to $OUT" >&2
+printf 'fetch-history: wrote %s commits to %s\n' "$seen" "$OUT" >&2

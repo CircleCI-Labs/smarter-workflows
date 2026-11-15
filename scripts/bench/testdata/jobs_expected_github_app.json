@@ -1,0 +1,12 @@
+[
+  {
+    "name": "lint",
+    "status": "success",
+    "duration_s": 31
+  },
+  {
+    "name": "security-scan",
+    "status": "success",
+    "duration_s": 19
+  }
+]
