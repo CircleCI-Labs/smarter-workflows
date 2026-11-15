@@ -165,6 +165,40 @@ cci() {
 
 now() { date +%s; }
 
+# pipeline_ids_for_commit BRANCH SHA: pipeline ids on BRANCH for this commit (all API pages).
+pipeline_ids_for_commit() {
+  local branch=$1 sha=$2 uri token page path
+  uri=$(jq -rn --arg s "$branch" '$s | @uri')
+  token=
+  while :; do
+    path="api/v2/project/$project/pipeline?branch=$uri"
+    if [ -n "$token" ]; then
+      path="${path}&page-token=$(jq -rn --arg t "$token" '$t | @uri')"
+    fi
+    page=$(cci "$path") || return 0
+    jq -r --arg sha "$sha" '.items[]? | select((.trigger_parameters.git.checkout_sha // "") == $sha) | .id' <<< "$page"
+    token=$(jq -r 'if (.next_page_token // "") == "" then empty else .next_page_token end' <<< "$page")
+    [ -n "$token" ] || break
+  done
+}
+
+# branch_pipeline_errors BRANCH: distinct error messages from pipeline pages on BRANCH.
+branch_pipeline_errors() {
+  local branch=$1 uri token page path
+  uri=$(jq -rn --arg s "$branch" '$s | @uri')
+  token=
+  while :; do
+    path="api/v2/project/$project/pipeline?branch=$uri"
+    if [ -n "$token" ]; then
+      path="${path}&page-token=$(jq -rn --arg t "$token" '$t | @uri')"
+    fi
+    page=$(cci "$path") || return 0
+    jq -r '[.items[]? | select((.errors | length) > 0) | .errors[].message] | .[]' <<< "$page"
+    token=$(jq -r 'if (.next_page_token // "") == "" then empty else .next_page_token end' <<< "$page")
+    [ -n "$token" ] || break
+  done | sort -u | paste -sd '; ' -
+}
+
 # us separates the fields of a result file: it is not blank, so an empty field
 # stays one.
 us=$'\x1f'
@@ -411,7 +445,11 @@ run_scenario() {
       echo "  ERROR: $note"
       return 0
     fi
-    git -C "$wt" commit -q -m "$message"
+    local commit_msg=$message
+    if [ "$repeat" -gt 1 ]; then
+      commit_msg="$message [e2e run $run nonce $idx-$RANDOM]"
+    fi
+    git -C "$wt" commit -q -m "$commit_msg"
     sha=$(git -C "$wt" rev-parse HEAD)
     echo "  branch $branch, commit ${sha:0:9}"
     git -C "$wt" show --stat --format= HEAD | sed 's/^/  /'
@@ -458,8 +496,7 @@ run_scenario() {
   local wfs="" setup_status="" planned_status="" setup_done=0 setup_wf="" planned_wf=""
   while :; do
     local ids id
-    ids=$(cci "api/v2/project/$project/pipeline?branch=$(jq -rn --arg s "$branch" '$s | @uri')" |
-      jq -r --arg sha "$sha" '.items[] | select((.trigger_parameters.git.checkout_sha // "") == $sha) | .id') || ids=
+    ids=$(pipeline_ids_for_commit "$branch" "$sha") || ids=
     if [ -z "$pid" ]; then
       for id in $ids; do
         wfs=$(cci "api/v2/pipeline/$id/workflow") || continue
@@ -485,11 +522,10 @@ run_scenario() {
         fi
       fi
     fi
-    if [ -z "$pid" ] && [ "$(now)" -ge $((started + 300)) ]; then
+    if [ -z "$pid" ] && [ "$(now)" -ge $((started + 600)) ]; then
       local errs
-      errs=$(cci "api/v2/project/$project/pipeline?branch=$(jq -rn --arg s "$branch" '$s | @uri')" |
-        jq -r '[.items[] | select((.errors | length) > 0) | .errors[].message] | unique | join("; ")' || true)
-      status=ERROR; note="no pipeline with a $t_setup workflow for the commit after 300s${errs:+; errored pipelines say: $errs}"; finish
+      errs=$(branch_pipeline_errors "$branch" 2> /dev/null || true)
+      status=ERROR; note="no pipeline with a $t_setup workflow for the commit after 600s${errs:+; errored pipelines say: $errs}"; finish
       echo "  ERROR: $note"
       return 0
     fi
@@ -676,15 +712,23 @@ median_of() {
   }'
 }
 
-# print_savings_summary: medians per scenario against full-run medians.
+# target_full_median TARGET: median job seconds of full-run scenarios for one target.
+target_full_median() {
+  local tgt=$1 med
+  med=$(awk -F'\t' -v t="$tgt" '$2 == t && $6 == "PASS" && $4 ~ /^full/ && $5 ~ /^[0-9]+$/ { print $5 }' "$timing" | median_of)
+  if ! [ "$med" -gt 0 ] 2> /dev/null; then
+    printf '%s\n' "$E2E_TIMING_NA"
+  else
+    printf '%s\n' "$med"
+  fi
+}
+
+# print_savings_summary: medians per scenario against that target's full-run median.
 print_savings_summary() {
   local full_med name tgt med saved pct
+  declare -A full_by_tgt=()
   [ -n "$csv" ] || return
   [ -s "$timing" ] || return
-  full_med=$(awk -F'\t' '$6 == "PASS" && $4 ~ /^full/ && $5 ~ /^[0-9]+$/ { print $5 }' "$timing" | median_of)
-  if ! [ "$full_med" -gt 0 ] 2> /dev/null; then
-    full_med=$E2E_TIMING_NA
-  fi
   echo
   echo "### Median job seconds (benchmark savings)"
   echo
@@ -692,6 +736,10 @@ print_savings_summary() {
   echo "|---|---|---:|---:|---:|"
   while IFS=$'\t' read -r name tgt; do
   [ -n "$name" ] || continue
+  if [ -z "${full_by_tgt[$tgt]+x}" ]; then
+    full_by_tgt[$tgt]=$(target_full_median "$tgt")
+  fi
+  full_med=${full_by_tgt[$tgt]}
   med=$(awk -F'\t' -v n="$name" -v t="$tgt" \
     '$1 == n && $2 == t && $6 == "PASS" && $5 ~ /^[0-9]+$/ { print $5 }' "$timing" | median_of)
   if ! [ "$med" -gt 0 ] 2> /dev/null; then
