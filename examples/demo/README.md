@@ -1,7 +1,6 @@
 # Demo monorepo
 
-A small polyglot monorepo that runs on Smarter Workflows. Every job does real
-but fast work, so you can watch the planner pick jobs from a change.
+A small polyglot monorepo that runs on Smarter Workflows. Every job does real but fast work, so you can watch the planner pick jobs from a change.
 
 ```
 services/api      Go, with a handler and a test
@@ -15,9 +14,7 @@ scripts/          what the lint, docs, infra, security and e2e jobs run
 
 ## The pipeline
 
-`.circleci/config.yml` is the setup config. It builds the planner from this
-repository, plans `.circleci/continue.yml` (workflow `demo`) and continues the
-pipeline with the result.
+[`.circleci/config.yml`](.circleci/config.yml) is the setup config. It builds the planner from this repository, plans [`.circleci/continue.yml`](.circleci/continue.yml) (workflow `demo`) and continues the pipeline with the result.
 
 | Job | Reads |
 |---|---|
@@ -32,10 +29,6 @@ pipeline with the result.
 | `build`, `e2e` | the api; `e2e` attaches the binary that `build` persists |
 | `hold-deploy`, `deploy` | main only, after a person approves |
 
-On `main` every job runs, and its file reads become the impact map. On a branch
-only the jobs the change can reach run, plus `smarter-gate`.
+On `main` every job runs, and its file reads become the impact map. On a branch only the jobs the change can reach run, plus `smarter-gate`.
 
-The demo keeps its impact map under its own cache key prefix,
-`smarter-demo-impact-v1`, because the repository's own pipeline shares the
-project cache. The scenarios in `scripts/e2e/scenarios-demo.tsv` check what runs
-for each kind of change.
+The demo keeps its impact map under its own cache key prefix, `smarter-demo-impact-v1`, because the repository's own pipeline shares the project cache. The scenarios in [`scripts/e2e/scenarios-demo.tsv`](../../scripts/e2e/scenarios-demo.tsv) check what runs for each kind of change, and [Validation](../../docs/validation.md#end-to-end-scenarios) lists the results.

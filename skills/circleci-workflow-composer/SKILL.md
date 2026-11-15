@@ -62,12 +62,12 @@ Planner v0.1
 
 | When you | Read |
 |---|---|
-| wire `requires`, use a status, filter a job or an approval, use a matrix or a job group | references/requires-and-statuses.md |
-| shape the graph: fan-out, coordinator, gate, fail fast, critical path, approval, deploy, serial-group, reruns | references/shaping-patterns.md |
-| write `when`, `unless`, filters or step conditions | references/conditions.md |
-| fix an order because of workspaces, caches or artifacts | references/data-flow.md |
-| call a tool or read a finding | references/tools.md |
-| want a complete, valid layout to copy | examples/ |
+| wire `requires`, use a status, filter a job or an approval, use a matrix or a job group | [references/requires-and-statuses.md](references/requires-and-statuses.md) |
+| shape the graph: fan-out, coordinator, gate, fail fast, critical path, approval, deploy, serial-group, reruns | [references/shaping-patterns.md](references/shaping-patterns.md) |
+| write `when`, `unless`, filters or step conditions | [references/conditions.md](references/conditions.md) |
+| fix an order because of workspaces, caches or artifacts | [references/data-flow.md](references/data-flow.md) |
+| call a tool or read a finding | [references/tools.md](references/tools.md) |
+| want a complete, valid layout to copy | [examples/](examples/) |
 
 Examples, each validated with `circleci config validate`: `01-small.yml` (parallel checks, one build, a gate); `02-medium-fanout-workspaces.yml` (workspaces, fan-out, a matrix by alias); `03-deploy-gated.yml` (approval, restricted context, serial-group, cleanup, notify, gate).
 
