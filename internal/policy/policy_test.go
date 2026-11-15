@@ -358,6 +358,25 @@ func TestPolicyOfEachRuleComesFromItsOwnFile(t *testing.T) {
 	}
 }
 
+func TestLoadSkipsSymlinks(t *testing.T) {
+	dir := writeBundle(t, map[string]string{"rules.rego": passRego})
+	outside := writeBundle(t, map[string]string{"evil.rego": softAndHardRego})
+	if err := os.Symlink(filepath.Join(outside, "evil.rego"), filepath.Join(dir, "link.rego")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	b, err := Load(dir, map[string]any{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	res := checkYAML(t, b, "version: 2.1\n")
+	if res.Status != guard.Pass {
+		t.Fatalf("status = %s, want PASS without the symlinked policy", res.Status)
+	}
+	if len(res.Violations) != 0 {
+		t.Fatalf("violations = %+v, want none", res.Violations)
+	}
+}
+
 func TestLoadIgnoresTestFiles(t *testing.T) {
 	dir := writeBundle(t, map[string]string{
 		"rules.rego":          passRego,
