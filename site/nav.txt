@@ -20,6 +20,10 @@ docs/how-it-works.md | How it works
 docs/limitations.md | Limitations
 docs/validation.md | Validation
 
+== Benchmarks | Performance numbers and replay against real CI history. The full reports are filled in as the benchmark jobs land on main.
+docs/benchmarks-perf.md | Performance benchmarks | Planner and trace-script timing on synthetic workloads, and how to rerun the harness. | benchmarks-perf
+docs/benchmarks-backtest.md | Backtest | Recall and job-time savings when the planner is replayed against historical pipelines. | benchmarks-backtest
+
 == Agents | Let an agent compose a workflow from the jobs of a pipeline, and check that the result is sound.
 skills/circleci-workflow-composer/SKILL.md | Composer skill | The skill that teaches an agent to assemble CircleCI jobs into a correct workflow layout, and to check it with the planner tools. | composer-skill
 examples/compose-eval/README.md | Compose eval | Three cases that test whether an agent with the composer skill composes a correct workflow, graded by a script with no model involved. | compose-eval
