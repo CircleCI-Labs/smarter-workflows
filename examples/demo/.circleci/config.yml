@@ -1,9 +1,29 @@
 # The setup config of the demo monorepo: the reference setup job of this
 # repository (../../../.circleci/config.yml) with the demo's own settings.
 #
-# One setup job builds the planner from this checkout (the orb is not published
-# yet), plans examples/demo/.circleci/continue.yml in select mode and continues
-# the pipeline with the result.
+# Default: build the planner from this checkout (see the plan job below).
+#
+# Optional — use the dev orb after main publishes cci-labs/smarter-workflows@dev:<sha>:
+#
+#   version: 2.1
+#   setup: true
+#   orbs:
+#     smarter: cci-labs/smarter-workflows@dev:<commit-sha>
+#   workflows:
+#     demo-plan:
+#       jobs:
+#         - smarter/plan:
+#             config: examples/demo/.circleci/continue.yml
+#             workflow: demo
+#             mode: select
+#             mandatory: security-scan
+#             policy-bundle: policies
+#             full-run-paths: examples/demo/.circleci/**
+#             map-key-prefix: smarter-demo-impact-v1
+#             trace-orb-jobs: true
+#             source: build
+#             executor: smarter/go
+#             resource_class: medium
 #
 # The repository's own pipeline runs in the same project and shares its cache.
 # So this pipeline keeps its impact map under its own key prefix,

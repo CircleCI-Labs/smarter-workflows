@@ -1,0 +1,18 @@
+description: >
+  Production setup after shadow mode: the orb installs the planner from a
+  release (signed download) and runs in select mode.
+usage:
+  version: 2.1
+  setup: true
+  orbs:
+    smarter: cci-labs/smarter-workflows@1.0.0
+  workflows:
+    plan:
+      jobs:
+        - smarter/plan:
+            config: .circleci/continue.yml
+            workflow: ci
+            mode: select
+            mandatory: security-scan
+            policy-bundle: policies
+            source: release
