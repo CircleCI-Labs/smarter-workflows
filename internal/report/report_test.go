@@ -13,7 +13,7 @@ import (
 
 func sample() *report.Plan {
 	return &report.Plan{
-		Mode: "select", Workflow: "ci",
+		Mode: "select", Workflow: "ci", WorkflowRuns: true,
 		Base: "b1", Head: "h1", Branch: "feature",
 		MapRevision: "m1", MapCreatedAt: "2026-11-12T18:30:00Z",
 		Changed: []report.Change{{Path: "services/api/main.go", Status: "M"}},
@@ -36,6 +36,7 @@ func TestJSONMatchesTheSpecShape(t *testing.T) {
   "mode": "select",
   "full": false,
   "full_reason": "",
+  "workflow_runs": true,
   "workflow": "ci",
   "base": "b1",
   "head": "h1",

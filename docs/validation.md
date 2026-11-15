@@ -16,7 +16,7 @@ What was tested in v0.1, and what each layer found. The results are from 2026-11
 | Robustness | 27 unusual config shapes (approvals mid-graph, two workflows, matrices, orb jobs, status `requires`, anchors and merge keys, null steps, renames, unicode paths). Every emitted config must keep the job graph intact, pass the guardrails, and pass `circleci config validate` | pass (9 bugs found and fixed first) |
 | Guardrails | 53 Rego tests and Go fixture tests through CircleCI's policy engine | pass |
 | Trace scripts | 43 checks on ext4, tmpfs and the `cimg/base` image; the atime reset tested on CircleCI's docker and machine executors | pass |
-| End to end | `scripts/e2e/run-scenarios.sh`: real branches, real pipelines, and an exact comparison of the jobs that ran | 13 of 13, three times (v0.1; after the robustness fixes; after the no-op gate) |
+| End to end | `scripts/e2e/run-scenarios.sh`: real branches, real pipelines, and an exact comparison of the jobs that ran | 21 scenarios (v0.1; orchestrator re-runs when this branch merges) |
 
 ## End-to-end scenarios
 
@@ -31,6 +31,12 @@ What was tested in v0.1, and what each layer found. The results are from 2026-11
 | shared schema | lint, api-test, web-test, security-scan, worker-test ×2 | 99 s |
 | api service, or a new file in it | lint, api-test, build, e2e (consumes build's workspace), security-scan, worker-test ×2 | 122–170 s |
 | a job with `resource_class: xlarge` | nothing: the setup job stops at the guardrails, and the check fails | 0 s |
+| a deleted file under `services/web` | lint, web-test, web-bundle, security-scan, worker-test ×2 | — |
+| a rename under `services/api` | lint, api-test, build, e2e, security-scan, worker-test ×2 | — |
+| docs and the API in one commit | docs-check, lint, api-test, build, e2e, security-scan, worker-test ×2 | — |
+| only `scripts/e2e.sh` | build, e2e, security-scan, worker-test ×2 | — |
+| only `package-lock.json` under web | lint, web-test, web-bundle, security-scan, worker-test ×2 | — |
+| only `services/worker` | lint, security-scan, worker-test ×2 | — |
 
 This repository (8 jobs):
 
@@ -39,8 +45,10 @@ This repository (8 jobs):
 | full run | all 8 | 287 s |
 | docs only | security-scan | 47 s |
 | one Go package, or a new file in it | go-test, go-lint, build, e2e-plan, security-scan | 197–205 s |
+| `policies/` | go-test, policy-test, security-scan | — |
+| `orb/orb.yml` | go-test, orb-validate, security-scan | — |
 
-Job time is the sum of the jobs' run times in the planned workflow, a stand-in for compute. It varies by about ±25% from run to run. Each scenario also checked that the workflow's GitHub check reported the expected conclusion.
+Job time is the sum of the jobs' run times in the planned workflow, a stand-in for compute. It varies by about ±25% from run to run. Each scenario also checked that the workflow's GitHub check reported the expected conclusion. Use `scripts/e2e/run-scenarios.sh --repeat N --csv OUT` for timing medians and a savings table against the full-run scenarios.
 
 ## Bugs that validation found and fixed
 

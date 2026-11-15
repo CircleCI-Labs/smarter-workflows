@@ -16,6 +16,7 @@ What v0.1 does not do yet. Each item is safe: where the planner cannot decide, t
 - **Orb jobs** are traced only with `--trace-orb-jobs`: it adds a `checkout` and a reset as pre-steps, so it only suits orb jobs that check out the repo. Without it they always run.
 - **A `checkout` inside a command** gets no reset, so that job's trace comes out incomplete and the job always runs.
 - **Expression filters** (string filters) are reported, and left out of the gate.
+- **Workflow `when`/`unless`** are evaluated only when every value is known from `--parameters`, `--branch`, `--tag` and `--trigger-type`. Unsupported forms still mean a full run. When the condition is false, the workflow is not pruned and gets no gate (CircleCI skips it).
 - **A job that requires only filtered-out jobs by a status** (`- deploy: failed`, with `deploy` filtered out on the branch) may or may not run, so the plan cannot leave it out or drop its requirement: it is a full run.
 - **Inputs from outside the repo** are not traced: the network, time, secrets, images. Full runs on the default branch, mandatory jobs and `--extra-inputs` cover them.
 - **The impact map lives in the project cache.** Any branch can write a cache entry, so a forged map could skip jobs. Mandatory jobs and guardrails do not depend on the map. Signing maps on the default branch is planned.

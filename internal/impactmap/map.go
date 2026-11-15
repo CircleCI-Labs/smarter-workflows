@@ -17,6 +17,14 @@ import (
 // Version is the only map format version this package reads and writes.
 const Version = 1
 
+// Bounds on hostile or accidental oversized maps (a parse error means a full run).
+const (
+	MaxMapFileBytes = 16 << 20
+	MaxMapJobs      = 4096
+	MaxPathsPerJob  = 100_000
+	MaxJobNameLen   = 256
+)
+
 // MethodATime is the only trace method v0.1 knows: file access times.
 const MethodATime = "atime"
 
@@ -86,6 +94,9 @@ func Parse(data []byte) (*Map, error) {
 	if m.Jobs == nil {
 		m.Jobs = map[string]*Job{}
 	}
+	if err := validateMapBounds(&m); err != nil {
+		return nil, err
+	}
 	for _, name := range sortedKeys(m.Jobs) {
 		j := m.Jobs[name]
 		if j == nil {
@@ -106,11 +117,37 @@ func Parse(data []byte) (*Map, error) {
 
 // Load reads and parses the map at filePath.
 func Load(filePath string) (*Map, error) {
+	info, err := os.Stat(filePath)
+	if err != nil {
+		return nil, err
+	}
+	if info.Size() > MaxMapFileBytes {
+		return nil, fmt.Errorf("impact map: file is %d bytes, over the limit of %d", info.Size(), MaxMapFileBytes)
+	}
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, err
 	}
 	return Parse(data)
+}
+
+func validateMapBounds(m *Map) error {
+	if len(m.Jobs) > MaxMapJobs {
+		return fmt.Errorf("impact map: %d jobs, over the limit of %d", len(m.Jobs), MaxMapJobs)
+	}
+	for name, j := range m.Jobs {
+		if len(name) > MaxJobNameLen {
+			return fmt.Errorf("impact map: job name is %d characters, over the limit of %d", len(name), MaxJobNameLen)
+		}
+		if j == nil {
+			continue
+		}
+		n := len(j.Files) + len(j.Dirs)
+		if n > MaxPathsPerJob {
+			return fmt.Errorf("impact map: job %q has %d paths, over the limit of %d", name, n, MaxPathsPerJob)
+		}
+	}
+	return nil
 }
 
 // Marshal encodes the map as indented JSON with a trailing newline.

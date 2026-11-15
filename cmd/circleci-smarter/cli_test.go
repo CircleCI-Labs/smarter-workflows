@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -348,6 +349,20 @@ func TestPlanCommandFullRuns(t *testing.T) {
 			}
 			return c.planArgs()
 		}, "unsupported version 9"},
+		{"an oversized map", func(t *testing.T, c *cliRepo) []string {
+			jobs := make(map[string]map[string]any)
+			for i := 0; i < impactmap.MaxMapJobs+1; i++ {
+				jobs[fmt.Sprintf("j%d", i)] = map[string]any{"complete": true}
+			}
+			data, err := json.Marshal(map[string]any{"version": 1, "jobs": jobs})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(c.path("map.json"), data, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			return c.planArgs()
+		}, "over the limit"},
 		{"the pipeline definition changed", func(t *testing.T, c *cliRepo) []string {
 			c.Write(".circleci/continue.yml", cliConfig+"# touched\n")
 			c.Commit("touch the pipeline")

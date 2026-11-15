@@ -1,0 +1,56 @@
+version: 2.1
+jobs:
+  lint:
+    docker: [{image: "cimg/base:2026.11"}]
+    steps:
+      - checkout
+      - run: make lint
+  api-test:
+    docker: [{image: "cimg/go:1.26"}]
+    steps:
+      - checkout
+      - run: make api-test
+  web-test:
+    docker: [{image: "cimg/node:22.1"}]
+    steps:
+      - checkout
+      - run: make web-test
+  build:
+    docker: [{image: "cimg/go:1.26"}]
+    steps:
+      - checkout
+      - run: make build
+      - persist_to_workspace:
+          root: .
+          paths: [dist]
+  e2e:
+    docker: [{image: "cimg/node:22.1"}]
+    steps:
+      - checkout
+      - attach_workspace:
+          at: .
+      - run: make e2e
+  docs:
+    docker: [{image: "cimg/node:22.1"}]
+    steps:
+      - checkout
+      - run: make docs
+  security-scan:
+    docker: [{image: "cimg/go:1.26"}]
+    steps:
+      - checkout
+      - run: govulncheck ./...
+workflows:
+  ci:
+    jobs:
+      - lint
+      - security-scan
+      - api-test:
+          requires: [lint]
+      - web-test:
+          requires: [lint]
+      - build:
+          requires: [lint]
+      - e2e:
+          requires: [build]
+      - docs

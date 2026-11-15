@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/CircleCI-Labs/smarter-workflows/internal/impactmap"
@@ -70,11 +69,7 @@ func runMap(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "circleci-smarter map build: %v\n", err)
 		return 1
 	}
-	if err := os.MkdirAll(filepath.Dir(*out), 0o755); err != nil {
-		fmt.Fprintf(stderr, "circleci-smarter map build: %v\n", err)
-		return 1
-	}
-	if err := os.WriteFile(*out, data, 0o644); err != nil {
+	if err := writeOutputFile(*out, data, 0o640); err != nil {
 		fmt.Fprintf(stderr, "circleci-smarter map build: %v\n", err)
 		return 1
 	}

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/CircleCI-Labs/smarter-workflows/internal/impactmap"
 	"github.com/CircleCI-Labs/smarter-workflows/internal/planner"
 )
 
@@ -125,8 +126,8 @@ workflows:
 		config []byte
 		want   string
 	}{
-		{"parameter in when", cfg("    when: << pipeline.parameters.go >>\n", ""), "a when or unless that is not a literal"},
-		{"expression in unless", cfg("    unless: pipeline.git.branch == \"x\"\n", ""), "a when or unless that is not a literal"},
+		{"parameter in when", cfg("    when: << pipeline.parameters.go >>\n", ""), "cannot be evaluated"},
+		{"parameter in unless", cfg("    unless: << pipeline.parameters.skip >>\n", ""), "cannot be evaluated"},
 		{"a job name that is an expression", cfg("", ":\n          name: a-<< pipeline.parameters.go >>"), `job "a-<< pipeline.parameters.go >>" has a name or requires that is an expression`},
 	}
 	for _, tc := range tests {
@@ -142,6 +143,72 @@ workflows:
 	if res.Report.Full {
 		t.Fatalf("a literal when must not force a full run: %s", res.Report.FullReason)
 	}
+	// A branch expression is enough without --parameters.
+	res = plan(t, planner.Input{Config: cfg("    unless: pipeline.git.branch == \"x\"\n", ""), Map: m, Repo: &fakeRepo{changes: changes("M x")}}, o)
+	if res.Report.Full {
+		t.Fatalf("evaluated unless must not force a full run: %s", res.Report.FullReason)
+	}
+}
+
+func TestPlanWorkflowWhenParameters(t *testing.T) {
+	cfg := []byte(`version: 2.1
+parameters:
+  run: {type: boolean, default: true}
+jobs:
+  a: {docker: [{image: x}], steps: [checkout]}
+  b: {docker: [{image: x}], steps: [checkout]}
+workflows:
+  w:
+    when: << pipeline.parameters.run >>
+    jobs:
+      - a
+      - b:
+          requires: [a]
+`)
+	m := monorepoMap()
+	o := opts()
+	o.Workflow = "w"
+	repo := &fakeRepo{changes: changes("M pkg/x.go")}
+	mapForA := func(files ...string) *impactmap.Map {
+		m2 := monorepoMap()
+		m2.Jobs["a"] = &impactmap.Job{Files: files, Complete: true}
+		return m2
+	}
+	m = mapForA("pkg/x.go")
+
+	t.Run("unknown without parameters", func(t *testing.T) {
+		res := plan(t, planner.Input{Config: cfg, Map: m, Repo: repo}, o)
+		if !res.Report.Full {
+			t.Fatal("want full run")
+		}
+	})
+
+	t.Run("pruned with run true", func(t *testing.T) {
+		o2 := o
+		o2.Parameters = map[string]any{"run": true}
+		res := plan(t, planner.Input{Config: cfg, Map: m, Repo: repo}, o2)
+		if res.Report.Full || !res.Report.WorkflowRuns {
+			t.Fatalf("full=%v runs=%v", res.Report.Full, res.Report.WorkflowRuns)
+		}
+		if got := running(res); !slices.Equal(got, []string{"a", "b"}) {
+			t.Fatalf("running %v", got)
+		}
+	})
+
+	t.Run("skipped with run false", func(t *testing.T) {
+		o2 := o
+		o2.Parameters = map[string]any{"run": false}
+		res := plan(t, planner.Input{Config: cfg, Map: m, Repo: repo}, o2)
+		if res.Report.Full || res.Report.WorkflowRuns {
+			t.Fatalf("full=%v runs=%v reason=%q", res.Report.Full, res.Report.WorkflowRuns, res.Report.WorkflowSkipReason)
+		}
+		if res.Report.Gate != nil {
+			t.Fatal("gate added when workflow skipped")
+		}
+		if string(res.Config) != string(cfg) {
+			t.Fatal("config was modified")
+		}
+	})
 }
 
 func TestRunErrors(t *testing.T) {

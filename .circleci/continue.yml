@@ -123,7 +123,10 @@ jobs:
           name: shellcheck
           command: |
             shellcheck --version
-            shellcheck -s sh internal/tracescript/*.sh scripts/*.sh
+            shellcheck -s sh internal/tracescript/*.sh scripts/*.sh scripts/bench/*.sh
+      - run:
+          name: Bench fixture parse
+          command: scripts/bench/test-parse.sh
       # Atime must work here: the docker executor is the one the traces run on.
       - run:
           name: Tests of the trace scripts
@@ -257,6 +260,60 @@ jobs:
           command: |
             echo "release stub: would publish ${CIRCLE_TAG}"
 
+  benchmark:
+    docker:
+      - image: cimg/go:1.27.3
+    resource_class: medium
+    steps:
+      - checkout
+      - install-circleci-cli
+      - restore_cache:
+          keys:
+            - smarter-impact-v1-
+      - run:
+          name: Build circleci-smarter
+          command: |
+            set -eu
+            mkdir -p /tmp/smarter/bin
+            CGO_ENABLED=0 go build -trimpath -ldflags "-X main.version=dev-$CIRCLE_SHA1" -o /tmp/smarter/bin/circleci-smarter ./cmd/circleci-smarter
+      - run:
+          name: Fetch workflow history
+          environment:
+            PROJECT_SLUG: "<< pipeline.project.slug >>"
+          command: |
+            set -eu
+            command -v jq >/dev/null || { echo "benchmark: jq is required on this image" >&2; exit 1; }
+            mkdir -p /tmp/smarter
+            scripts/bench/fetch-history.sh "$PROJECT_SLUG" ci 200 /tmp/smarter/history.json .
+      - run:
+          name: Backtest recall and savings
+          command: |
+            set -eu
+            map=/tmp/smarter/impact-map.json
+            if [ ! -s "$map" ]; then
+              echo "benchmark: no impact map in cache; run a full pipeline on main first" >&2
+              exit 1
+            fi
+            /tmp/smarter/bin/circleci-smarter backtest \
+              --history /tmp/smarter/history.json \
+              --map "$map" \
+              --config .circleci/continue.yml \
+              --workflow ci \
+              --mandatory security-scan \
+              --format md \
+              > /tmp/smarter/backtest.md
+            /tmp/smarter/bin/circleci-smarter backtest \
+              --history /tmp/smarter/history.json \
+              --map "$map" \
+              --config .circleci/continue.yml \
+              --workflow ci \
+              --mandatory security-scan \
+              --format json \
+              > /tmp/smarter/backtest.json
+      - store_artifacts:
+          path: /tmp/smarter
+          destination: backtest
+
 workflows:
   # The docs site, published from main in a workflow of its own: the planner plans `ci` only and passes this workflow through, a
   # failed publication (an expired token, say) cannot hold the impact map or the gate of `ci`, and one publication runs at a
@@ -305,3 +362,9 @@ workflows:
               ignore: /.*/
             tags:
               only: /^v.*/
+  benchmark:
+    when: pipeline.trigger.type == "schedule"
+    jobs:
+      - benchmark:
+          context:
+            - smarter-workflows-ai
