@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "revision": "base1",
+  "created_at": "2026-11-12T18:30:00Z",
+  "method": "atime",
+  "jobs": {
+    "lint": {
+      "files": ["pkg/app.go", "docs/readme.md"],
+      "dirs": ["pkg", "docs"],
+      "complete": true,
+      "nodes": 1
+    },
+    "unit-test": {
+      "files": ["pkg/app.go"],
+      "dirs": ["pkg"],
+      "complete": true,
+      "nodes": 1
+    },
+    "security-scan": {
+      "files": ["go.mod"],
+      "dirs": ["."],
+      "complete": true,
+      "nodes": 1
+    }
+  }
+}

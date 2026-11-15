@@ -18,11 +18,12 @@ For each job that ran in CI:
 |--------|---------|
 | **Caught** | The job failed and select mode would still run it. |
 | **Miss** | The job failed and select mode would skip it. |
+| **Unmatched** | The job failed but its name is not in today's workflow (renamed or removed); excluded from recall. |
 | **Flaky** | The job failed then passed on a rerun of the same commit; excluded from recall. |
 
-**Recall** is `caught / (caught + misses)` over non-flaky failures.
+**Recall** is `caught / (caught + misses)` over non-flaky failures in jobs that still exist in the config.
 
-**Savings** sums `duration_s` over jobs that ran historically but would be skipped, divided by total recorded job time.
+**Savings** sums `duration_s` over **matched** jobs that ran historically but would be skipped, divided by matched recorded job time. Unmatched job time is reported separately.
 
 ## History file format
 
@@ -42,6 +43,8 @@ A JSON array of commits:
 ]
 ```
 
+Optional per-commit `parameters` overrides the `--parameters` file for that pipeline (same semantics as `plan --parameters`).
+
 Build a history file with [`scripts/bench/fetch-history.sh`](../scripts/bench/fetch-history.sh) (needs a CircleCI API token and a git clone). Fixture parsing is tested by [`scripts/bench/test-parse.sh`](../scripts/bench/test-parse.sh).
 
 ## Command
@@ -52,9 +55,12 @@ circleci-smarter backtest \
   --map impact-map.json.gz \
   --config .circleci/continue.yml \
   --workflow ci \
+  --parameters pipeline-params.json \
   --mandatory security-scan \
   --format md
 ```
+
+`--parameters` is a JSON object of pipeline parameter values, applied to every commit unless a history record carries its own `parameters` object. Use the same file you would pass to `plan --parameters` when the continuation config gates workflows or jobs on `<< pipeline.parameters.* >>`.
 
 `--format json` writes the machine-readable report (used for golden tests).
 
@@ -66,7 +72,8 @@ The `benchmark` workflow in `.circleci/continue.yml` runs when `pipeline.trigger
 
 - **One map for all commits.** The map reflects the repo layout at its revision (usually recent `main`). Older commits that touched different paths or job names are approximate.
 - **Changed files only.** History carries a file list, not full git trees. Adds/deletes may miss directory moves the live planner would see via `git ls-tree`.
-- **Workflow drift.** Jobs removed from the config or renamed are ignored in recall; savings count only jobs present in both history and the current workflow.
+- **Workflow drift.** Failures in jobs removed from the config or renamed are **unmatched** (listed separately, not in recall). Savings count only jobs present in today's workflow.
+- **Parameter gates.** Without `--parameters`, workflow `when` expressions that depend on pipeline parameters may be unknown, which forces a full run and makes savings look like 0%.
 - **No guardrail replay.** Backtest does not pass `--policy-bundle`; historical guardrail repairs are not simulated.
 - **Flaky detection** depends on CircleCI job rerun metadata when history is mined; hand-written fixtures set `"flaky": true` explicitly.
 
