@@ -69,7 +69,9 @@ Until the orb is published, copy the setup job of this repository's [`.circleci/
 
 ## Results on this repository
 
-This repository plans its own pipeline. On 2026-11-14, with 8 jobs, a docs-only branch ran 1 job (the mandatory security scan), and a change to one Go package ran 5. Job time for the docs-only case dropped from 280 s to 46 s. The pipeline has since gained a docs site build job, which reads the docs. [How it works](docs/how-it-works.md#results-on-this-repository-2026-11-14) has the table.
+This repository plans its own pipeline (8 jobs). Measured on real CircleCI in 2026-11-15 (three runs per scenario, medians): a **docs-only** change ran `docs-site-build` and the mandatory `security-scan` — **45 s** of job time versus **537 s** for a full run (~**92%** less). A change confined to one Go package (`internal/report`) ran six jobs and spent **423 s** versus **537 s** full (~**21%** less). On the [demo monorepo](examples/demo/README.md), a docs-only change median was **22 s** versus **154 s** full (~**86%** less).
+
+Replaying **79** commits of this repo's history against today's impact map in select mode: **100%** recall on failures (5/5 caught, 0 misses) and **6.9%** historical job-time savings — most commits touch Go or `.circleci/`, which many jobs read. [Benchmarks](docs/benchmarks.md) has the full tables; [Validation](docs/validation.md) describes the end-to-end runs.
 
 ## Documentation
 
@@ -95,7 +97,7 @@ The project is pre-release (0.x). [Validation](docs/validation.md) lists every l
 | 27 unusual config shapes (approvals mid-graph, two workflows, matrices, orb jobs, anchors, renames and more) | Tested | Every emitted config must keep the job graph intact, pass the guardrails, and pass `circleci config validate`. Nine bugs were found and fixed first |
 | Guardrail bundle | Tested | 53 Rego tests, and Go fixture tests through CircleCI's policy engine |
 | Trace scripts | Tested | 43 checks on ext4, tmpfs and the `cimg/base` image, and the access time reset on CircleCI's docker and machine executors |
-| End to end: the demo monorepo (13 jobs) and this repository (8 jobs) | Tested | Real branches and real pipelines, with an exact comparison of the jobs that ran: 13 of 13 scenarios, three times |
+| End to end: the demo monorepo (13 jobs) and this repository (8 jobs) | Tested | **21** scenarios, **3** runs each on real pipelines; **57/63** job-set checks passed on the first batch; two scenario definitions were fixed and verified on a rerun ([Validation](docs/validation.md)) |
 | Composing a workflow with an agent | One run | Three cases, graded by a script with no model involved. One model run passed all three |
 | Shadow mode on a busy real repository | Not validated | No real hit and miss rates yet |
 | The approval and deploy path on the default branch, beyond the hold | Not validated | Not exercised |

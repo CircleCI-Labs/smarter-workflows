@@ -71,3 +71,20 @@ The `benchmark` workflow in `.circleci/continue.yml` runs when `pipeline.trigger
 - **Flaky detection** depends on CircleCI job rerun metadata when history is mined; hand-written fixtures set `"flaky": true` explicitly.
 
 Use backtest to compare maps and tuning over time, not as a guarantee for every past commit.
+
+## Measured: this repository (2026-11-15)
+
+Replayed **79** commits from the project's `ci` workflow against the impact map from main at commit `83d7d6082`:
+
+| Metric | Value |
+| --- | --- |
+| Failures (non-flaky) | 5 |
+| Caught | 5 |
+| Misses | 0 |
+| Flaky (excluded) | 0 |
+| **Recall** | **100%** |
+| Historical job time | 13 737 s |
+| Would have skipped | 949 s |
+| **Savings** | **6.9%** |
+
+History here is mostly Go and `.circleci/` changes, which reach most jobs, so skipped time stays small. Replaying the [demo monorepo](../examples/demo/README.md) history would not measure much: those pipelines already ran in select mode when the traces were taken.
