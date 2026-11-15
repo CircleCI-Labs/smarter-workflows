@@ -3,6 +3,7 @@
   "mode": "select",
   "full": true,
   "full_reason": "no usable impact map: there is no impact map at /tmp/smarter/impact-map.json",
+  "workflow_runs": true,
   "workflow": "ci",
   "base": "<base>",
   "head": "<head>",

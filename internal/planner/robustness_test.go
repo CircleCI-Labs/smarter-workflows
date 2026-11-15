@@ -122,24 +122,26 @@ func rbOpts(wf, branch string, rr rbRepo) planner.Options {
 // report runs, the jobs of the planned workflow in the output, and the gate's
 // requires.
 type rbWant struct {
-	full    bool
-	running []string
-	emitted []string
-	gate    []string
+	full            bool
+	workflowSkipped bool
+	running         []string
+	emitted         []string
+	gate            []string
 }
 
 // rbCase is one planned change.
 type rbCase struct {
-	cfg       []byte
-	base      map[string]string
-	branch    string // "feature" unless set; "main" is a full run
-	change    func(r *difftest.Repo)
-	reads     map[string]rbReads
-	mandatory []string
-	traceOrb  bool          // --trace-orb-jobs
-	checker   guard.Checker // the policy bundle, or nil
-	wf        string        // "ci" unless set
-	want      rbWant
+	cfg        []byte
+	base       map[string]string
+	branch     string // "feature" unless set; "main" is a full run
+	change     func(r *difftest.Repo)
+	reads      map[string]rbReads
+	mandatory  []string
+	parameters map[string]any
+	traceOrb   bool          // --trace-orb-jobs
+	checker    guard.Checker // the policy bundle, or nil
+	wf         string        // "ci" unless set
+	want       rbWant
 }
 
 // rbRun plans one case, checks the plan against want, and checks the
@@ -156,6 +158,7 @@ func rbRun(t *testing.T, c rbCase) *planner.Result {
 	rr := rbChange(t, c.base, branch, c.change)
 	o := rbOpts(wf, branch, rr)
 	o.Mandatory = c.mandatory
+	o.Parameters = c.parameters
 	o.TraceOrbJobs = c.traceOrb
 	in := planner.Input{Config: c.cfg, Map: rbMap(rr.base, c.reads), Repo: rr.git, CommitMessage: "change"}
 	in.Checker = c.checker
@@ -164,7 +167,9 @@ func rbRun(t *testing.T, c rbCase) *planner.Result {
 		t.Fatalf("planner.Run: %v", err)
 	}
 	rbCheckPlan(t, res, wf, c.want)
-	rbInvariants(t, rbCheck{wf: wf, branch: branch, in: c.cfg, res: res, checker: c.checker})
+	if !c.want.workflowSkipped {
+		rbInvariants(t, rbCheck{wf: wf, branch: branch, in: c.cfg, res: res, checker: c.checker})
+	}
 	return res
 }
 
@@ -173,6 +178,15 @@ func rbCheckPlan(t *testing.T, res *planner.Result, wf string, want rbWant) {
 	t.Helper()
 	if res.Report.Full != want.full {
 		t.Errorf("full run = %v (%s), want %v", res.Report.Full, res.Report.FullReason, want.full)
+	}
+	if want.workflowSkipped {
+		if res.Report.WorkflowRuns {
+			t.Errorf("workflow_runs = true, want skipped")
+		}
+		if res.Report.Gate != nil {
+			t.Errorf("gate present when workflow is skipped")
+		}
+		return
 	}
 	if got := running(res); !sameSet(got, want.running) {
 		t.Errorf("running = %v, want %v", got, want.running)
@@ -1093,27 +1107,46 @@ func TestRobustness_StatusRequiresJobIsNotAwaitedByGate(t *testing.T) {
 	}
 }
 
-// Case 7: a workflow with `when: << pipeline.parameters.x >>` gets a full run,
-// keeps its `when`, and gets no new pipeline parameter or expression.
-func TestRobustness_WhenParameterRunsEverything(t *testing.T) {
+// Case 7: a workflow gated on a pipeline parameter plans when the value is known.
+func TestRobustness_WhenParameter(t *testing.T) {
 	cfg := rbFixture(t, "when_parameter.yml")
-	res := rbRun(t, rbCase{
-		cfg:    cfg,
-		base:   map[string]string{"services/api/main.go": "package api\n", "app/x.go": "package app\n"},
-		change: rbEdit("services/api/main.go", "package api\n\n// changed\n"),
-		reads: map[string]rbReads{
-			"lint": {files: []string{"services/api/main.go"}, dirs: []string{"services/api"}},
-			"test": {files: []string{"app/x.go"}, dirs: []string{"app"}},
-		},
-		want: rbWant{full: true, running: []string{"lint", "test"}, emitted: []string{"lint", "test", "smarter-gate"}, gate: []string{"lint", "test"}},
+	base := map[string]string{"services/api/main.go": "package api\n", "app/x.go": "package app\n"}
+	change := rbEdit("services/api/main.go", "package api\n\n// changed\n")
+	reads := map[string]rbReads{
+		"lint": {files: []string{"services/api/main.go"}, dirs: []string{"services/api"}},
+		"test": {files: []string{"app/x.go"}, dirs: []string{"app"}},
+	}
+	t.Run("without parameters", func(t *testing.T) {
+		res := rbRun(t, rbCase{cfg: cfg, base: base, change: change, reads: reads,
+			want: rbWant{full: true, running: []string{"lint", "test"}, emitted: []string{"lint", "test", "smarter-gate"}, gate: []string{"lint", "test"}}})
+		if !strings.Contains(res.Report.FullReason, "cannot be evaluated") {
+			t.Errorf("full-run reason = %q", res.Report.FullReason)
+		}
+		noNewExpressions(t, cfg, res.Config)
 	})
-	if !strings.Contains(res.Report.FullReason, "when or unless") {
-		t.Errorf("full-run reason = %q, want the when or unless reason", res.Report.FullReason)
-	}
-	noNewExpressions(t, cfg, res.Config)
-	if got := rbWorkflow(t, rbDoc(t, res.Config), "ci")["when"]; got != "<< pipeline.parameters.run-ci >>" {
-		t.Errorf("the workflow's when = %v, want it unchanged", got)
-	}
+	t.Run("run-ci true prunes", func(t *testing.T) {
+		res := rbRun(t, rbCase{
+			cfg: cfg, base: base, change: change, reads: reads,
+			parameters: map[string]any{"run-ci": true},
+			want:       rbWant{running: []string{"lint"}, emitted: []string{"lint", "smarter-gate"}, gate: []string{"lint"}},
+		})
+		if res.Report.Full {
+			t.Fatalf("full run: %s", res.Report.FullReason)
+		}
+	})
+	t.Run("run-ci false skips the workflow", func(t *testing.T) {
+		res := rbRun(t, rbCase{
+			cfg: cfg, base: base, change: change, reads: reads,
+			parameters: map[string]any{"run-ci": false},
+			want:       rbWant{workflowSkipped: true, running: []string{}, emitted: []string{"lint", "test"}, gate: nil},
+		})
+		if string(res.Config) != string(cfg) {
+			t.Error("config was modified when workflow skipped")
+		}
+		if got := rbWorkflow(t, rbDoc(t, res.Config), "ci")["when"]; got != "<< pipeline.parameters.run-ci >>" {
+			t.Errorf("when = %v", got)
+		}
+	})
 }
 
 // Case 8: expression filters (a string) and regex filters. An expression is

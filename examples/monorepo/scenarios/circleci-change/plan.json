@@ -3,6 +3,7 @@
   "mode": "select",
   "full": true,
   "full_reason": "changed path .circleci/continue.yml matches the full-run path .circleci/**",
+  "workflow_runs": true,
   "workflow": "ci",
   "base": "<base>",
   "head": "<head>",
