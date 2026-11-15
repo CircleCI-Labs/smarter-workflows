@@ -60,6 +60,9 @@ func TestBacktestFixture(t *testing.T) {
 	if !jsonEqual(gotV, wantV) {
 		t.Errorf("report mismatch:\ngot:\n%s\nwant from testdata/report.json", got)
 	}
+	if report.Commits != len(history) {
+		t.Errorf("Commits = %d, want %d (len history)", report.Commits, len(history))
+	}
 }
 
 func jsonEqual(a, b any) bool {

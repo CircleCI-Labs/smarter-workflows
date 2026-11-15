@@ -1,4 +1,10 @@
-# Backtest: recall and job-time savings
+---
+page-title: Backtest
+page-audience: admin
+page-description: Recall and job-time savings when the planner is replayed against historical CI runs, and the limits of that replay.
+---
+
+# Backtest
 
 The `backtest` command replays historical CI runs against **today's** impact map and reports how often select mode would still have run failing jobs (recall) and how much job time it would have skipped (savings).
 

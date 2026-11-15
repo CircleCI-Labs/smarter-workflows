@@ -105,7 +105,6 @@ func Run(ctx context.Context, config []byte, m *impactmap.Map, history []CommitH
 			sort.Strings(cr.Misses)
 			r.CommitsWithMisses = append(r.CommitsWithMisses, cr)
 		}
-		r.Commits = len(history)
 	}
 
 	if r.Summary.TotalFailures > 0 {
