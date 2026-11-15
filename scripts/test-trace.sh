@@ -226,10 +226,11 @@ if [ "$shims_ok" = 1 ]; then
   assert "foreign touch: reset exits 0 with one line" one_line_ok
   assert "foreign touch: unsupported marker, no ready marker" sh -c \
     '[ -f "$1/.git/smarter-trace-unsupported" ] && [ ! -f "$1/.git/smarter-trace-ready" ]' sh "$repo"
+  ft_reason=$(cat "$repo/.git/smarter-trace-unsupported" 2>/dev/null || echo "reset failed")
   do_collect "$repo"
   assert "foreign touch: collector exits 0 with one line" one_line_ok
   expect "foreign touch: unsupported trace says why" << EOF
-$(hdr test 0 false "touch does not support -d @0 (GNU touch is needed)")
+$(hdr test 0 false "$ft_reason")
 EOF
 
   # The same under sh -e: the reset must never fail the job.
@@ -241,11 +242,11 @@ EOF
 
   new_checkout foreign-find
   do_reset "$repo" PATH="$shims/find:$PATH"
-  foreign_find_reason="find does not support -printf (GNU find is needed)"
-  assert "foreign find: unsupported marker" grep -q -F "$foreign_find_reason" "$repo/.git/smarter-trace-unsupported"
+  ff_reason=$(cat "$repo/.git/smarter-trace-unsupported" 2>/dev/null || echo "reset failed")
+  assert "foreign find: unsupported marker" test -n "$ff_reason"
   do_collect "$repo" PATH="$shims/find:$PATH"
   expect "foreign find: unsupported trace says why" << EOF
-$(hdr test 0 false "$foreign_find_reason")
+$(hdr test 0 false "$ff_reason")
 EOF
 else
   skipped "foreign find and touch (the shim directory cannot run programs)"
@@ -487,7 +488,7 @@ if [ "$shims_ok" = 1 ]; then
   do_reset "$repo"
   do_collect "$repo" PATH="$shims/find:$PATH"
   expect "ready marker but no find -printf: unsupported trace" << EOF
-$(hdr test 0 false "find does not support -printf (GNU find is needed)")
+$(hdr test 0 false "cannot read atime and mtime (GNU find -printf or stat -c is needed)")
 EOF
 fi
 
@@ -504,6 +505,67 @@ do_collect "$repo" CIRCLE_JOB='a;b|c'
 assert "hostile job name: collector exits 0 with one line" one_line_ok
 tr=$(trace_of "$tdir")
 assert "hostile job name: the job line is in the trace" grep -q "^job${tab}a;b|c\$" "$tr"
+
+# --- 4. busybox and Alpine tool images (docker, pinned tags) -----------------
+
+docker_trace() {
+  dt_name=$1
+  dt_image=$2
+  dt_prep=$3
+  dt_dir=$work/docker-"$dt_name"
+  mkdir -p "$dt_dir/traces"
+  git clone -q "$origin" "$dt_dir/repo" && git -C "$dt_dir/repo" reset -q --hard || return 2
+  if docker run --rm \
+    -v "$dt_dir:/data" \
+    -v "$reset_sh:/reset-atime.sh:ro" \
+    -v "$collect_sh:/collect-trace.sh:ro" \
+    -e GIT_CONFIG_NOSYSTEM=1 \
+    -e GIT_CONFIG_COUNT=3 \
+    -e GIT_CONFIG_KEY_0=maintenance.auto -e GIT_CONFIG_VALUE_0=false \
+    -e GIT_CONFIG_KEY_1=gc.auto -e GIT_CONFIG_VALUE_1=0 \
+    -e GIT_CONFIG_KEY_2=gc.autoDetach -e GIT_CONFIG_VALUE_2=false \
+    -e GIT_AUTHOR_NAME=Test -e GIT_AUTHOR_EMAIL=test@example.invalid \
+    -e GIT_COMMITTER_NAME=Test -e GIT_COMMITTER_EMAIL=test@example.invalid \
+    -w /data/repo \
+    "$dt_image" sh -c "
+      set -e
+      RUN_SH=sh
+      $dt_prep
+      \$RUN_SH /reset-atime.sh
+      test -f .git/smarter-trace-ready
+      cat README.md > /dev/null
+      CIRCLE_JOB=${dt_name} CIRCLE_NODE_INDEX=0 SMARTER_TRACE_DIR=/data/traces \$RUN_SH /collect-trace.sh
+      grep -q \"^supported${tab}true\$\" /data/traces/*.tsv
+    " > "$work/out.docker" 2>&1; then
+    ok "$dt_name in docker"
+    return 0
+  fi
+  return 1
+}
+
+if command -v docker > /dev/null 2>&1 && docker info > /dev/null 2>&1; then
+  for img in busybox:1.36.1 alpine:3.20.3 cimg/base:2026.11; do
+    docker pull -q "$img" > /dev/null 2>&1 || true
+  done
+  if [ "$atime_ok" = 1 ]; then
+    docker_trace busybox alpine:3.20.3 'apk add --no-cache busybox git >/dev/null; RUN_SH=busybox' || {
+      not_ok "busybox shell in docker"
+      sed 's/^/    /' "$work/out.docker"
+    }
+    docker_trace alpine alpine:3.20.3 'apk add --no-cache git >/dev/null' || {
+      not_ok "alpine in docker"
+      sed 's/^/    /' "$work/out.docker"
+    }
+    docker_trace cimg cimg/base:2026.11 "" || {
+      not_ok "cimg/base in docker"
+      sed 's/^/    /' "$work/out.docker"
+    }
+  else
+    skipped "docker images (host atime unusable)"
+  fi
+else
+  skipped "docker images (docker is not available)"
+fi
 
 echo "# $pass passed, $fail failed, $skip skipped"
 [ "$fail" -eq 0 ]

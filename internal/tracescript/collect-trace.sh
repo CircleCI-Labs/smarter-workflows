@@ -13,7 +13,7 @@
 #
 # The trace is `supported false` when reset-atime.sh did not run or found atime
 # unusable (no .git/smarter-trace-ready marker), when there is no git checkout,
-# or when GNU find -printf is missing. A job with such a trace always runs.
+# or when find and stat cannot read atimes. A job with such a trace always runs.
 #
 # Read means "atime is not 0": reset-atime.sh set every atime to the epoch, so
 # any later read moved it. That includes the spec's "atime > mtime", and it also
@@ -87,16 +87,12 @@ take_trace() {
     fi
     return 1
   fi
-  for tool in awk cut find grep mktemp sort tr wc; do
+  for tool in awk cut find grep mktemp sort tr wc stat; do
     if ! command -v "$tool" > /dev/null 2>&1; then
       reason="$tool not found"
       return 1
     fi
   done
-  if [ "$(find "$gitdir/smarter-trace-ready" -maxdepth 0 -printf '%y' 2>/dev/null)" != f ]; then
-    reason="find does not support -printf (GNU find is needed)"
-    return 1
-  fi
   tmp=$(mktemp -d "$gitdir/smarter-trace.XXXXXX" 2>/dev/null)
   if [ -z "$tmp" ]; then
     reason="cannot create a temp dir under the git directory"
@@ -104,11 +100,35 @@ take_trace() {
   fi
 
   # The one traversal. Nothing may list a directory before it.
-  if ! find . -path ./.git -prune -o -printf '%y\t%A@\t%T@\t%P\n' > "$tmp/found" 2> "$tmp/found.err"; then
-    msg=
-    IFS= read -r msg < "$tmp/found.err"
-    reason="find failed: $msg"
-    return 1
+  if find . -maxdepth 0 -printf '%P' >/dev/null 2>&1; then
+    if ! find . -path ./.git -prune -o -printf '%y\t%A@\t%T@\t%P\n' > "$tmp/found" 2> "$tmp/found.err"; then
+      msg=
+      IFS= read -r msg < "$tmp/found.err"
+      reason="find failed: $msg"
+      return 1
+    fi
+  else
+    if ! {
+      find . -path ./.git -prune -o \( -type f -o -type d \) -print |
+      while IFS= read -r p; do
+        [ -n "$p" ] || continue
+        case $p in ./*) rel=${p#./} ;; *) rel=$p ;; esac
+        [ -n "$rel" ] || rel=.
+        ty=d
+        if [ -f "$p" ] || [ -L "$p" ]; then
+          ty=f
+        fi
+        st=$(stat -c '%X %Y' "$p" 2>/dev/null) || continue
+        at=${st%% *}
+        mt=${st#* }
+        printf '%s\t%s\t%s\t%s\n' "$ty" "$at" "$mt" "$rel"
+      done
+    } > "$tmp/found" 2> "$tmp/found.err"; then
+      msg=
+      IFS= read -r msg < "$tmp/found.err"
+      reason="find failed: $msg"
+      return 1
+    fi
   fi
   if ! git ls-files -z > "$tmp/tracked0" 2>/dev/null; then
     reason="git ls-files failed"
