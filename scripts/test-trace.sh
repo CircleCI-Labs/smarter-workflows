@@ -171,6 +171,10 @@ mkdir -p "$origin"
   git add -A && git commit -q -m origin
 ) || { echo "cannot build the origin repo" >&2; exit 2; }
 
+# stat_times in reset-atime.sh must accept exactly two timestamp fields.
+assert "stat_times pattern: two fields" sh -c 'st="1.0 2.0"; case $st in *" "*" "*) exit 1;; *" "*) exit 0;; *) exit 1;; esac'
+assert "stat_times pattern: three fields rejected" sh -c 'st="1 2 3"; case $st in *" "*" "*) exit 0;; *" "*) exit 1;; *) exit 1;; esac'
+
 # --- 1. does this filesystem do atime? --------------------------------------
 
 new_checkout idle || { echo "cannot clone the origin repo" >&2; exit 2; }
@@ -224,13 +228,11 @@ if [ "$shims_ok" = 1 ]; then
   new_checkout foreign-touch
   do_reset "$repo" PATH="$shims/touch:$PATH"
   assert "foreign touch: reset exits 0 with one line" one_line_ok
-  assert "foreign touch: unsupported marker, no ready marker" sh -c \
-    '[ -f "$1/.git/smarter-trace-unsupported" ] && [ ! -f "$1/.git/smarter-trace-ready" ]' sh "$repo"
-  ft_reason=$(cat "$repo/.git/smarter-trace-unsupported" 2>/dev/null || echo "reset failed")
+  assert "foreign touch: probe passes with UTC -t touch" test -f "$repo/.git/smarter-trace-ready"
   do_collect "$repo"
   assert "foreign touch: collector exits 0 with one line" one_line_ok
-  expect "foreign touch: unsupported trace says why" << EOF
-$(hdr test 0 false "$ft_reason")
+  expect "foreign touch: supported trace" << EOF
+$(hdr test 0 true)
 EOF
 
   # The same under sh -e: the reset must never fail the job.
@@ -242,12 +244,10 @@ EOF
 
   new_checkout foreign-find
   do_reset "$repo" PATH="$shims/find:$PATH"
-  ff_reason=$(cat "$repo/.git/smarter-trace-unsupported" 2>/dev/null || echo "reset failed")
-  assert "foreign find: unsupported marker" test -n "$ff_reason"
+  assert "foreign find: probe passes with stat fallback" test -f "$repo/.git/smarter-trace-ready"
   do_collect "$repo" PATH="$shims/find:$PATH"
-  expect "foreign find: unsupported trace says why" << EOF
-$(hdr test 0 false "$ff_reason")
-EOF
+  assert "foreign find: collector exits 0 with one line" one_line_ok
+  assert "foreign find: supported trace" grep -q "^supported${tab}true\$" "$(trace_of "$tdir")"
 else
   skipped "foreign find and touch (the shim directory cannot run programs)"
 fi
@@ -321,6 +321,10 @@ new_checkout mtimes
 do_reset "$repo"
 (cd "$repo" && find . -path ./.git -prune -o -printf '%T@ %p\n' | sort) > "$work/mtimes.after"
 assert "reset: leaves every mtime alone" cmp -s "$work/mtimes.before" "$work/mtimes.after"
+
+new_checkout tz-reset
+do_reset "$repo" TZ=America/New_York
+assert "reset in America/New_York: probe passes" test -f "$repo/.git/smarter-trace-ready"
 
 # 3c. Reads and listings, tracked and untracked. A canary variable in the
 # environment must not show up anywhere.
@@ -487,9 +491,8 @@ if [ "$shims_ok" = 1 ]; then
   new_checkout late-foreign-find
   do_reset "$repo"
   do_collect "$repo" PATH="$shims/find:$PATH"
-  expect "ready marker but no find -printf: unsupported trace" << EOF
-$(hdr test 0 false "cannot read atime and mtime (GNU find -printf or stat -c is needed)")
-EOF
+  assert "ready marker but no find -printf: supported trace via stat" \
+    grep -q "^supported${tab}true\$" "$(trace_of "$tdir")"
 fi
 
 # 3l. No job name: the hash is the sha256 of the empty string.
@@ -512,6 +515,7 @@ docker_trace() {
   dt_name=$1
   dt_image=$2
   dt_prep=$3
+  dt_shell=${4:-sh}
   dt_dir=$work/docker-"$dt_name"
   mkdir -p "$dt_dir/traces"
   git clone -q "$origin" "$dt_dir/repo" && git -C "$dt_dir/repo" reset -q --hard || return 2
@@ -526,15 +530,16 @@ docker_trace() {
     -e GIT_CONFIG_KEY_2=gc.autoDetach -e GIT_CONFIG_VALUE_2=false \
     -e GIT_AUTHOR_NAME=Test -e GIT_AUTHOR_EMAIL=test@example.invalid \
     -e GIT_COMMITTER_NAME=Test -e GIT_COMMITTER_EMAIL=test@example.invalid \
+    -e GIT_CONFIG_COUNT=1 \
+    -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0='*' \
     -w /data/repo \
     "$dt_image" sh -c "
       set -e
-      RUN_SH=sh
       $dt_prep
-      \$RUN_SH /reset-atime.sh
+      $dt_shell /reset-atime.sh
       test -f .git/smarter-trace-ready
       cat README.md > /dev/null
-      CIRCLE_JOB=${dt_name} CIRCLE_NODE_INDEX=0 SMARTER_TRACE_DIR=/data/traces \$RUN_SH /collect-trace.sh
+      CIRCLE_JOB=${dt_name} CIRCLE_NODE_INDEX=0 SMARTER_TRACE_DIR=/data/traces $dt_shell /collect-trace.sh
       grep -q \"^supported${tab}true\$\" /data/traces/*.tsv
     " > "$work/out.docker" 2>&1; then
     ok "$dt_name in docker"
@@ -548,15 +553,15 @@ if command -v docker > /dev/null 2>&1 && docker info > /dev/null 2>&1; then
     docker pull -q "$img" > /dev/null 2>&1 || true
   done
   if [ "$atime_ok" = 1 ]; then
-    docker_trace busybox alpine:3.20.3 'apk add --no-cache busybox git >/dev/null; RUN_SH=busybox' || {
+    docker_trace busybox alpine:3.20.3 'apk add --no-cache busybox git >/dev/null' 'busybox sh' || {
       not_ok "busybox shell in docker"
       sed 's/^/    /' "$work/out.docker"
     }
-    docker_trace alpine alpine:3.20.3 'apk add --no-cache git >/dev/null' || {
+    docker_trace alpine alpine:3.20.3 'apk add --no-cache git >/dev/null' sh || {
       not_ok "alpine in docker"
       sed 's/^/    /' "$work/out.docker"
     }
-    docker_trace cimg cimg/base:2026.11 "" || {
+    docker_trace cimg cimg/base:2026.11 '' sh || {
       not_ok "cimg/base in docker"
       sed 's/^/    /' "$work/out.docker"
     }

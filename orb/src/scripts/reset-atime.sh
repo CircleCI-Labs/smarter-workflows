@@ -53,14 +53,15 @@ unsupported() {
 }
 
 # touch_epoch FILE...: set atime to the epoch on each path (directories too).
+# Busybox -t and -d date forms use the local timezone; TZ=UTC makes the epoch.
 touch_epoch() {
   if touch -a -d @0 "$@" 2>/dev/null; then
     return 0
   fi
-  if touch -a -t 197001010000.00 "$@" 2>/dev/null; then
+  if TZ=UTC touch -a -t 197001010000.00 "$@" 2>/dev/null; then
     return 0
   fi
-  touch -a -d '1970-01-01 00:00:00' "$@"
+  TZ=UTC touch -a -d '1970-01-01 00:00:00' "$@"
 }
 
 # stat_times PATH: set at and mt to the atime and mtime of PATH, in seconds
@@ -71,10 +72,11 @@ stat_times() {
     st=$(find "$1" -maxdepth 0 -printf '%A@ %T@\n' 2>/dev/null) || st=
   fi
   if [ -z "$st" ]; then
-  st=$(stat -c '%X %Y' "$1" 2>/dev/null) || return 1
+    st=$(stat -c '%X %Y' "$1" 2>/dev/null) || return 1
   fi
   case $st in
-    *" "*" "*) ;;
+    *" "*" "*) return 1 ;;
+    *" "*) ;;
     *) return 1 ;;
   esac
   at=${st%% *}
@@ -101,7 +103,7 @@ probe() {
     return 1
   fi
   if ! touch -m -d @1 "$pfile" "$pdir" 2>/dev/null; then
-    if ! touch -m -t 197001010100.00 "$pfile" "$pdir" 2>/dev/null; then
+    if ! TZ=UTC touch -m -t 197001010100.00 "$pfile" "$pdir" 2>/dev/null; then
       reason="touch cannot set mtime (GNU or busybox touch is needed)"
       return 1
     fi
@@ -195,8 +197,8 @@ run_reset() {
   fi
   if [ -s "$tmp/files" ]; then
     if ! xargs -0 touch -c -h -a -d @0 -- < "$tmp/files" 2>/dev/null; then
-      if ! xargs -0 touch -c -h -a -t 197001010000.00 -- < "$tmp/files" 2>/dev/null; then
-        if ! xargs -0 touch -c -h -a -d '1970-01-01 00:00:00' -- < "$tmp/files" 2>/dev/null; then
+      if ! TZ=UTC xargs -0 touch -c -h -a -t 197001010000.00 -- < "$tmp/files" 2>/dev/null; then
+        if ! TZ=UTC xargs -0 touch -c -h -a -d '1970-01-01 00:00:00' -- < "$tmp/files" 2>/dev/null; then
           unsupported "touch could not reset the tracked files"
           return 0
         fi
@@ -204,8 +206,8 @@ run_reset() {
     fi
   fi
   if ! xargs -0 touch -a -d @0 -- < "$tmp/dirs" 2>/dev/null; then
-    if ! xargs -0 touch -a -t 197001010000.00 -- < "$tmp/dirs" 2>/dev/null; then
-      if ! xargs -0 touch -a -d '1970-01-01 00:00:00' -- < "$tmp/dirs" 2>/dev/null; then
+    if ! TZ=UTC xargs -0 touch -a -t 197001010000.00 -- < "$tmp/dirs" 2>/dev/null; then
+      if ! TZ=UTC xargs -0 touch -a -d '1970-01-01 00:00:00' -- < "$tmp/dirs" 2>/dev/null; then
         unsupported "touch could not reset the directories"
         return 0
       fi
