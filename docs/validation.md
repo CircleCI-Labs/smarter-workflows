@@ -41,7 +41,7 @@ Job time is the sum of the jobs' run times in the planned workflow, a stand-in f
 - A null `pre-steps` or `post-steps` is an empty list. Before the fix, it dropped the whole trace.
 - A fallback full run still gets the gate and tracing.
 - The gate says when it doesn't wait for a job with a status requirement.
-- In CI only: git's background maintenance made temp-repo cleanup flaky; the orb is now validated without an API token; an org config policy can require exact image tags.
+- In CI only: git's background maintenance made temp-repo cleanup flaky; the orb is now validated without an API token; some orgs' config policies allow only exact image tags, so the language images of the pipeline carry a tag and no digest.
 
 ## Compose eval
 

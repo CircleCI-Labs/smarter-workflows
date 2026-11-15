@@ -32,4 +32,4 @@ All pipelines of a project share its cache. Give each setup config its own `--ma
 
 - **Linux jobs** (docker or machine) for tracing. Other jobs always run.
 - **The default branch builds regularly.** Maps live in the project cache, so they expire with its retention.
-- **Approved images, if your org enforces them.** Some orgs' config policies allow only exact image tags, with no digest pins.
+- **Approved images, if your org enforces them.** Some orgs' config policies allow only exact image tags, so an image pinned by digest can be rejected.
