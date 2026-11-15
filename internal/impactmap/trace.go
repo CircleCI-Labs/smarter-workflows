@@ -15,6 +15,9 @@ import (
 
 const traceHeader = "# smarter-trace v1"
 
+// MaxPathsPerTrace bounds how many F and D lines one trace may carry.
+const MaxPathsPerTrace = MaxPathsPerJob
+
 // Trace is one job node's trace TSV (spec, "File formats").
 type Trace struct {
 	Job       string
@@ -87,12 +90,18 @@ func ParseTrace(r io.Reader) (*Trace, error) {
 		case "reason":
 			t.Reason = val
 		case "F":
+			if len(t.Files)+len(t.Dirs) >= MaxPathsPerTrace {
+				return nil, fmt.Errorf("line %d: trace has more than %d paths", lineNo, MaxPathsPerTrace)
+			}
 			p, err := CleanPath(val, false)
 			if err != nil {
 				return nil, fmt.Errorf("line %d: %w", lineNo, err)
 			}
 			t.Files = append(t.Files, p)
 		case "D":
+			if len(t.Files)+len(t.Dirs) >= MaxPathsPerTrace {
+				return nil, fmt.Errorf("line %d: trace has more than %d paths", lineNo, MaxPathsPerTrace)
+			}
 			p, err := CleanPath(val, true)
 			if err != nil {
 				return nil, fmt.Errorf("line %d: %w", lineNo, err)
