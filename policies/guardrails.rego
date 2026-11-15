@@ -56,7 +56,7 @@ context_restrictions := {
 		"require_approval": true,
 	},
 	"smarter-workflows-release": {
-		"jobs": {"release", "orb-publish-dev", "orb-publish-prod"},
+		"jobs": {"release", "orb-publish-dev", "orb-publish-prod", "docs-site-publish"},
 		"branches": {"main"},
 		"allow_tags": true,
 		"require_approval": false,
