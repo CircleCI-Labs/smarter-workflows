@@ -2,5 +2,14 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "config:recommended"
+  ],
+  "minimumReleaseAge": "7 days",
+  "packageRules": [
+    {
+      "description": "cimg language images are pinned by hand to exact, approved tags",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["cimg/go", "cimg/node", "cimg/python"],
+      "enabled": false
+    }
   ]
 }
