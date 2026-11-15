@@ -18,9 +18,9 @@
 #      (one line, the reason). collect-trace.sh reads these markers.
 #
 # It runs in $CIRCLE_WORKING_DIRECTORY (a leading ~ is expanded), or in the
-# current directory. It needs GNU touch (-d @0) and GNU find (-printf); busybox
-# and macOS lack them and are reported as unsupported. It never fails the job:
-# every path ends in exit 0, and it prints one line.
+# current directory. It needs touch and find that can reset and read atimes;
+# GNU find/touch are preferred, busybox forms are supported. It never fails
+# the job: every path ends in exit 0, and it prints one line.
 set +e
 
 say() { printf 'smarter: %s\n' "$*"; }
@@ -30,6 +30,7 @@ tmp=
 reason=
 at=
 mt=
+have_printf=
 
 cleanup() {
   if [ -n "$gitdir" ]; then
@@ -51,10 +52,28 @@ unsupported() {
   say "atime tracing is not available here: $1"
 }
 
+# touch_epoch FILE...: set atime to the epoch on each path (directories too).
+# Busybox -t and -d date forms use the local timezone; TZ=UTC makes the epoch.
+touch_epoch() {
+  if touch -a -d @0 "$@" 2>/dev/null; then
+    return 0
+  fi
+  if TZ=UTC touch -a -t 197001010000.00 "$@" 2>/dev/null; then
+    return 0
+  fi
+  TZ=UTC touch -a -d '1970-01-01 00:00:00' "$@"
+}
+
 # stat_times PATH: set at and mt to the atime and mtime of PATH, in seconds
-# since the epoch with a fraction (GNU find -printf). Fails if find cannot.
+# since the epoch (fractions are ignored for reads).
 stat_times() {
-  st=$(find "$1" -maxdepth 0 -printf '%A@ %T@\n' 2>/dev/null) || return 1
+  st=
+  if [ "$have_printf" = 1 ]; then
+    st=$(find "$1" -maxdepth 0 -printf '%A@ %T@\n' 2>/dev/null) || st=
+  fi
+  if [ -z "$st" ]; then
+    st=$(stat -c '%X %Y' "$1" 2>/dev/null) || return 1
+  fi
   case $st in
     *" "*" "*) return 1 ;;
     *" "*) ;;
@@ -84,20 +103,22 @@ probe() {
     return 1
   fi
   if ! touch -m -d @1 "$pfile" "$pdir" 2>/dev/null; then
-    reason="touch does not support -d @0 (GNU touch is needed)"
-    return 1
+    if ! TZ=UTC touch -m -t 197001010100.00 "$pfile" "$pdir" 2>/dev/null; then
+      reason="touch cannot set mtime (GNU or busybox touch is needed)"
+      return 1
+    fi
   fi
   if ! stat_times "$pfile"; then
-    reason="find does not support -printf (GNU find is needed)"
+    reason="cannot read atime and mtime (GNU find -printf or stat -c is needed)"
     return 1
   fi
   mt1=$mt
-  if ! touch -a -d @0 "$pfile" "$pdir" 2>/dev/null; then
-    reason="touch does not support -d @0 (GNU touch is needed)"
+  if ! touch_epoch "$pfile" "$pdir"; then
+    reason="touch cannot reset atime to the epoch"
     return 1
   fi
   if ! stat_times "$pfile" || ! is_zero "$at" || [ "$mt" != "$mt1" ]; then
-    reason="touch -a -d @0 does not reset atime alone here (GNU touch is needed)"
+    reason="touch cannot reset atime alone here"
     return 1
   fi
   if ! stat_times "$pdir" || ! is_zero "$at"; then
@@ -140,12 +161,16 @@ run_reset() {
   fi
   rm -f "$gitdir/smarter-trace-ready" "$gitdir/smarter-trace-unsupported"
 
-  for tool in find touch xargs mktemp cat ls sleep tr wc; do
+  for tool in find touch xargs mktemp cat ls sleep tr wc stat; do
     if ! command -v "$tool" > /dev/null 2>&1; then
       unsupported "$tool not found"
       return 0
     fi
   done
+  have_printf=0
+  if find . -maxdepth 0 -printf '%P' >/dev/null 2>&1; then
+    have_printf=1
+  fi
   if ! probe; then
     unsupported "$reason"
     return 0
@@ -166,20 +191,27 @@ run_reset() {
     unsupported "git ls-files failed"
     return 0
   fi
-  # List every directory first, then reset them: listing reads them.
   if ! find . -path ./.git -prune -o -type d -print0 > "$tmp/dirs" 2>/dev/null; then
     unsupported "find could not list the directories"
     return 0
   fi
   if [ -s "$tmp/files" ]; then
     if ! xargs -0 touch -c -h -a -d @0 -- < "$tmp/files" 2>/dev/null; then
-      unsupported "touch could not reset the tracked files"
-      return 0
+      if ! TZ=UTC xargs -0 touch -c -h -a -t 197001010000.00 -- < "$tmp/files" 2>/dev/null; then
+        if ! TZ=UTC xargs -0 touch -c -h -a -d '1970-01-01 00:00:00' -- < "$tmp/files" 2>/dev/null; then
+          unsupported "touch could not reset the tracked files"
+          return 0
+        fi
+      fi
     fi
   fi
   if ! xargs -0 touch -a -d @0 -- < "$tmp/dirs" 2>/dev/null; then
-    unsupported "touch could not reset the directories"
-    return 0
+    if ! TZ=UTC xargs -0 touch -a -t 197001010000.00 -- < "$tmp/dirs" 2>/dev/null; then
+      if ! TZ=UTC xargs -0 touch -a -d '1970-01-01 00:00:00' -- < "$tmp/dirs" 2>/dev/null; then
+        unsupported "touch could not reset the directories"
+        return 0
+      fi
+    fi
   fi
 
   nfiles=$(tr -cd '\0' < "$tmp/files" | wc -c | tr -d ' ')

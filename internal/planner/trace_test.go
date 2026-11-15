@@ -151,13 +151,13 @@ func TestTraceOfAFullRunOnTheDefaultBranch(t *testing.T) {
 	// Traced: local Linux jobs, through a docker executor, a Linux machine and
 	// an executor reference. Not traced: macOS, Windows, the matrix entry, the
 	// approval and the orb job.
-	wantTraced := []string{"build", "test", "nocheckout", "late"}
+	wantTraced := []string{"build", "test", "late"}
 	if res.Report.Trace == nil || !slices.Equal(res.Report.Trace.Jobs, wantTraced) {
 		t.Fatalf("trace = %+v, want jobs %v", res.Report.Trace, wantTraced)
 	}
 	// The map job waits for the traced jobs that run for sure, and not for
 	// what only runs after an approval.
-	wantRequires := []string{"build", "test", "nocheckout"}
+	wantRequires := []string{"build", "test"}
 	if got := res.Report.Trace.Requires; !slices.Equal(got, wantRequires) {
 		t.Fatalf("map job requires %v, want %v", got, wantRequires)
 	}
@@ -269,6 +269,25 @@ func toStrings(v any) []string {
 	return out
 }
 
+func TestTraceJobsGlob(t *testing.T) {
+	const cfg = `version: 2.1
+jobs:
+  runner:
+    machine: true
+    resource_class: acme/runner-linux
+    steps: [checkout, run: test]
+workflows:
+  w:
+    jobs: [runner]
+`
+	o := traceOpts()
+	o.TraceJobs = []string{"runner"}
+	res := plan(t, planner.Input{Config: []byte(cfg), Map: &impactmap.Map{Version: 1}, Repo: &fakeRepo{}}, o)
+	if res.Report.Trace == nil || !slices.Contains(res.Report.Trace.Jobs, "runner") {
+		t.Fatalf("trace = %+v, want runner traced via --trace-jobs", res.Report.Trace)
+	}
+}
+
 func TestTraceOrbJobs(t *testing.T) {
 	o := traceOpts()
 	o.TraceOrbJobs = true
@@ -285,7 +304,7 @@ func TestTraceOrbJobs(t *testing.T) {
 	if post, ok := args["post-steps"].([]any); !ok || len(post) != 2 {
 		t.Fatalf("post-steps = %v", args["post-steps"])
 	}
-	if got := res.Report.Trace.Requires; !slices.Equal(got, []string{"build", "test", "nocheckout", "o/orbjob"}) {
+	if got := res.Report.Trace.Requires; !slices.Equal(got, []string{"build", "test", "o/orbjob"}) {
 		t.Fatalf("map job requires %v", got)
 	}
 }

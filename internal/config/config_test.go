@@ -1238,6 +1238,46 @@ workflows:
 	}
 }
 
+func TestInsertAfterCheckoutViaCommand(t *testing.T) {
+	const src = `version: 2.1
+commands:
+  with-checkout:
+    steps:
+      - run: prep
+      - checkout:
+          path: repo/sub
+jobs:
+  via-cmd:
+    docker: [{image: x}]
+    steps:
+      - with-checkout
+      - run: build
+workflows:
+  w:
+    jobs: [via-cmd]
+`
+	reset := func() *yaml.Node {
+		return config.RunStep("smarter: reset atime", "/bin/sh", "", "reset")
+	}
+	c := mustParse(t, src)
+	got, err := c.InsertAfterCheckout("via-cmd", reset())
+	if err != nil || !got {
+		t.Fatalf("InsertAfterCheckout = %v, %v", got, err)
+	}
+	out := mustMarshal(t, c)
+	if !strings.Contains(out, "with-checkout") || !strings.Contains(out, "smarter: reset atime") {
+		t.Fatalf("reset must follow the command step:\n%s", out)
+	}
+	i := strings.Index(out, "with-checkout")
+	j := strings.Index(out, "smarter: reset atime")
+	if i < 0 || j < i {
+		t.Fatalf("reset must come after the command invocation:\n%s", out)
+	}
+	if !strings.Contains(out, "CIRCLE_WORKING_DIRECTORY: repo/sub") {
+		t.Errorf("checkout path must be on the reset step:\n%s", out)
+	}
+}
+
 func TestInsertAfterCheckout(t *testing.T) {
 	const src = `version: 2.1
 jobs:

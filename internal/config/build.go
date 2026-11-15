@@ -81,6 +81,11 @@ func Map(kv ...any) *yaml.Node {
 
 // RunStep builds a `run` step. Empty name, shell and when are left out.
 func RunStep(name, shell, when, command string) *yaml.Node {
+	return RunStepEnv(name, shell, when, command, nil)
+}
+
+// RunStepEnv is RunStep with optional environment variables on the run step.
+func RunStepEnv(name, shell, when, command string, env map[string]string) *yaml.Node {
 	args := Map()
 	add := func(k string, v *yaml.Node) { args.Content = append(args.Content, Str(k), v) }
 	if name != "" {
@@ -91,6 +96,13 @@ func RunStep(name, shell, when, command string) *yaml.Node {
 	}
 	if shell != "" {
 		add("shell", Str(shell))
+	}
+	if len(env) > 0 {
+		kv := make([]any, 0, len(env)*2)
+		for k, v := range env {
+			kv = append(kv, k, v)
+		}
+		add("environment", Map(kv...))
 	}
 	add("command", Literal(command))
 	return Map("run", args)

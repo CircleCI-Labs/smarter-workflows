@@ -21,13 +21,13 @@ func gateJob() *yaml.Node {
 	return config.Map("type", "no-op")
 }
 
-func resetStep() *yaml.Node {
-	return config.RunStep("smarter: reset atime", "/bin/sh", "", tracescript.Reset)
+func resetStep(workdir string) *yaml.Node {
+	return config.RunStepEnv("smarter: reset atime", "/bin/sh", "", tracescript.Reset, collectEnv(workdir))
 }
 
-func collectSteps() []*yaml.Node {
+func collectSteps(workdir string) []*yaml.Node {
 	return []*yaml.Node{
-		config.RunStep("smarter: collect trace", "/bin/sh", "always", tracescript.Script),
+		config.RunStepEnv("smarter: collect trace", "/bin/sh", "always", tracescript.Script, collectEnv(workdir)),
 		config.Map("persist_to_workspace", config.Map("root", TraceDir, "paths", config.Strs("traces"))),
 	}
 }
@@ -91,37 +91,41 @@ func (p *planner) traceOn(full bool) bool {
 // pre-steps or post-steps is not a list) is left as it is, with a warning, and
 // does not stop the others: it has no trace, and so no map entry, and later
 // plans always run it.
-func (p *planner) injectTrace(cfg *config.Config, wf *config.Workflow, an *analysis) (*report.Trace, []string, error) {
+func (p *planner) injectTrace(cfg *config.Config, wf *config.Workflow, an *analysis) (*report.Trace, []string, []report.TraceCoverage, error) {
 	if v := cfg.Version(); v != "2.1" {
 		// pre-steps and post-steps exist from version 2.1 on.
-		return nil, []string{fmt.Sprintf("trace: the config is version %q, and the trace steps need version 2.1", v)}, nil
+		return nil, []string{fmt.Sprintf("trace: the config is version %q, and the trace steps need version 2.1", v)}, nil, nil
 	}
 	type target struct {
-		e     *config.Entry
-		local bool
+		e       *config.Entry
+		local   bool
+		workdir string
 	}
 	var targets []target
 	var requires, notes []string
+	coverage := make([]report.TraceCoverage, 0, len(wf.Entries))
 	for _, e := range wf.Entries {
-		if !e.Kind.HasSteps() || e.Kind == config.KindJobGroup || e.Matrix {
-			// An approval, a no-op job and a release job run no steps, so there is
-			// nothing to trace. A job group is one unit that runs whole and is not
-			// looked into. A matrix entry always runs, so its trace would never be
-			// looked up.
+		reason, elig := p.entryTraceEligibility(cfg, e)
+		tc := report.TraceCoverage{Name: e.Name, Traced: reason == traceReasonNone}
+		if reason != traceReasonNone {
+			var err error
+			if reason == traceReasonBadSteps {
+				err = e.CheckSteps()
+			}
+			tc.Reason = skipReasonText(reason, err)
+			coverage = append(coverage, tc)
+			if elig != nil {
+				notes = append(notes, fmt.Sprintf("trace: %s is not traced, so later plans always run it: %v", e.Name, err))
+			}
 			continue
 		}
+		coverage = append(coverage, tc)
 		local := cfg.HasJob(e.Ref)
-		switch {
-		case local && cfg.JobPlatform(e.Ref) == config.PlatformLinux:
-		case !local && p.o.TraceOrbJobs:
-		default:
-			continue
+		workdir := ""
+		if local {
+			workdir = cfg.JobCheckoutPath(e.Ref)
 		}
-		if err := e.CheckSteps(); err != nil {
-			notes = append(notes, fmt.Sprintf("trace: %s is not traced, so later plans always run it: %v", e.Name, err))
-			continue
-		}
-		targets = append(targets, target{e, local})
+		targets = append(targets, target{elig, local, workdir})
 		// The map job waits for jobs that are certain to run, and not for ones
 		// behind an approval, which would never let it start.
 		if i, ok := an.byName[e.Name]; ok && an.will[i] == triYes && !an.afterApproval[i] {
@@ -129,37 +133,36 @@ func (p *planner) injectTrace(cfg *config.Config, wf *config.Workflow, an *analy
 		}
 	}
 	if len(targets) == 0 {
-		return nil, append(notes, "trace: no job of the workflow can be traced (only docker and Linux machine jobs defined in the config can; orb jobs need --trace-orb-jobs)"), nil
+		return nil, append(notes, "trace: no job of the workflow can be traced (only docker and Linux machine jobs defined in the config can; orb jobs need --trace-orb-jobs; self-hosted runner jobs need --trace-jobs)"), coverage, nil
 	}
 	if len(requires) == 0 {
-		return nil, append(notes, "trace: none of the traceable jobs is certain to run on this branch, so there is nothing for the map job to wait for"), nil
+		return nil, append(notes, "trace: none of the traceable jobs is certain to run on this branch, so there is nothing for the map job to wait for"), coverage, nil
 	}
-
-	tr := &report.Trace{MapJob: ImpactMapJob, Requires: requires}
-	resetDone := map[string]bool{}
+	tr := &report.Trace{MapJob: ImpactMapJob, Requires: requires, Coverage: coverage}
+	resetDone := map[string]string{} // job def -> workdir used for reset
 	for _, t := range targets {
 		tr.Jobs = append(tr.Jobs, t.e.Name)
 		if p.o.TraceReset {
 			if t.local {
-				if !resetDone[t.e.Ref] {
-					resetDone[t.e.Ref] = true
-					if _, err := cfg.InsertAfterCheckout(t.e.Ref, resetStep()); err != nil {
-						return nil, nil, err
+				if _, ok := resetDone[t.e.Ref]; !ok {
+					resetDone[t.e.Ref] = t.workdir
+					if _, err := cfg.InsertAfterCheckout(t.e.Ref, resetStep(t.workdir)); err != nil {
+						return nil, nil, nil, err
 					}
 				}
-			} else if err := wf.AddPreSteps(t.e, config.Str("checkout"), resetStep()); err != nil {
-				return nil, nil, err
+			} else if err := wf.AddPreSteps(t.e, config.Str("checkout"), resetStep(t.workdir)); err != nil {
+				return nil, nil, nil, err
 			}
 		}
-		if err := wf.AddPostSteps(t.e, collectSteps()...); err != nil {
-			return nil, nil, err
+		if err := wf.AddPostSteps(t.e, collectSteps(t.workdir)...); err != nil {
+			return nil, nil, nil, err
 		}
 	}
 	if err := cfg.AddJob(ImpactMapJob, p.impactMapJob()); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	if err := wf.AppendEntry(ImpactMapJob, requires); err != nil {
-		return nil, nil, fmt.Errorf("adding the map job: %w", err)
+		return nil, nil, nil, fmt.Errorf("adding the map job: %w", err)
 	}
-	return tr, notes, nil
+	return tr, notes, coverage, nil
 }

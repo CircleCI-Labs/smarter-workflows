@@ -61,6 +61,13 @@ All pipelines of a project share its cache. Give each setup config its own `map-
 
 ## Requirements
 
-- **Linux jobs** (docker or machine) for tracing. Other jobs always run.
+- **Linux jobs** (docker or machine with a known Linux image) for tracing. Other jobs always run unless you declare them with `plan --trace-jobs` (comma-separated name globs), for example self-hosted runner jobs. The plan report lists traced and untraced jobs.
+
+### Getting the most out of tracing
+
+- Put `checkout` in the job steps when you can. When it lives in a **local command** instead, the planner still inserts the reset right after that command runs.
+- Prefer **GNU-friendly** images (`cimg/*`, Ubuntu machine images). **Busybox/Alpine** tool images work too: the reset and collect scripts fall back to `stat` and busybox `touch` forms.
+- List **runner or custom-executor** jobs with `--trace-jobs` when the config does not pin a Linux image the planner can read.
+- Read **`trace_coverage`** in `plan.json` (or the table in `plan.md`) after a shadow run on main to see which jobs are untraced and why.
 - **The default branch builds regularly.** Maps live in the project cache, so they expire with its retention.
 - **Approved images, if your org enforces them.** Some orgs' config policies allow only exact image tags, so an image pinned by digest can be rejected.

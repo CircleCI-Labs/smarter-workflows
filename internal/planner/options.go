@@ -75,6 +75,9 @@ type Options struct {
 
 	Trace        TraceMode
 	TraceOrbJobs bool
+	// TraceJobs is a comma-separated list of job-name globs (plan --trace-jobs):
+	// jobs that run on Linux but whose executor cannot be read are traced anyway.
+	TraceJobs []string
 	// TraceReset adds the atime reset step after checkout in traced jobs
 	// (spec step 8). It is on by default, because checkout itself reads every
 	// file; turn it off for tests.
@@ -148,6 +151,9 @@ func (o Options) Validate() error {
 	}
 	if err := validateGlobs(o.IgnorePaths); err != nil {
 		return fmt.Errorf("ignore paths: %w", err)
+	}
+	if err := validateGlobs(o.TraceJobs); err != nil {
+		return fmt.Errorf("trace jobs: %w", err)
 	}
 	for job, globs := range o.ExtraInputs {
 		if err := validateGlobs(globs); err != nil {
