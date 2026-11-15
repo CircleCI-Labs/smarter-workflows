@@ -5,6 +5,8 @@ set -euo pipefail
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # shellcheck source=scripts/e2e/timing.sh
 source "$here/timing.sh"
+# shellcheck source=scripts/e2e/summary.sh
+source "$here/summary.sh"
 
 samples=$here/testdata/api-samples
 fail() {
@@ -28,5 +30,13 @@ mix_json=$(< "$here/testdata/timestamps-mix.json")
 want_eq "$(sum_job_run_seconds "$mix_json")" "3" "mixed .fracZ and plain Z timestamps"
 
 want_eq "$(sum_job_run_seconds '{"items":[]}')" "$E2E_TIMING_NA" "empty job list"
+
+timing=$(mktemp "${TMPDIR:-/tmp}/e2e-timing-test.XXXXXX")
+trap 'rm -f "$timing"' EXIT
+csv=
+: > "$timing"
+print_savings_summary || fail "print_savings_summary without --csv must not fail under set -e"
+csv=/tmp/e2e-timing-test-csv.$$.csv
+print_savings_summary | grep -qx 'no timing data' || fail "expected no timing data with empty timing file"
 
 echo "test-timing: ok"
