@@ -1,0 +1,28 @@
+version: 2.1
+parameters:
+  run-ci:
+    type: boolean
+    default: false
+jobs:
+  lint:
+    docker: [{image: "cimg/base:2026.11"}]
+    steps:
+      - checkout
+      - run: make lint
+  unit-test:
+    docker: [{image: "cimg/go:1.26"}]
+    steps:
+      - checkout
+      - run: make test
+  security-scan:
+    docker: [{image: "cimg/go:1.26"}]
+    steps:
+      - checkout
+      - run: govulncheck ./...
+workflows:
+  ci:
+    when: << pipeline.parameters.run-ci >>
+    jobs:
+      - lint
+      - security-scan
+      - unit-test

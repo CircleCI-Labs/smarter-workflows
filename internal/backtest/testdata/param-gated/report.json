@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "commits": 5,
+  "summary": {
+    "total_failures": 2,
+    "caught_failures": 2,
+    "misses": 0,
+    "unmatched_failures": 2,
+    "flaky_failures": 1,
+    "recall": 1,
+    "ran_duration_s": 475,
+    "unmatched_duration_s": 400,
+    "saved_duration_s": 25,
+    "savings_percent": 5.2631578947368425
+  },
+  "per_job_misses": [],
+  "per_job_unmatched": [
+    {
+      "name": "legacy-suite",
+      "failures": 2,
+      "duration_s": 400
+    }
+  ],
+  "per_job_savings": [
+    {
+      "name": "lint",
+      "saved_duration_s": 25
+    }
+  ],
+  "commits_with_misses": []
+}

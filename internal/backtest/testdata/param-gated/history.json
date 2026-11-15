@@ -1,0 +1,57 @@
+[
+  {
+    "commit": "head-unmatched",
+    "base": "base1",
+    "branch": "main",
+    "changed": [{ "path": "docs/readme.md", "status": "M" }],
+    "jobs": [
+      { "name": "lint", "status": "success", "duration_s": 25 },
+      { "name": "security-scan", "status": "success", "duration_s": 20 },
+      { "name": "legacy-suite", "status": "failed", "duration_s": 300 }
+    ]
+  },
+  {
+    "commit": "head-catch",
+    "base": "base1",
+    "branch": "main",
+    "changed": [{ "path": "pkg/app.go", "status": "M" }],
+    "jobs": [
+      { "name": "lint", "status": "success", "duration_s": 25 },
+      { "name": "security-scan", "status": "success", "duration_s": 20 },
+      { "name": "unit-test", "status": "failed", "duration_s": 90 }
+    ]
+  },
+  {
+    "commit": "head-flaky",
+    "base": "base1",
+    "branch": "main",
+    "changed": [{ "path": "docs/readme.md", "status": "M" }],
+    "jobs": [
+      { "name": "lint", "status": "success", "duration_s": 25 },
+      { "name": "security-scan", "status": "success", "duration_s": 20 },
+      { "name": "unit-test", "status": "failed", "duration_s": 90, "flaky": true }
+    ]
+  },
+  {
+    "commit": "head-miss",
+    "base": "base1",
+    "branch": "main",
+    "changed": [{ "path": "docs/readme.md", "status": "M" }],
+    "jobs": [
+      { "name": "lint", "status": "success", "duration_s": 25 },
+      { "name": "security-scan", "status": "success", "duration_s": 20 },
+      { "name": "unit-test", "status": "failed", "duration_s": 90 }
+    ]
+  },
+  {
+    "commit": "head-no-workflow",
+    "base": "base1",
+    "branch": "main",
+    "parameters": { "run-ci": false },
+    "changed": [{ "path": "pkg/app.go", "status": "M" }],
+    "jobs": [
+      { "name": "lint", "status": "success", "duration_s": 25 },
+      { "name": "legacy-suite", "status": "failed", "duration_s": 100 }
+    ]
+  }
+]

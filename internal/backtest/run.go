@@ -16,6 +16,8 @@ type Options struct {
 	Mandatory     []string
 	FullRunPaths  []string
 	IgnorePaths   []string
+	// Parameters are the default pipeline parameter values (--parameters file).
+	Parameters map[string]any
 }
 
 // DefaultOptions returns settings that match this repo's dogfood planner.
@@ -35,6 +37,8 @@ func Run(ctx context.Context, config []byte, m *impactmap.Map, history []CommitH
 	}
 	r := &Report{Version: 1, Commits: len(history)}
 	missByJob := map[string]int{}
+	unmatchedByJob := map[string]int{}
+	unmatchedDurByJob := map[string]float64{}
 	ranByJob := map[string]float64{}
 	savedByJob := map[string]float64{}
 
@@ -48,6 +52,7 @@ func Run(ctx context.Context, config []byte, m *impactmap.Map, history []CommitH
 		planOpts.Mandatory = append([]string(nil), o.Mandatory...)
 		planOpts.FullRunPaths = append([]string(nil), o.FullRunPaths...)
 		planOpts.IgnorePaths = append([]string(nil), o.IgnorePaths...)
+		planOpts.Parameters = mergeParameters(o.Parameters, h.Parameters)
 		planOpts.Trace = planner.TraceOff
 		if err := planOpts.Validate(); err != nil {
 			return nil, fmt.Errorf("commit %s: %w", shortSHA(h.Commit), err)
@@ -71,12 +76,24 @@ func Run(ctx context.Context, config []byte, m *impactmap.Map, history []CommitH
 		}
 
 		for _, j := range h.Jobs {
+			run, known := wouldRun[j.Name]
+			if !known {
+				if j.DurationS > 0 {
+					r.Summary.UnmatchedDurationS += j.DurationS
+					unmatchedDurByJob[j.Name] += j.DurationS
+				}
+				if jobFailed(j) {
+					r.Summary.UnmatchedFailures++
+					unmatchedByJob[j.Name]++
+				}
+				continue
+			}
+
 			if j.DurationS > 0 {
 				r.Summary.RanDurationS += j.DurationS
 				ranByJob[j.Name] += j.DurationS
 			}
-			run, known := wouldRun[j.Name]
-			if known && !run && j.DurationS > 0 {
+			if !run && j.DurationS > 0 {
 				r.Summary.SavedDurationS += j.DurationS
 				savedByJob[j.Name] += j.DurationS
 			}
@@ -89,10 +106,6 @@ func Run(ctx context.Context, config []byte, m *impactmap.Map, history []CommitH
 				continue
 			}
 			r.Summary.TotalFailures++
-			if !known {
-				// A job that is not in the workflow is neither caught nor a miss.
-				continue
-			}
 			if run {
 				r.Summary.CaughtFailures++
 			} else {
@@ -107,8 +120,9 @@ func Run(ctx context.Context, config []byte, m *impactmap.Map, history []CommitH
 		}
 	}
 
-	if r.Summary.TotalFailures > 0 {
-		r.Summary.Recall = float64(r.Summary.CaughtFailures) / float64(r.Summary.TotalFailures)
+	denom := r.Summary.CaughtFailures + r.Summary.Misses
+	if denom > 0 {
+		r.Summary.Recall = float64(r.Summary.CaughtFailures) / float64(denom)
 	}
 	if r.Summary.RanDurationS > 0 {
 		r.Summary.SavingsPercent = 100 * r.Summary.SavedDurationS / r.Summary.RanDurationS
@@ -122,6 +136,16 @@ func Run(ctx context.Context, config []byte, m *impactmap.Map, history []CommitH
 			return r.PerJobMisses[i].Name < r.PerJobMisses[j].Name
 		}
 		return r.PerJobMisses[i].Misses > r.PerJobMisses[j].Misses
+	})
+
+	for name, n := range unmatchedByJob {
+		r.PerJobUnmatched = append(r.PerJobUnmatched, JobUnmatched{Name: name, Failures: n, DurationS: unmatchedDurByJob[name]})
+	}
+	sort.Slice(r.PerJobUnmatched, func(i, j int) bool {
+		if r.PerJobUnmatched[i].Failures == r.PerJobUnmatched[j].Failures {
+			return r.PerJobUnmatched[i].Name < r.PerJobUnmatched[j].Name
+		}
+		return r.PerJobUnmatched[i].Failures > r.PerJobUnmatched[j].Failures
 	})
 
 	for name, saved := range savedByJob {

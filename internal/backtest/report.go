@@ -13,26 +13,36 @@ type Report struct {
 	Commits           int            `json:"commits"`
 	Summary           Summary        `json:"summary"`
 	PerJobMisses      []JobMiss      `json:"per_job_misses"`
+	PerJobUnmatched   []JobUnmatched `json:"per_job_unmatched"`
 	PerJobSavings     []JobSavings   `json:"per_job_savings"`
 	CommitsWithMisses []CommitResult `json:"commits_with_misses"`
 }
 
 // Summary holds overall recall and savings metrics.
 type Summary struct {
-	TotalFailures  int     `json:"total_failures"`
-	CaughtFailures int     `json:"caught_failures"`
-	Misses         int     `json:"misses"`
-	FlakyFailures  int     `json:"flaky_failures"`
-	Recall         float64 `json:"recall"`
-	RanDurationS   float64 `json:"ran_duration_s"`
-	SavedDurationS float64 `json:"saved_duration_s"`
-	SavingsPercent float64 `json:"savings_percent"`
+	TotalFailures      int     `json:"total_failures"`
+	CaughtFailures     int     `json:"caught_failures"`
+	Misses             int     `json:"misses"`
+	UnmatchedFailures  int     `json:"unmatched_failures"`
+	FlakyFailures      int     `json:"flaky_failures"`
+	Recall             float64 `json:"recall"`
+	RanDurationS       float64 `json:"ran_duration_s"`
+	UnmatchedDurationS float64 `json:"unmatched_duration_s"`
+	SavedDurationS     float64 `json:"saved_duration_s"`
+	SavingsPercent     float64 `json:"savings_percent"`
 }
 
 // JobMiss counts how often a failing job would have been skipped.
 type JobMiss struct {
 	Name   string `json:"name"`
 	Misses int    `json:"misses"`
+}
+
+// JobUnmatched counts failures and job-time for jobs not in today's config.
+type JobUnmatched struct {
+	Name      string  `json:"name"`
+	Failures  int     `json:"failures"`
+	DurationS float64 `json:"duration_s,omitempty"`
 }
 
 // JobSavings totals skipped job-time for one job name.
@@ -52,6 +62,9 @@ type CommitResult struct {
 func (r *Report) normalise() {
 	if r.PerJobMisses == nil {
 		r.PerJobMisses = []JobMiss{}
+	}
+	if r.PerJobUnmatched == nil {
+		r.PerJobUnmatched = []JobUnmatched{}
 	}
 	if r.PerJobSavings == nil {
 		r.PerJobSavings = []JobSavings{}
@@ -82,20 +95,30 @@ func (r *Report) Markdown() string {
 	fmt.Fprintf(&b, "Replayed **%d** commits in select mode.\n\n", r.Commits)
 	fmt.Fprintf(&b, "## Recall\n\n")
 	fmt.Fprintf(&b, "| Metric | Value |\n|---|---|\n")
-	fmt.Fprintf(&b, "| Failures (non-flaky) | %d |\n", r.Summary.TotalFailures)
+	fmt.Fprintf(&b, "| Failures (non-flaky, matched) | %d |\n", r.Summary.TotalFailures)
 	fmt.Fprintf(&b, "| Caught (job would run) | %d |\n", r.Summary.CaughtFailures)
 	fmt.Fprintf(&b, "| Misses (failed, would skip) | %d |\n", r.Summary.Misses)
+	fmt.Fprintf(&b, "| Unmatched (job not in config) | %d |\n", r.Summary.UnmatchedFailures)
 	fmt.Fprintf(&b, "| Flaky (excluded) | %d |\n", r.Summary.FlakyFailures)
-	if r.Summary.TotalFailures > 0 {
+	denom := r.Summary.CaughtFailures + r.Summary.Misses
+	if denom > 0 {
 		fmt.Fprintf(&b, "| **Recall** | **%.1f%%** |\n", 100*r.Summary.Recall)
 	} else {
-		b.WriteString("| **Recall** | n/a (no failures) |\n")
+		b.WriteString("| **Recall** | n/a (no matched failures) |\n")
 	}
 	fmt.Fprintf(&b, "\n## Job-time savings\n\n")
 	fmt.Fprintf(&b, "| Metric | Value |\n|---|---|\n")
-	fmt.Fprintf(&b, "| Historical job time | %.0fs |\n", r.Summary.RanDurationS)
+	fmt.Fprintf(&b, "| Matched job time | %.0fs |\n", r.Summary.RanDurationS)
+	fmt.Fprintf(&b, "| Unmatched job time | %.0fs |\n", r.Summary.UnmatchedDurationS)
 	fmt.Fprintf(&b, "| Would have skipped | %.0fs |\n", r.Summary.SavedDurationS)
 	fmt.Fprintf(&b, "| **Savings** | **%.1f%%** |\n", r.Summary.SavingsPercent)
+
+	if len(r.PerJobUnmatched) > 0 {
+		b.WriteString("\n## Unmatched by job\n\n| Job | Failures | Time (s) |\n|---|---|---|\n")
+		for _, row := range r.PerJobUnmatched {
+			fmt.Fprintf(&b, "| %s | %d | %.0f |\n", row.Name, row.Failures, row.DurationS)
+		}
+	}
 
 	if len(r.PerJobMisses) > 0 {
 		b.WriteString("\n## Misses by job\n\n| Job | Misses |\n|---|---|\n")

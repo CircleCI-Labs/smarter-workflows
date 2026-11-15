@@ -10,12 +10,13 @@ import (
 
 // CommitHistory is one pipeline the history file records.
 type CommitHistory struct {
-	Commit  string        `json:"commit"`
-	Base    string        `json:"base"`
-	Branch  string        `json:"branch"`
-	Tag     string        `json:"tag,omitempty"`
-	Changed []Change      `json:"changed"`
-	Jobs    []RecordedJob `json:"jobs"`
+	Commit     string         `json:"commit"`
+	Base       string         `json:"base"`
+	Branch     string         `json:"branch"`
+	Tag        string         `json:"tag,omitempty"`
+	Parameters map[string]any `json:"parameters,omitempty"`
+	Changed    []Change       `json:"changed"`
+	Jobs       []RecordedJob  `json:"jobs"`
 }
 
 // Change is one path change at that commit (same letters as git: A, M, D).

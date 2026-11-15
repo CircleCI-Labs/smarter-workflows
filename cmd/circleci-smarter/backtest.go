@@ -10,6 +10,7 @@ import (
 
 	"github.com/CircleCI-Labs/smarter-workflows/internal/backtest"
 	"github.com/CircleCI-Labs/smarter-workflows/internal/impactmap"
+	"github.com/CircleCI-Labs/smarter-workflows/internal/pipelineparams"
 	"github.com/CircleCI-Labs/smarter-workflows/internal/planner"
 )
 
@@ -32,6 +33,7 @@ func runBacktest(args []string, stdout, stderr io.Writer) int {
 	workflow := fs.String("workflow", "ci", "workflow to plan")
 	defaultBranch := fs.String("default-branch", "main", "the default branch")
 	mandatory := fs.String("mandatory", "", "comma-separated mandatory jobs")
+	paramsPath := fs.String("parameters", "", "JSON file of pipeline parameter values for every commit")
 	format := fs.String("format", "md", "report format: md or json")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -81,6 +83,14 @@ func runBacktest(args []string, stdout, stderr io.Writer) int {
 	opts.DefaultBranch = *defaultBranch
 	if *mandatory != "" {
 		opts.Mandatory = planner.SplitList(*mandatory)
+	}
+	if *paramsPath != "" {
+		params, err := pipelineparams.Load(*paramsPath)
+		if err != nil {
+			fmt.Fprintf(stderr, "circleci-smarter backtest: %v\n", err)
+			return 1
+		}
+		opts.Parameters = params
 	}
 
 	report, err := backtest.Run(context.Background(), cfg, m, history, opts)
