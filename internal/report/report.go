@@ -19,18 +19,21 @@ const maxChangedInMarkdown = 50
 
 // Plan is the content of plan.json.
 type Plan struct {
-	Version      int      `json:"version"`
-	Mode         string   `json:"mode"`
-	Full         bool     `json:"full"`
-	FullReason   string   `json:"full_reason"`
-	Workflow     string   `json:"workflow"`
-	Base         string   `json:"base"`
-	Head         string   `json:"head"`
-	Branch       string   `json:"branch"`
-	MapRevision  string   `json:"map_revision"`
-	MapCreatedAt string   `json:"map_created_at"`
-	Changed      []Change `json:"changed"`
-	Jobs         []Job    `json:"jobs"`
+	Version    int    `json:"version"`
+	Mode       string `json:"mode"`
+	Full       bool   `json:"full"`
+	FullReason string `json:"full_reason"`
+	// WorkflowRuns is false when the workflow's when/unless excludes this pipeline.
+	WorkflowRuns       bool     `json:"workflow_runs"`
+	WorkflowSkipReason string   `json:"workflow_skip_reason,omitempty"`
+	Workflow           string   `json:"workflow"`
+	Base               string   `json:"base"`
+	Head               string   `json:"head"`
+	Branch             string   `json:"branch"`
+	MapRevision        string   `json:"map_revision"`
+	MapCreatedAt       string   `json:"map_created_at"`
+	Changed            []Change `json:"changed"`
+	Jobs               []Job    `json:"jobs"`
 	// Gate is absent when the plan could not add the gate job.
 	Gate *Gate `json:"gate,omitempty"`
 	// Trace is present when the plan adds the trace steps and the map job.
@@ -162,7 +165,9 @@ func (p *Plan) Markdown() string {
 	default:
 		fmt.Fprintf(&b, "**Smarter Workflows, %s mode:** %d of %d jobs running.", p.Mode, n, m)
 	}
-	if p.Full && p.FullReason != "" {
+	if !p.WorkflowRuns && p.WorkflowSkipReason != "" {
+		fmt.Fprintf(&b, " Workflow will not run: %s.", p.WorkflowSkipReason)
+	} else if p.Full && p.FullReason != "" {
 		fmt.Fprintf(&b, " Full run: %s.", p.FullReason)
 	}
 	b.WriteString("\n\n")

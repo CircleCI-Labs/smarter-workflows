@@ -382,6 +382,9 @@ func parseRefFilter(m *yaml.Node) *RefFilter {
 	return r
 }
 
+// Node is the workflow mapping in the config YAML (when, unless, jobs, …).
+func (w *Workflow) Node() *yaml.Node { return w.node }
+
 // Condition inspects the workflow's `when` and `unless`.
 func (w *Workflow) Condition() Condition {
 	result := NoCondition

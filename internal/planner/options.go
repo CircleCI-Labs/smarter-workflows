@@ -94,6 +94,10 @@ type Options struct {
 	// BinPath is where the map job finds the planner binary: the path it ran
 	// from in the setup job, which the install step caches.
 	BinPath string
+
+	// Parameters are pipeline parameter values for condition evaluation and for
+	// the continuation API (plan passes them through to continue).
+	Parameters map[string]any
 }
 
 // DefaultOptions returns the defaults of the spec's CLI table.

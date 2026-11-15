@@ -53,6 +53,8 @@ type Result struct {
 	Config []byte
 	// Report is plan.json.
 	Report *report.Plan
+	// Parameters are passed to continue unchanged when --parameters was set.
+	Parameters map[string]any
 	// GuardrailsFailed is set when even the full plan breaks a hard guardrail:
 	// the pipeline must not continue (exit 3).
 	GuardrailsFailed bool
@@ -198,7 +200,30 @@ func (p *planner) run(ctx context.Context) *Result {
 	rep := final.rep
 	rep.Guardrails = report.Guardrails{Status: status, Repairs: repairs, Violations: violations}
 	rep.Warnings = append(rep.Warnings, warnings...)
-	return &Result{Config: final.cfg, Report: rep, GuardrailsFailed: failed}
+	out := &Result{Config: final.cfg, Report: rep, GuardrailsFailed: failed}
+	if len(p.o.Parameters) > 0 {
+		out.Parameters = p.o.Parameters
+	}
+	return out
+}
+
+func (p *planner) pipelineEnv() pipelineEnv {
+	return pipelineEnv{
+		Branch: p.o.Branch, Tag: p.o.Tag, TriggerType: p.o.TriggerType,
+		Parameters: p.o.Parameters,
+	}
+}
+
+// buildWorkflowSkipped leaves the planned workflow untouched and records that
+// it will not run (when/unless is false for this pipeline).
+func (p *planner) buildWorkflowSkipped(wf *config.Workflow, rep *report.Plan) *attempt {
+	rep.WorkflowRuns = false
+	rep.WorkflowSkipReason = "the workflow's when/unless is false for this pipeline"
+	const reason = "workflow does not run"
+	for _, e := range wf.Entries {
+		rep.Jobs = append(rep.Jobs, report.Job{Name: e.Name, Run: false, Reasons: []string{reason}})
+	}
+	return &attempt{cfg: slices.Clone(p.in.Config), rep: rep, full: false}
 }
 
 func hardViolations(r guard.Result) []guard.Violation {
@@ -260,13 +285,14 @@ func (p *planner) verbatim(reason, note string) *attempt {
 
 func (p *planner) newReport() *report.Plan {
 	rep := &report.Plan{
-		Version:    report.Version,
-		Mode:       string(p.o.Mode),
-		Workflow:   p.wf,
-		Base:       p.o.Base,
-		Head:       p.o.Head,
-		Branch:     p.o.Branch,
-		Guardrails: report.Guardrails{Status: "SKIPPED"},
+		Version:      report.Version,
+		Mode:         string(p.o.Mode),
+		Workflow:     p.wf,
+		WorkflowRuns: true,
+		Base:         p.o.Base,
+		Head:         p.o.Head,
+		Branch:       p.o.Branch,
+		Guardrails:   report.Guardrails{Status: "SKIPPED"},
 	}
 	if m := p.in.Map; m != nil {
 		rep.MapRevision, rep.MapCreatedAt = m.Revision, m.CreatedAt
@@ -331,9 +357,6 @@ func (p *planner) fullRunReason(wf *config.Workflow, cs *changeSet, changesErr e
 			return fmt.Sprintf("changed path %s matches the full-run path %s", c.Path, g)
 		}
 	}
-	if wf.Condition() == config.DynamicCondition {
-		return "the workflow has a when or unless that is not a literal true or false"
-	}
 	for _, e := range wf.Entries {
 		if e.Dynamic && !e.Matrix {
 			return fmt.Sprintf("job %q has a name or requires that is an expression", e.Name)
@@ -372,6 +395,16 @@ func (p *planner) build(ctx context.Context, forced map[string]bool, fullReason 
 	}
 
 	full := fullReason
+	if full == "" {
+		switch evalWorkflowRuns(wf.Node(), p.pipelineEnv()) {
+		case triNo:
+			return p.buildWorkflowSkipped(wf, rep), nil
+		case triUnknown:
+			if workflowConditionUnknown(wf) {
+				full = "the workflow has a when or unless that cannot be evaluated"
+			}
+		}
+	}
 	if full == "" {
 		full = p.fullRunReason(wf, cs, changesErr)
 	}
