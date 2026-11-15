@@ -2,7 +2,7 @@
 
 A planner for CircleCI setup workflows. For each change it runs only the jobs that change can reach, and it checks its plan against your guardrails (config policies) before it continues the pipeline.
 
-[![CircleCI](https://dl.circleci.com/status-badge/img/gh/CircleCI-Labs/smarter-workflows/tree/main.svg?style=shield)](https://dl.circleci.com/status-badge/redirect/gh/CircleCI-Labs/smarter-workflows/tree/main)
+[![CircleCI](https://dl.circleci.com/status-badge/img/circleci/98KhFjn8YyZY9qoBGmzCBs/AEZsEwRynPFf5UojjW6akf/tree/main.svg?style=shield)](https://dl.circleci.com/status-badge/redirect/circleci/98KhFjn8YyZY9qoBGmzCBs/AEZsEwRynPFf5UojjW6akf/tree/main)
 [![Release](https://img.shields.io/github/v/release/CircleCI-Labs/smarter-workflows?include_prereleases&label=release)](https://github.com/CircleCI-Labs/smarter-workflows/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![CircleCI Community](https://img.shields.io/badge/community-CircleCI%20Discuss-343434.svg)](https://discuss.circleci.com/)
