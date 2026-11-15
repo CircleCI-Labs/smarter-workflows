@@ -7,7 +7,8 @@ toolchain go1.27.4
 require (
 	github.com/CircleCI-Public/circle-policy-agent v0.0.779
 	github.com/bmatcuk/doublestar/v4 v4.10.4
-	go.yaml.in/yaml/v3 v3.0.6
+	go.yaml.in/yaml/v3 v3.0.5
+	go.yaml.in/yaml/v4 v4.0.0
 )
 
 require (
