@@ -49,7 +49,7 @@ Build a history file with [`scripts/bench/fetch-history.sh`](../scripts/bench/fe
 ```sh
 circleci-smarter backtest \
   --history history.json \
-  --map impact-map.json \
+  --map impact-map.json.gz \
   --config .circleci/continue.yml \
   --workflow ci \
   --mandatory security-scan \

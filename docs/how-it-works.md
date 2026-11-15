@@ -83,7 +83,7 @@ The numbers are from before the pipeline gained the job `docs-site-build`, which
 
 Two commands let an agent (or a person) read a pipeline and check a layout of it, with no plan and no impact map needed:
 
-- `circleci-smarter catalog --config .circleci/continue.yml --map impact-map.json` prints the jobs of a workflow as JSON: each one's kind, executor, contexts, filters, requirements, workspace use and, with a map, how much of the repository it read.
+- `circleci-smarter catalog --config .circleci/continue.yml --map impact-map.json.gz` prints the jobs of a workflow as JSON: each one's kind, executor, contexts, filters, requirements, workspace use and, with a map, how much of the repository it read.
 - `circleci-smarter layout check --config composed.yml --catalog catalog.json --policy-bundle policies --mandatory security-scan --restricted-contexts deploy` checks how the jobs of a workflow wait for each other, and reports each problem with a code and a hint on how to fix it: a `requires` that points nowhere, a cycle, a workspace attached before it is persisted, a restricted context with no approval before it, a missing mandatory job, a gate that is not a no-op job or does not wait for every job that runs, and an approval that a branch filter can leave out. It exits 3 when there are errors. A plan the planner writes has a no-op gate and no structural problem that its input did not have.
 
 The [spec](spec/v0.1.md#catalog) has the formats.

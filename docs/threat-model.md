@@ -7,7 +7,7 @@ Smarter Workflows runs inside a customer’s CircleCI project: a setup workflow 
 - **Repository source** — integrity and confidentiality as for any CI job.
 - **Continuation config** — defines the jobs that run after setup; may reference contexts and images.
 - **Continuation key** — secret that authorizes continuing the pipeline (environment variable).
-- **Impact map** — JSON in the project cache describing which files each job read on a past full run.
+- **Impact map** — gzip JSON (v2) or legacy JSON (v1) in the project cache describing which files each job read on a past full run.
 - **Plan report** — `plan.json` / `plan.md` with job decisions and diffs.
 - **Trace scripts** — shell embedded in customer job configs (`reset-atime.sh`, `collect-trace.sh`).
 - **Policy bundle** — Rego guardrails evaluated before continuation.
@@ -29,7 +29,7 @@ Smarter Workflows runs inside a customer’s CircleCI project: a setup workflow 
 
 **Threat:** A branch writes a cache entry claiming jobs did not read files they actually use, so the planner skips work.
 
-**Mitigations:** Mandatory jobs always run. Guardrails do not depend on the map. Unusable paths mark a job incomplete (it runs). Oversized or malformed maps are rejected (full run). Map size, job count, and path count are bounded at parse time.
+**Mitigations:** Mandatory jobs always run. Guardrails do not depend on the map. Unusable paths mark a job incomplete (it runs). Oversized or malformed maps are rejected (full run). v2 bounds compressed and decompressed bytes, table sizes, job count, and per-job index counts at parse time (v1 keeps a 16 MiB cap). See ADR 7.
 
 **Residual risk:** A plausible forged map can still skip optional jobs until signing on the default branch ([limitations](limitations.md)). Operators should treat map cache as hint data, not proof.
 
