@@ -163,7 +163,19 @@ func (c *Config) JobPlatform(job string) Platform {
 	if def == nil {
 		return PlatformUnknown
 	}
+	if c.jobUsesNonLinuxShell(def) {
+		return PlatformOther
+	}
 	return c.rootScope().platformOf(def, 0)
+}
+
+func (c *Config) jobUsesNonLinuxShell(def *yaml.Node) bool {
+	shell, ok := scalarValue(lookup(def, "shell"))
+	if !ok {
+		return false
+	}
+	low := strings.ToLower(shell)
+	return strings.Contains(low, "powershell") || strings.Contains(low, "cmd")
 }
 
 func (s scope) platformOf(def *yaml.Node, depth int) Platform {
@@ -219,33 +231,6 @@ func (c *Config) Workspace(job string) (persists, attaches bool) {
 	}
 	use := c.rootScope().workspace(def)
 	return use.persists, use.attaches
-}
-
-// InsertAfterCheckout inserts step right after the first `checkout` step in
-// the steps of a job defined in this config. It reports whether the job has
-// such a step. Steps inside commands are not touched: a command may be shared
-// with jobs that are not traced.
-func (c *Config) InsertAfterCheckout(job string, step *yaml.Node) (bool, error) {
-	def := c.jobDef(job)
-	if def == nil {
-		return false, fmt.Errorf("job %q is not defined in this config", job)
-	}
-	steps := lookup(def, "steps")
-	if steps == nil || steps.Kind != yaml.SequenceNode {
-		return false, nil
-	}
-	for j, s := range steps.Content {
-		if !isCheckout(s) {
-			continue
-		}
-		if j+1 < len(steps.Content) && sameNode(steps.Content[j+1], step) {
-			return true, nil // already there
-		}
-		steps.Style &^= yaml.FlowStyle
-		steps.Content = append(steps.Content[:j+1], append([]*yaml.Node{step}, steps.Content[j+1:]...)...)
-		return true, nil
-	}
-	return false, nil
 }
 
 // sameNode compares two nodes by content, ignoring style and comments.
