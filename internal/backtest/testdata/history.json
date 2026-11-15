@@ -1,0 +1,40 @@
+[
+  {
+    "commit": "head-miss",
+    "base": "base1",
+    "branch": "feature",
+    "changed": [{ "path": "docs/index.md", "status": "M" }],
+    "jobs": [
+      { "name": "docs", "status": "success", "duration_s": 40 },
+      { "name": "lint", "status": "success", "duration_s": 30 },
+      { "name": "security-scan", "status": "success", "duration_s": 20 },
+      { "name": "api-test", "status": "failed", "duration_s": 90 }
+    ]
+  },
+  {
+    "commit": "head-catch",
+    "base": "base1",
+    "branch": "feature",
+    "changed": [{ "path": "services/api/main.go", "status": "M" }],
+    "jobs": [
+      { "name": "lint", "status": "success", "duration_s": 30 },
+      { "name": "security-scan", "status": "success", "duration_s": 20 },
+      { "name": "api-test", "status": "failed", "duration_s": 90 },
+      { "name": "web-test", "status": "success", "duration_s": 60 },
+      { "name": "build", "status": "success", "duration_s": 50 },
+      { "name": "e2e", "status": "success", "duration_s": 70 }
+    ]
+  },
+  {
+    "commit": "head-flaky",
+    "base": "base1",
+    "branch": "feature",
+    "changed": [{ "path": "docs/index.md", "status": "M" }],
+    "jobs": [
+      { "name": "docs", "status": "success", "duration_s": 40 },
+      { "name": "lint", "status": "success", "duration_s": 30 },
+      { "name": "security-scan", "status": "success", "duration_s": 20 },
+      { "name": "web-test", "status": "failed", "duration_s": 60, "flaky": true }
+    ]
+  }
+]
