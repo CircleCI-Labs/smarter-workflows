@@ -6,7 +6,7 @@ page-description: The test layers, the end-to-end scenarios, the bugs that valid
 
 # Validation
 
-What was tested in v0.1, and what each layer found. The results are from 2026-11-14.
+What was tested in v0.1, and what each layer found. Unit, robustness, guardrail and trace results are from 2026-11-14; end-to-end and backtest numbers are from 2026-11-15.
 
 ## Test layers
 
@@ -16,39 +16,52 @@ What was tested in v0.1, and what each layer found. The results are from 2026-11
 | Robustness | 27 unusual config shapes (approvals mid-graph, two workflows, matrices, orb jobs, status `requires`, anchors and merge keys, null steps, renames, unicode paths). Every emitted config must keep the job graph intact, pass the guardrails, and pass `circleci config validate` | pass (9 bugs found and fixed first) |
 | Guardrails | 53 Rego tests and Go fixture tests through CircleCI's policy engine | pass |
 | Trace scripts | 43 checks on ext4, tmpfs and the `cimg/base` image; the atime reset tested on CircleCI's docker and machine executors | pass |
-| End to end | `scripts/e2e/run-scenarios.sh`: real branches, real pipelines, and an exact comparison of the jobs that ran | 21 scenarios (v0.1; orchestrator re-runs when this branch merges) |
+| End to end | `scripts/e2e/run-scenarios.sh`: real branches, real pipelines, and an exact comparison of the jobs that ran | pass (57/63 job-set checks on first batch; two scenario definitions fixed and rerun — see below) |
 
 ## End-to-end scenarios
 
-[Demo monorepo](../examples/demo/README.md) (`examples/demo`, 13 jobs, select mode). The two `worker-test` matrix jobs always run in v0.1.
+Twenty-one scenarios on two targets: the [demo monorepo](../examples/demo/README.md) (16 scenarios, 13 jobs, select mode) and this repository (5 scenarios, 8 jobs). Each scenario ran **three times** on the same base commit (**63** pipeline runs total). Every run checked the jobs that ran (besides `smarter-gate`), guardrail outcome where relevant, and the continued workflow's GitHub check conclusion.
 
-| Change | Jobs that ran (besides the gate) | Job time |
-|---|---|---|
-| full run (`.circleci` change or `[smarter full]`) | all 13 | 162–170 s |
-| docs only | docs-check, security-scan, worker-test ×2 | 35 s |
-| infra only | infra-validate, security-scan, worker-test ×2 | 41 s |
-| web service | lint, web-test, web-bundle (orb job, traced), security-scan, worker-test ×2 | 93 s |
-| shared schema | lint, api-test, web-test, security-scan, worker-test ×2 | 99 s |
-| api service, or a new file in it | lint, api-test, build, e2e (consumes build's workspace), security-scan, worker-test ×2 | 122–170 s |
-| a job with `resource_class: xlarge` | nothing: the setup job stops at the guardrails, and the check fails | 0 s |
-| a deleted file under `services/web` | lint, web-test, web-bundle, security-scan, worker-test ×2 | — |
-| a rename under `services/api` | lint, api-test, build, e2e, security-scan, worker-test ×2 | — |
-| docs and the API in one commit | docs-check, lint, api-test, build, e2e, security-scan, worker-test ×2 | — |
-| only `scripts/e2e.sh` | build, e2e, security-scan, worker-test ×2 | — |
-| only `package-lock.json` under web | lint, web-test, web-bundle, security-scan, worker-test ×2 | — |
-| only `services/worker` | lint, security-scan, worker-test ×2 | — |
+**First batch (63 runs): 57 passed** the job-set check. **Six did not:**
 
-This repository (8 jobs):
+| Scenario | What went wrong |
+| --- | --- |
+| `self-policies` (×3) | The scenario expected only `go-test`, `policy-test`, `release-dry-run`, and `security-scan`. Adding `policies/NOTES.md` also satisfies `build`, `go-lint`, and `e2e-plan`, which list `policies/` or depend on `build`'s workspace — by design. |
+| `self-orb` (×3) | The change step edited `orb/orb.yml`, which no longer exists; the orb lives under `orb/src/@orb.yml`. The branch was never pushed. |
 
-| Change | Jobs that ran | Job time |
-|---|---|---|
-| full run | all 8 | 287 s |
-| docs only | security-scan | 47 s |
-| one Go package, or a new file in it | go-test, go-lint, build, e2e-plan, security-scan | 197–205 s |
-| `policies/` | go-test, policy-test, security-scan | — |
-| `orb/orb.yml` | go-test, orb-validate, security-scan | — |
+**After fixing the scenarios:** `self-policies` was rerun once with the expanded expected job set (`build`, `e2e-plan`, `go-lint`, `go-test`, `policy-test`, `release-dry-run`, `security-scan`) and **passed**. `self-orb` was rerun once against `orb/src/@orb.yml`; the planner ran **`orb-validate`** and **`security-scan`** only (Go inputs unchanged), matching the corrected expectation. The first batch therefore reported **57/63** job-set matches; with the two definition fixes verified on real pipelines, all **21** scenarios are accounted for. See the savings table in [Benchmarks](benchmarks.md#end-to-end-savings).
 
-Job time is the sum of the jobs' run times in the planned workflow, a stand-in for compute. It varies by about ±25% from run to run. Each scenario also checked that the workflow's GitHub check reported the expected conclusion. Use `scripts/e2e/run-scenarios.sh --repeat N --csv OUT` for timing medians and a savings table against the full-run scenarios.
+The two `worker-test` matrix jobs always run on the demo target in v0.1.
+
+### Demo target (median job seconds, three runs)
+
+| Change | Jobs that ran (besides the gate) | Median job s |
+|---|---|---:|
+| full run (`.circleci` change or `[smarter full]`) | all 13 | 154–162 |
+| docs only | docs-check, security-scan, worker-test ×2 | 22 |
+| infra only | infra-validate, security-scan, worker-test ×2 | 32 |
+| web service | lint, web-test, web-bundle, security-scan, worker-test ×2 | 60 |
+| shared schema | lint, api-test, web-test, security-scan, worker-test ×2 | 107 |
+| api service, or a new file in it | lint, api-test, build, e2e, security-scan, worker-test ×2 | 130–138 |
+| rename under `services/api` | lint, api-test, build, e2e, security-scan, worker-test ×2 | 113 |
+| docs and the API in one commit | docs-check, lint, api-test, build, e2e, security-scan, worker-test ×2 | 131 |
+| only `scripts/e2e.sh` | build, e2e, security-scan, worker-test ×2 | 59 |
+| lockfile under web (no unit-test job) | lint, web-bundle, security-scan, worker-test ×2 | 68 |
+| deleted file under `services/web` | lint, web-bundle, web-test, security-scan, worker-test ×2 | 65 |
+| only `services/worker` | lint, security-scan, worker-test ×2 | 57 |
+| `resource_class: xlarge` | nothing: setup stops at guardrails | — |
+
+### This repository (median job seconds, three runs)
+
+| Change | Jobs that ran (besides the gate) | Median job s |
+|---|---|---:|
+| full run (`[smarter full]`) | all 8 | 537 |
+| docs only | docs-site-build, security-scan | 45 |
+| one Go package, or a new file under it | go-test, go-lint, build, e2e-plan, release-dry-run, security-scan | 402–423 |
+| `policies/` (file added) | build, e2e-plan, go-lint, go-test, policy-test, release-dry-run, security-scan | (see rerun above) |
+| orb source only | orb-validate, security-scan | (see rerun above) |
+
+**Job seconds** sum each job's run time in the continued workflow. They approximate compute, not credits (resource class matters), and exclude queue time. Use `scripts/e2e/run-scenarios.sh --repeat N --csv OUT` to reproduce medians and the savings table against each target's full-run scenario.
 
 ## Bugs that validation found and fixed
 

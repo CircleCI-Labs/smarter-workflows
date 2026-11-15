@@ -21,7 +21,8 @@ docs/limitations.md | Limitations
 docs/threat-model.md | Threat model
 docs/validation.md | Validation
 
-== Benchmarks | Performance numbers and replay against real CI history. The full reports are filled in as the benchmark jobs land on main.
+== Benchmarks | End-to-end CI savings, historical replay, and local performance numbers for v0.1.
+docs/benchmarks.md | Benchmarks | Overview of measured savings, backtest recall, and performance targets. | benchmarks
 docs/benchmarks-perf.md | Performance benchmarks | Planner and trace-script timing on synthetic workloads, and how to rerun the harness. | benchmarks-perf
 docs/benchmarks-backtest.md | Backtest | Recall and job-time savings when the planner is replayed against historical pipelines. | benchmarks-backtest
 
