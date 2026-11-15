@@ -1,0 +1,26 @@
+[
+  {
+    "created_at": "2026-11-15T10:00:00Z",
+    "items": [
+      {
+        "id": "j2a",
+        "name": "go-test",
+        "type": "build",
+        "status": "failed",
+        "duration": 120000
+      }
+    ]
+  },
+  {
+    "created_at": "2026-11-15T10:30:00Z",
+    "items": [
+      {
+        "id": "j2b",
+        "name": "go-test",
+        "type": "build",
+        "status": "success",
+        "duration": 90000
+      }
+    ]
+  }
+]

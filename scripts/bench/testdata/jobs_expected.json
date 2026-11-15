@@ -7,7 +7,6 @@
   {
     "name": "go-test",
     "status": "failed",
-    "duration_s": 120,
-    "flaky": true
+    "duration_s": 120
   }
 ]

@@ -1,0 +1,8 @@
+[
+  {
+    "name": "go-test",
+    "status": "success",
+    "duration_s": 90,
+    "flaky": true
+  }
+]

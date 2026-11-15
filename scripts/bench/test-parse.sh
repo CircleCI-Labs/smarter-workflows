@@ -20,10 +20,18 @@ branch="$(printf '%s\n' "$pipeline" | branch_from_pipeline)"
 if [ "$sha" != "abc123deadbeef" ] || [ "$branch" != "feature/docs" ]; then
   fail "legacy pipeline selectors (sha=$sha branch=$branch)"
 fi
-got="$(printf '%s\n' "$jobs_page" | jobs_from_workflow | mark_flaky_jobs)"
+got="$(printf '%s\n' "$jobs_page" | jobs_from_workflow)"
 want="$(cat "$dir/testdata/jobs_expected.json")"
 if ! printf '%s\n%s\n' "$got" "$want" | jq -e -s '.[0] == .[1]' >/dev/null; then
   fail "legacy job mapping mismatch"
+fi
+
+# Workflow rerun: fail in an earlier workflow, success in a later one -> flaky.
+rerun="$(cat "$dir/testdata/workflow_rerun_bundle.json")"
+got="$(printf '%s\n' "$rerun" | merge_workflow_reruns)"
+want="$(cat "$dir/testdata/jobs_expected_rerun.json")"
+if ! printf '%s\n%s\n' "$got" "$want" | jq -e -s '.[0] == .[1]' >/dev/null; then
+  fail "workflow rerun flaky mismatch (got=$got)"
 fi
 
 # Real GitHub App API shapes (multiline commit messages in JSON strings).
@@ -43,7 +51,6 @@ if ! printf '%s\n' "$pages" | jq -e '.items | length == 1' >/dev/null; then
   fail "pipelines_page item count"
 fi
 
-# dash echo(1) expands \n inside JSON; printf must still feed valid JSON to jq.
 if ! printf '%s\n' "$gha" | jq -e '.trigger_parameters.git.commit_message | contains("Merge pull request")' >/dev/null; then
   fail "printf pipeline JSON is not valid for jq"
 fi
