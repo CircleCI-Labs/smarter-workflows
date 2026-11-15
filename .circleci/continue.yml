@@ -27,7 +27,7 @@ commands:
 jobs:
   go-test:
     docker:
-      - image: cimg/go:1.27.3
+      - image: cimg/go:1.27.4
     resource_class: medium
     steps:
       - checkout
@@ -42,7 +42,7 @@ jobs:
 
   go-lint:
     docker:
-      - image: cimg/go:1.27.3
+      - image: cimg/go:1.27.4
     resource_class: medium
     steps:
       - checkout
@@ -61,7 +61,7 @@ jobs:
 
   policy-test:
     docker:
-      - image: cimg/go:1.27.3
+      - image: cimg/go:1.27.4
     resource_class: medium
     steps:
       - checkout
@@ -114,7 +114,7 @@ jobs:
 
   security-scan:
     docker:
-      - image: cimg/go:1.27.3
+      - image: cimg/go:1.27.4
     resource_class: medium
     steps:
       - checkout
@@ -129,7 +129,7 @@ jobs:
 
   build:
     docker:
-      - image: cimg/go:1.27.3
+      - image: cimg/go:1.27.4
     resource_class: medium
     steps:
       - checkout
