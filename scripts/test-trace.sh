@@ -497,5 +497,13 @@ do_reset "$repo"
 run_script "$collect_sh" "$repo" SMARTER_TRACE_DIR="$tdir"
 assert "no CIRCLE_JOB: file name is the sha256 of an empty name" test -f "$tdir/e3b0c44298fc1c14.0.tsv"
 
+# 3m. A job name with shell metacharacters is written as one line in the TSV.
+new_checkout hostile-job
+do_reset "$repo"
+do_collect "$repo" CIRCLE_JOB='a;b|c'
+assert "hostile job name: collector exits 0 with one line" one_line_ok
+tr=$(trace_of "$tdir")
+assert "hostile job name: the job line is in the trace" grep -q "^job${tab}a;b|c\$" "$tr"
+
 echo "# $pass passed, $fail failed, $skip skipped"
 [ "$fail" -eq 0 ]
