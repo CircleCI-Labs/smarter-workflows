@@ -14,7 +14,8 @@ What v0.1 does not do yet. Each item is safe: where the planner cannot decide, t
 - **A release job** (`type: release`) is never traced. It stays when a job it requires runs, and then so does everything it requires.
 - **Matrix jobs** always run.
 - **Orb jobs** are traced only with `--trace-orb-jobs`: it adds a `checkout` and a reset as pre-steps, so it only suits orb jobs that check out the repo. Without it they always run.
-- **A `checkout` inside a command** gets no reset, so that job's trace comes out incomplete and the job always runs.
+- **Self-hosted runners and other opaque Linux executors** (`machine: true` without an image, `namespace/resource_class`, parameterised executors) are not traced unless you list them with `--trace-jobs` (comma-separated name globs). Windows and macOS entries are never traced, even when listed.
+- **Plan reports explain untraced jobs** in `plan.json` (`trace_coverage`) and `plan.md`, so you can see unknown executors, missing checkout, job groups, matrix jobs and the like.
 - **Expression filters** (string filters) are reported, and left out of the gate.
 - **Workflow `when`/`unless`** are evaluated only when every value is known from `--parameters`, `--branch`, `--tag` and `--trigger-type`. Unsupported forms still mean a full run. When the condition is false, the workflow is not pruned and gets no gate (CircleCI skips it).
 - **A job that requires only filtered-out jobs by a status** (`- deploy: failed`, with `deploy` filtered out on the branch) may or may not run, so the plan cannot leave it out or drop its requirement: it is a full run.
