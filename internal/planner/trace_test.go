@@ -233,17 +233,17 @@ func TestTraceOfAFullRunOnTheDefaultBranch(t *testing.T) {
 	if at := steps[2].(map[string]any)["attach_workspace"].(map[string]any)["at"]; at != "/tmp/smarter" {
 		t.Errorf("attach_workspace at = %v", at)
 	}
-	if c := runStep(steps[3])["command"]; c != "/usr/local/bin/circleci-smarter map build --traces /tmp/smarter/traces --revision \"$CIRCLE_SHA1\" --out /tmp/smarter/impact-map.json\n" {
+	if c := runStep(steps[3])["command"]; c != "/usr/local/bin/circleci-smarter map build --traces /tmp/smarter/traces --revision \"$CIRCLE_SHA1\" --out /tmp/smarter/impact-map.json.gz\n" {
 		t.Errorf("map build command = %q", c)
 	}
 	if c := runStep(steps[4])["command"]; c != "printf '%s\\n' \"$CIRCLE_SHA1\" > .smarter-key\n" {
 		t.Errorf("key step = %q", c)
 	}
 	save := steps[5].(map[string]any)["save_cache"].(map[string]any)
-	if save["key"] != `smarter-impact-v1-{{ checksum ".smarter-key" }}` || !slices.Equal(toStrings(save["paths"]), []string{"/tmp/smarter/impact-map.json"}) {
+	if save["key"] != `smarter-impact-v1-{{ checksum ".smarter-key" }}` || !slices.Equal(toStrings(save["paths"]), []string{"/tmp/smarter/impact-map.json.gz"}) {
 		t.Errorf("save_cache = %v", save)
 	}
-	if p := steps[6].(map[string]any)["store_artifacts"].(map[string]any)["path"]; p != "/tmp/smarter/impact-map.json" {
+	if p := steps[6].(map[string]any)["store_artifacts"].(map[string]any)["path"]; p != "/tmp/smarter/impact-map.json.gz" {
 		t.Errorf("store_artifacts path = %v", p)
 	}
 

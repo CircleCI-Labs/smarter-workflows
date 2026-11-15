@@ -27,7 +27,7 @@ func runBacktest(args []string, stdout, stderr io.Writer) int {
 		fs.PrintDefaults()
 	}
 	historyPath := fs.String("history", "", "JSON file of historical commits (required)")
-	mapPath := fs.String("map", "", "impact map JSON (required)")
+	mapPath := fs.String("map", "", "impact map JSON or gzip (required)")
 	cfgPath := fs.String("config", ".circleci/continue.yml", "full continuation config")
 	workflow := fs.String("workflow", "ci", "workflow to plan")
 	defaultBranch := fs.String("default-branch", "main", "the default branch")
@@ -59,14 +59,9 @@ func runBacktest(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "circleci-smarter backtest: cannot read config: %v\n", err)
 		return 1
 	}
-	mapData, err := os.ReadFile(*mapPath)
+	m, err := impactmap.Load(impactmap.ResolveMapPath(*mapPath))
 	if err != nil {
 		fmt.Fprintf(stderr, "circleci-smarter backtest: cannot read map: %v\n", err)
-		return 1
-	}
-	m, err := impactmap.Parse(mapData)
-	if err != nil {
-		fmt.Fprintf(stderr, "circleci-smarter backtest: cannot parse map: %v\n", err)
 		return 1
 	}
 	hf, err := os.Open(*historyPath)

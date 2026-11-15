@@ -147,7 +147,7 @@ jobs:
       - run:
           name: 'smarter: build impact map'
           command: |
-            /usr/local/bin/circleci-smarter map build --traces /tmp/smarter/traces --revision "$CIRCLE_SHA1" --out /tmp/smarter/impact-map.json
+            /usr/local/bin/circleci-smarter map build --traces /tmp/smarter/traces --revision "$CIRCLE_SHA1" --out /tmp/smarter/impact-map.json.gz
       - run:
           name: 'smarter: write cache key'
           command: |
@@ -155,9 +155,9 @@ jobs:
       - save_cache:
           key: smarter-impact-v1-{{ checksum ".smarter-key" }}
           paths:
-            - /tmp/smarter/impact-map.json
+            - /tmp/smarter/impact-map.json.gz
       - store_artifacts:
-          path: /tmp/smarter/impact-map.json
+          path: /tmp/smarter/impact-map.json.gz
   smarter-gate:
     type: no-op
 workflows:

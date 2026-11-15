@@ -233,9 +233,9 @@ func (sc scenario) run(t *testing.T) outcome {
 	git := diff.Git{Dir: r.Dir}
 	in := planner.Input{Config: []byte(exampleConfig()), Repo: git, CommitMessage: message}
 	if sc.noMap {
-		in.MapProblem = "there is no impact map at /tmp/smarter/impact-map.json"
+		in.MapProblem = "there is no impact map at /tmp/smarter/impact-map.json.gz"
 	} else {
-		m, err := impactmap.Load("impact-map.json")
+		m, err := impactmap.Load("impact-map.json.gz")
 		if err != nil {
 			t.Fatal(err)
 		}

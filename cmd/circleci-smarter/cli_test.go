@@ -193,7 +193,7 @@ func TestMapBuildCommand(t *testing.T) {
 	write("aaaa.0.tsv", "# smarter-trace v1\njob\tlint\nnode\t0\nmethod\tatime\nsupported\ttrue\nF\ta.go\nD\t.\n")
 	write("aaaa.1.tsv", "# smarter-trace v1\njob\tlint\nnode\t1\nmethod\tatime\nsupported\ttrue\nF\tb.go\n")
 	write("bbbb.0.tsv", "# smarter-trace v1\njob\tdocs\nnode\t0\nmethod\tatime\nsupported\tfalse\nreason\tnoatime\n")
-	out := filepath.Join(t.TempDir(), "nested", "impact-map.json")
+	out := filepath.Join(t.TempDir(), "nested", impactmap.MapFilenameV2)
 
 	code, stdout, stderr := doMap(t, "build", "--traces", dir, "--revision", "abc123", "--out", out)
 	if code != 0 || stderr != "" || !strings.Contains(stdout, "3 traces, 2 jobs (1 complete)") {
