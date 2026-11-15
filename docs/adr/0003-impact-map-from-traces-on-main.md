@@ -13,7 +13,7 @@ A job's equivalent of test coverage is the set of repo files it reads. There are
 - **Hand-written globs** go stale.
 - **Language analyzers** need one per ecosystem, and miss scripts and config files.
 - **`strace` and `LD_PRELOAD`** are slow, and Go binaries bypass libc.
-- **fanotify and eBPF** need privileges that Docker jobs don't have.
+- **fanotify and eBPF** need privileges that Docker jobs do not have.
 - **Access times (atime)** cost nothing. Under the usual `relatime` mount option, the first read after a write always updates a file's atime. A freshly checked-out file has atime equal to mtime, so a file that was read has atime greater than mtime.
 
 ## Decision
@@ -32,7 +32,7 @@ A job's equivalent of test coverage is the set of repo files it reads. There are
 - No ML, no per-language code, no hand-written globs. The map explains itself: "this job read these files".
 - `noatime` filesystems, busybox `find` and non-Linux executors give incomplete traces, so those jobs always run.
 - Because a read is "atime past the epoch", an input that is read and then rewritten in the same job (a formatter run with `-w`) still counts as read. Traces still miss inputs from outside the repo: see ADR 2 for how those are covered.
-- Cache entries can expire (default retention) and can be written by any branch. A missing map means a full run. Mandatory jobs and guardrails don't depend on the map. Signing the map on the default branch is planned hardening.
+- Cache entries can expire (default retention) and can be written by any branch. A missing map means a full run. Mandatory jobs and guardrails do not depend on the map. Signing the map on the default branch is planned hardening.
 
 ## Verification (2026-11-13)
 

@@ -1,6 +1,6 @@
 # Glossary
 
-The words this project uses, and what each one means. There are no implementation details here. For those, see `docs/spec/` and `docs/adr/`.
+The words this project uses, and what each one means. There are no implementation details here. For those, see the [spec](docs/spec/v0.1.md) and the [decisions](docs/adr/).
 
 **Change**
 : The set of files a branch changes, compared with the commit it branched from on the default branch.

@@ -1,0 +1,156 @@
+# Hugo configuration of the docs site (CONTRIBUTING.md, "Documentation site"). Run site/stage.sh first: it writes content/.
+#
+# The GitHub Pages URL uses the repository name (smarter-workflows).
+# baseURL and the GitHub menu link below must match that name. GitHub redirects repository URLs after a rename,
+# but not the old Pages path. stage.sh derives blob/tree links from the GitHub menu URL.
+baseURL: https://circleci-labs.github.io/smarter-workflows/
+title: Smarter Workflows
+locale: en-US
+enableRobotsTXT: true
+disableKinds:
+  - taxonomy
+  - term
+
+module:
+  hugoVersion:
+    extended: true
+    min: 0.146.0
+  imports:
+    - path: github.com/imfing/hextra
+
+markup:
+  highlight:
+    # Required by the theme (dark mode of code blocks).
+    noClasses: false
+
+menu:
+  main:
+    - identifier: documentation
+      name: Documentation
+      pageRef: /docs
+      weight: 1
+    - identifier: how-it-works
+      name: How it works
+      pageRef: /docs/how-it-works
+      weight: 2
+    - identifier: limitations
+      name: Limitations
+      pageRef: /docs/limitations
+      weight: 3
+    - name: Search
+      weight: 4
+      params:
+        type: search
+    - name: Theme
+      weight: 5
+      params:
+        type: theme-toggle
+    - name: GitHub
+      weight: 6
+      url: https://github.com/CircleCI-Labs/smarter-workflows
+      params:
+        icon: github
+    # Styled as the call to action of the header (assets/css/custom.css): the selector matches the path docs/get-started,
+    # so no other item of this menu may point below it.
+    - identifier: get-started
+      name: Get started
+      pageRef: /docs/get-started
+      weight: 7
+
+params:
+  description: A planner for CircleCI setup workflows. It runs only the jobs that a change can affect, and checks its plan against your guardrails before it continues the pipeline.
+  externalLinkDecoration: false
+  repo: https://github.com/CircleCI-Labs/smarter-workflows
+
+  # The landing page (layouts/home.html). "Who it is for" and "What is tested" come from README.md; the rest is in the template.
+  home:
+    title: Smarter Workflows
+    tagline: Run only the CircleCI jobs that a change can affect
+    lead: >-
+      A planner for CircleCI setup workflows. For each change it runs the jobs that the change can reach, and it checks its plan
+      against your guardrails before it continues the pipeline. Start in shadow mode, which plans and reports but runs everything.
+    features:
+      - icon: git-branch
+        title: Learns from your default branch
+        text: >-
+          Every full run on the default branch traces the repo files that each job reads, and builds an impact map.
+          A branch uses the map: a job whose inputs the change does not touch is skipped.
+        link: docs/how-it-works/#the-loop
+        linkText: The loop
+      - icon: shield-check
+        title: Skips a job only when proven
+        text: A job runs unless the map shows that the change cannot reach it. Mandatory jobs always run, and anything unusual means a full run.
+        link: docs/decisions/0002-skip-only-when-proven/
+        linkText: Why a skip must be proven
+      - icon: circle-check
+        title: A gate that always reports
+        text: >-
+          Every planned workflow ends in smarter-gate, a no-op job that costs no credits. Even when every other job is skipped,
+          the workflow runs and its GitHub check reports, so a skipped job never leaves a pull request waiting.
+        link: docs/how-it-works/
+        linkText: How the gate works
+      - icon: layers
+        title: Guardrails first
+        text: >-
+          Every plan is checked locally against the same Rego bundle that you can enforce org-wide. The planner repairs what it can,
+          such as a missing security scan, and falls back to a full run otherwise.
+        link: docs/decisions/0006-preflight-repair-then-full/
+        linkText: Check, repair, or fall back
+      - icon: box
+        title: Native to CircleCI
+        text: >-
+          A setup workflow, the continuation API, config policies and orbs. The catalog is your own continue.yml, with no new schema.
+          One Go binary, which also works as circleci smarter.
+        link: docs/decisions/0004-catalog-is-native-circleci-config/
+        linkText: The catalog is native config
+      - icon: cpu
+        title: Tools for agents
+        text: >-
+          circleci-smarter catalog prints the jobs of a workflow as JSON, and layout check reports how they wait for each other,
+          so that an agent can compose a workflow and know it is sound.
+        link: docs/agents/composer-skill/
+        linkText: The composer skill
+
+  banner:
+    # The banner cannot be dismissed: custom.css hides the close button, and custom/banner.html renders the text.
+    # A new key shows the banner again to visitors who closed an old one.
+    key: labs-disclaimer-pre-1-0
+    message: >-
+      **CircleCI Labs project, pre-release (0.x).** Not an official CircleCI product and not supported by CircleCI support.
+      These pages track main.
+
+  navbar:
+    displayTitle: true
+    displayLogo: false
+    width: normal
+
+  theme:
+    default: system
+    # The toggle is in the header (menu item of type theme-toggle), not in the sidebar.
+    displayToggle: false
+
+  footer:
+    enable: true
+    displayCopyright: false
+    displayPoweredBy: false
+    width: normal
+
+  search:
+    enable: true
+    type: flexsearch
+    flexsearch:
+      index: content
+      tokenize: forward
+
+  highlight:
+    copy:
+      enable: true
+      display: always
+
+  page:
+    width: normal
+    contextMenu:
+      enable: false
+
+  toc:
+    displayTags: false

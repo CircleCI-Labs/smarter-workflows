@@ -10,7 +10,7 @@ The first idea was a new `catalog.yml` with metadata on each job. That is one mo
 
 - **Select mode** (v0.1): the catalog is the project's own full continuation config (`.circleci/continue.yml`). The planner prunes those workflows and keeps the order, approvals, filters and contexts the team wrote.
 - **Planner settings** (mode, mandatory jobs, full-run paths, extra inputs) are parameters of the orb job, not a new file.
-- **Shared catalogs** are orbs, pinned to exact versions: the only job-level units that can't change underneath you.
+- **Shared catalogs** are orbs, pinned to exact versions: the only job-level units that cannot change underneath you.
   - URL orbs are allowed only when pinned to a commit SHA.
   - CircleCI functions are step-level units, so they are building blocks for compose mode, not jobs.
 - **Compose mode** (later): an agent wires jobs from a catalog orb (jobs, commands, executors) into workflows, and the guardrails bound what it can produce.

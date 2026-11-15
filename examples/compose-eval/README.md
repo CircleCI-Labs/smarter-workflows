@@ -14,3 +14,5 @@ Can an agent with the [workflow composer skill](../../skills/circleci-workflow-c
 | [1](case-1-full.md) | compose the full workflow for main and branches, from scratch |
 | [2](case-2-selected.md) | compose the smallest correct workflow for a set of selected jobs |
 | [3](case-3-repair.md) | repair a broken layout ([case-3-broken.yml](case-3-broken.yml)) from the checker's findings |
+
+The [results of the first run](../../docs/validation.md#compose-eval) are in the validation page, and the answers are in [answers/](answers/).

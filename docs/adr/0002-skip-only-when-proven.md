@@ -1,6 +1,6 @@
 # 2. Skip a job only when the impact map proves the change cannot reach it
 
-Date: 2026-11-13. Status: accepted (open for review in a later grilling round).
+Date: 2026-11-13. Status: accepted (open for review).
 
 ## Context
 
@@ -19,7 +19,7 @@ A skipped job that would have failed (a miss) costs more than an extra job that 
    - on the default branch and on tags;
    - for scheduled pipelines;
    - when the change touches the pipeline definition (`.circleci/**` by default);
-   - when there is no impact map, the diff base can't be found, or the planner hits any error;
+   - when there is no impact map, the diff base cannot be found, or the planner hits any error;
    - when the head commit asks for one.
 4. Every decision layer added later (history, models) can only *add* jobs.
 5. Every workflow the planner prunes ends in one gate job, `smarter-gate`, which requires every selected job that will run. It is a no-op job (`type: no-op`), so it costs no credits. So the workflow always exists and its check always reports:

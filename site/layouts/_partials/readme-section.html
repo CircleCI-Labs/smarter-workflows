@@ -1,0 +1,14 @@
+{{- /*
+  A section of README.md, from the rendered content of the home page: from its h2 (by search id) up to the h2 that follows it there.
+  Arguments: content (the rendered Markdown), from (the search id of the first h2), to (the search id of the next h2).
+  The result is empty when the README has no such section.
+*/ -}}
+{{- $section := "" -}}
+{{- $from := printf "<h2 data-hextra-search-id=\"%s\"" .from -}}
+{{- $to := printf "<h2 data-hextra-search-id=\"%s\"" .to -}}
+{{- $head := split .content $from -}}
+{{- if eq (len $head) 2 -}}
+  {{- $tail := split (index $head 1) $to -}}
+  {{- $section = printf "%s%s" $from (index $tail 0) -}}
+{{- end -}}
+{{- return $section -}}

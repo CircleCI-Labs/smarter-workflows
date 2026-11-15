@@ -24,6 +24,43 @@ commands:
             tar -xzf "/tmp/${archive}" -C "$HOME/bin" circleci
             circleci --version
 
+  # The docs site (site/, CONTRIBUTING.md "Documentation site"): Hugo and lychee, each pinned by its version and the SHA-256
+  # of its download (the digest GitHub publishes for the asset; a new version needs its new checksum), the staged Markdown,
+  # `hugo --minify` and the offline check of every link and heading anchor. The site is in site/public afterwards. The Hextra
+  # theme is the Go module that site/go.mod and site/go.sum pin, and GOFLAGS=-mod=readonly keeps Go from changing them.
+  docs-site:
+    steps:
+      - run:
+          name: Install Hugo (extended) and lychee, checked against their SHA-256
+          command: |
+            set -eu
+            hugo_version=0.168.0
+            hugo_sha256=787f100057328824f38c6ad7c87ff10d6451ae0a7bc39cedaad0dd2bcde17e53
+            lychee_version=0.24.2
+            lychee_sha256=73657a111819a30c47c08352896796f23d64e4eb2b3ed39b6d32149241566fc5
+            mkdir -p "$HOME/.local/bin"
+            curl -fsSL --retry 5 --retry-all-errors -o /tmp/hugo.tgz "https://github.com/gohugoio/hugo/releases/download/v${hugo_version}/hugo_extended_${hugo_version}_linux-amd64.tar.gz"
+            echo "${hugo_sha256}  /tmp/hugo.tgz" | sha256sum -c -
+            tar -xzf /tmp/hugo.tgz -C "$HOME/.local/bin" hugo
+            curl -fsSL --retry 5 --retry-all-errors -o /tmp/lychee.tgz "https://github.com/lycheeverse/lychee/releases/download/lychee-v${lychee_version}/lychee-x86_64-unknown-linux-musl.tar.gz"
+            echo "${lychee_sha256}  /tmp/lychee.tgz" | sha256sum -c -
+            tar -xzf /tmp/lychee.tgz -C "$HOME/.local/bin" --strip-components=1 lychee-x86_64-unknown-linux-musl/lychee
+            echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$BASH_ENV"
+            "$HOME/.local/bin/hugo" version
+            "$HOME/.local/bin/lychee" --version
+      - run:
+          name: Stage the Markdown as Hugo content (site/stage.sh)
+          command: site/stage.sh
+      - run:
+          name: hugo --minify (warnings fail the build)
+          working_directory: site
+          environment:
+            GOFLAGS: -mod=readonly
+          command: hugo --minify --panicOnWarning
+      - run:
+          name: lychee --offline on the built site (links and heading anchors, site/check.sh)
+          command: site/check.sh
+
 jobs:
   go-test:
     docker:
@@ -127,6 +164,41 @@ jobs:
           command: |
             "$(go env GOPATH)/bin/govulncheck" ./...
 
+  # The docs site builds, and its links and heading anchors check out. It reads only the Markdown pages that site/nav.txt
+  # lists, the docs directory and the files of site/, so the planner skips it for a change that touches none of them. It has
+  # no context: no token is in the environment of Hugo, lychee, the Go modules or the scripts of site/. The publication is
+  # the job docs-site-publish, in the workflow docs-site.
+  docs-site-build:
+    docker:
+      - image: cimg/go:1.27.3
+    resource_class: small
+    steps:
+      - checkout
+      - docs-site
+      - run:
+          name: Pack the site
+          command: |
+            set -eu
+            mkdir -p /tmp/docs-site
+            tar -czf /tmp/docs-site/docs-site.tgz -C site/public .
+      - store_artifacts:
+          path: /tmp/docs-site
+          destination: docs-site
+
+  # Builds the site again, with the same steps, and pushes it to the gh-pages branch (site/publish.sh). Without GITHUB_TOKEN in
+  # the context the job builds and checks the site and publishes nothing.
+  docs-site-publish:
+    docker:
+      - image: cimg/go:1.27.3
+    resource_class: small
+    steps:
+      - checkout
+      # The build comes first: a site that does not build is not published.
+      - docs-site
+      - run:
+          name: Publish to gh-pages (nothing is published without GITHUB_TOKEN)
+          command: site/publish.sh
+
   build:
     docker:
       - image: cimg/go:1.27.3
@@ -186,12 +258,30 @@ jobs:
             echo "release stub: would publish ${CIRCLE_TAG}"
 
 workflows:
+  # The docs site, published from main in a workflow of its own: the planner plans `ci` only and passes this workflow through, a
+  # failed publication (an expired token, say) cannot hold the impact map or the gate of `ci`, and one publication runs at a
+  # time, so that two quick merges cannot push to gh-pages together. The guardrails (policies/guardrails.rego) want the
+  # security scan in every workflow, so this one runs it too, on main.
+  docs-site:
+    jobs:
+      - security-scan:
+          filters:
+            branches:
+              only: main
+      - docs-site-publish:
+          context: [smarter-workflows-release]
+          serial-group: << pipeline.project.slug >>/docs-site-publish
+          filters:
+            branches:
+              only: main
+
   ci:
     jobs:
       - go-test
       - go-lint
       - policy-test
       - script-test
+      - docs-site-build
       - orb-validate
       - security-scan
       - build
