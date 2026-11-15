@@ -86,7 +86,15 @@ parameters:
     type: string
     default: ""
     description: JSON for data.meta of the guardrails; empty builds it from the environment (plan --policy-meta).
+  resource_class:
+    type: enum
+    enum: [small, medium, medium+, large]
+    default: small
+    description: >
+      CircleCI resource class for this job. Use medium with the go executor when
+      building from source; release installs can stay on small.
 executor: << parameters.executor >>
+resource_class: << parameters.resource_class >>
 steps:
   - checkout
   - install:

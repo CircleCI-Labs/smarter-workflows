@@ -51,6 +51,7 @@ config="$work/config.yml"
   printf '      - smarter/plan:\n'
   printf '          executor: smarter/go\n'
   printf '          source: build\n'
+  printf '          resource_class: medium\n'
 } > "$config"
 
 circleci config validate "$config"

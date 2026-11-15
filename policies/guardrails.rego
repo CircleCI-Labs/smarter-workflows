@@ -48,12 +48,20 @@ required_job_names := {"security-scan"}
 #                     filter is allowed only if it is listed verbatim
 #   allow_tags        true if they may also run on tags (`filters.tags`)
 #   require_approval  true if they must run downstream of an approval job
-context_restrictions := {"deploy": {
-	"jobs": {"deploy"},
-	"branches": {"main"},
-	"allow_tags": true,
-	"require_approval": true,
-}}
+context_restrictions := {
+	"deploy": {
+		"jobs": {"deploy"},
+		"branches": {"main"},
+		"allow_tags": true,
+		"require_approval": true,
+	},
+	"smarter-workflows-release": {
+		"jobs": {"release", "orb-publish-dev", "orb-publish-prod"},
+		"branches": {"main"},
+		"allow_tags": true,
+		"require_approval": false,
+	},
+}
 
 # resource_classes: the resource_class values jobs and executors may use. A job
 # that sets none runs on its executor's default class and is not checked.
