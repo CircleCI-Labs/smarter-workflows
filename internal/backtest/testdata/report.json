@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "commits": 3,
+  "summary": {
+    "total_failures": 2,
+    "caught_failures": 1,
+    "misses": 1,
+    "flaky_failures": 1,
+    "recall": 0.5,
+    "ran_duration_s": 650,
+    "saved_duration_s": 210,
+    "savings_percent": 32.30769230769231
+  },
+  "per_job_misses": [
+    {
+      "name": "api-test",
+      "misses": 1
+    }
+  ],
+  "per_job_savings": [
+    {
+      "name": "web-test",
+      "saved_duration_s": 120
+    },
+    {
+      "name": "api-test",
+      "saved_duration_s": 90
+    }
+  ],
+  "commits_with_misses": [
+    {
+      "commit": "head-miss",
+      "branch": "feature",
+      "full": false,
+      "misses": [
+        "api-test"
+      ]
+    }
+  ]
+}

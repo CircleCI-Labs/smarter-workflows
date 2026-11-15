@@ -1,0 +1,11 @@
+{
+  "id": "pipe-1",
+  "vcs": {
+    "revision": "abc123deadbeef",
+    "branch": "feature/docs"
+  },
+  "trigger_parameters": {
+    "git.checkout_sha": "abc123deadbeef",
+    "git.branch": "feature/docs"
+  }
+}

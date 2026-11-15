@@ -1,0 +1,26 @@
+{
+  "items": [
+    {
+      "id": "j1",
+      "name": "go-lint",
+      "type": "build",
+      "status": "success",
+      "duration": 45000
+    },
+    {
+      "id": "j2",
+      "name": "go-test",
+      "type": "build",
+      "status": "failed",
+      "duration": 120000,
+      "rerun_success": true
+    },
+    {
+      "id": "j3",
+      "name": "hold",
+      "type": "approval",
+      "status": "success",
+      "duration": 0
+    }
+  ]
+}
