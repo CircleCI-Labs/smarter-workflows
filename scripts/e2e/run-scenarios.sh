@@ -50,6 +50,9 @@ usage: scripts/e2e/run-scenarios.sh [options]
   --timeout SECONDS       how long one scenario may take (default: 1500)
   --poll SECONDS          seconds between two polls, at least 15 (default: 15)
   --keep                  do not delete the scenario branches
+  --repeat N              run each scenario N times (default: 1)
+  --csv OUT               append one row per run with job timings, and print
+                          a median savings table at the end
   -h, --help              this text
 
 The map of the base commit must exist (a full run of its pipeline on main).
@@ -71,6 +74,8 @@ base_ref=origin/main
 timeout=1500
 poll=15
 keep=0
+repeat=1
+csv=
 
 while [ $# -gt 0 ]; do
   case $1 in
@@ -84,6 +89,8 @@ while [ $# -gt 0 ]; do
     --timeout) timeout=${2:?--timeout needs a value}; shift 2 ;;
     --poll) poll=${2:?--poll needs a value}; shift 2 ;;
     --keep) keep=1; shift ;;
+    --repeat) repeat=${2:?--repeat needs a value}; shift 2 ;;
+    --csv) csv=${2:?--csv needs a path}; shift 2 ;;
     -h | --help) usage; exit 0 ;;
     *) echo "run-scenarios: unknown option $1" >&2; usage >&2; exit 2 ;;
   esac
@@ -92,6 +99,7 @@ case $target in demo | self | all) ;; *) echo "run-scenarios: --target is demo, 
 case $jobs in '' | *[!0-9]* | 0) echo "run-scenarios: --jobs is a positive number" >&2; exit 2 ;; esac
 case $timeout in '' | *[!0-9]*) echo "run-scenarios: --timeout is a number of seconds" >&2; exit 2 ;; esac
 case $poll in '' | *[!0-9]*) echo "run-scenarios: --poll is a number of seconds" >&2; exit 2 ;; esac
+case $repeat in '' | *[!0-9]* | 0) echo "run-scenarios: --repeat is a positive number" >&2; exit 2 ;; esac
 case $evaluate in '' | *:*) ;; *) echo "run-scenarios: --evaluate is BRANCH:SHA" >&2; exit 2 ;; esac
 if [ "$poll" -lt 15 ]; then
   echo "run-scenarios: --poll is at least 15 seconds" >&2
@@ -151,6 +159,22 @@ cci() {
     sleep 3
   done
   return 1
+}
+
+# sum_job_run_seconds JSON: seconds of every non-approval job in a workflow.
+sum_job_run_seconds() {
+  jq '[.items[] | select(.type != "approval" and .started_at != null and .stopped_at != null)
+    | ((.stopped_at | sub("\\.[0-9]+"; "Z") | fromdateiso8601) -
+       (.started_at | sub("\\.[0-9]+"; "Z") | fromdateiso8601))] | add // 0' <<< "$1"
+}
+
+# workflow_wall_seconds NAME PIPELINE_WORKFLOWS_JSON
+workflow_wall_seconds() {
+  jq -rn --arg n "$1" '
+    (input.items[] | select(.name == $n)) as $wf
+    | if $wf == null or ($wf.created_at // "") == "" or ($wf.stopped_at // "") == "" then 0
+      else ((($wf.stopped_at | sub("\\.[0-9]+"; "Z") | fromdateiso8601) -
+             ($wf.created_at | sub("\\.[0-9]+"; "Z") | fromdateiso8601)) | floor) end' <<< "$2"
 }
 
 now() { date +%s; }
@@ -221,11 +245,10 @@ for tgt in demo self; do
       echo "run-scenarios: $t_file: $name needs an expectation and a change" >&2
       exit 2
     fi
-    printf '%s\t%s\t%s\t%s\t%s\n' "$tgt" "$name" "$expect" "$change" "$message" >> "$rows"
+    printf '%s\t%s\t%s\t%s\t%s\t1\n' "$tgt" "$name" "$expect" "$change" "$message" >> "$rows"
   done < "$t_file"
 done
-count=$(wc -l < "$rows" | tr -d ' ')
-if [ "$count" -eq 0 ]; then
+if [ ! -s "$rows" ]; then
   echo "run-scenarios: no scenario matches" >&2
   exit 2
 fi
@@ -236,6 +259,32 @@ if [ "$list" -eq 1 ]; then
   done < "$rows"
   exit 0
 fi
+
+uniq_scenarios=$(wc -l < "$rows" | tr -d ' ')
+if [ -n "$evaluate" ] && [ "$uniq_scenarios" -ne 1 ]; then
+  echo "run-scenarios: --evaluate needs exactly one scenario (--target and --only)" >&2
+  exit 2
+fi
+
+if [ "$repeat" -gt 1 ]; then
+  expanded=$work/rows.expanded
+  : > "$expanded"
+  while IFS=$'\t' read -r tgt name expect change message _ || [ -n "$tgt" ]; do
+    local_run=1
+    while [ "$local_run" -le "$repeat" ]; do
+      printf '%s\t%s\t%s\t%s\t%s\t%d\n' "$tgt" "$name" "$expect" "$change" "$message" "$local_run" >> "$expanded"
+      local_run=$((local_run + 1))
+    done
+  done < "$rows"
+  mv "$expanded" "$rows"
+fi
+count=$(wc -l < "$rows" | tr -d ' ')
+
+if [ -n "$csv" ]; then
+  printf '%s\n' 'scenario,target,run,pipeline,jobs,job_seconds,workflow_seconds,plan_seconds' > "$csv"
+fi
+timing=$work/timing
+: > "$timing"
 
 base_sha=
 if [ -z "$evaluate" ]; then
@@ -250,9 +299,6 @@ if [ -z "$evaluate" ]; then
     exit 2
   }
   echo "base commit: $base_sha"
-elif [ "$count" -ne 1 ]; then
-  echo "run-scenarios: --evaluate needs exactly one scenario (--target and --only)" >&2
-  exit 2
 fi
 
 # --- one scenario ----------------------------------------------------------------
@@ -322,19 +368,31 @@ reason_of() {
 # to $work/INDEX.res: status, target, name, expect, jobs that ran, pipeline
 # number and note, separated by the unit separator ($us).
 run_scenario() {
-  local idx=$1 tgt name expect change message
-  IFS=$'\t' read -r tgt name expect change message < <(sed -n "${idx}p" "$rows")
+  local idx=$1 tgt name expect change message run
+  IFS=$'\t' read -r tgt name expect change message run < <(sed -n "${idx}p" "$rows")
   target_info "$tgt"
   [ -n "$message" ] || message="test: scenario $name"
+  [ -n "$run" ] || run=1
 
   local status=FAIL note="" ran="" pnum="" branch sha wt pid dir
+  local job_sec=0 wall_sec=0 plan_sec=0
   local problems=()
   finish() {
-    printf '%s\n' "$status$us$tgt$us$name$us$expect$us$ran$us$pnum$us$note" > "$work/$idx.res"
+    printf '%s\n' "$status$us$tgt$us$name$us$expect$us$ran$us$pnum$us$note$us$run$us$job_sec$us$wall_sec$us$plan_sec" > "$work/$idx.res"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$name" "$tgt" "$run" "$expect" "$job_sec" "$status" >> "$timing"
+    if [ -n "$csv" ]; then
+      local jobs_csv
+      jobs_csv=$(printf '%s' "${ran:-}" | sed 's/"/""/g')
+      printf '%s,%s,%s,%s,"%s",%s,%s,%s\n' "$name" "$tgt" "$run" "${pnum:-}" "$jobs_csv" "$job_sec" "$wall_sec" "$plan_sec" >> "$csv"
+    fi
   }
   fail() { problems+=("$1"); }
 
-  echo "=== $tgt/$name: expect $expect"
+  if [ "$repeat" -gt 1 ]; then
+    echo "=== $tgt/$name (run $run/$repeat): expect $expect"
+  else
+    echo "=== $tgt/$name: expect $expect"
+  fi
   wt=$work/wt-$idx
   dir=$work/art-$idx
 
@@ -494,6 +552,16 @@ run_scenario() {
     bad=$(jq -r '.items[] | select(.type != "approval" and .status != "success") | .name + " (" + .status + ")"' <<< "$wf_jobs_json")
     ran=$(tr '\n' ' ' <<< "$actual" | sed 's/ $//')
     echo "  ran: ${ran:-nothing} (+ smarter-gate)"
+    job_sec=$(sum_job_run_seconds "$wf_jobs_json")
+  fi
+  if [ "$dry" -eq 0 ] && [ -n "$wfs" ]; then
+    wall_sec=$(workflow_wall_seconds "$t_planned" "$wfs")
+  fi
+  if [ "$dry" -eq 0 ] && [ -n "$setup_jobs" ]; then
+    plan_sec=$(jq '[.items[] | select(.name == "plan")][0]
+      | if . == null or .started_at == null or .stopped_at == null then 0
+        else ((.stopped_at | sub("\\.[0-9]+"; "Z") | fromdateiso8601) -
+              (.started_at | sub("\\.[0-9]+"; "Z") | fromdateiso8601)) end' <<< "$setup_jobs")
   fi
 
   case $expect in
@@ -614,7 +682,48 @@ run_scenario() {
 
 # --- run them ----------------------------------------------------------------------
 
+# median_of: the median of the integers on stdin.
+median_of() {
+  sort -n | awk '{a[NR]=$1} END {
+    if (NR == 0) printf "0"
+    else if (NR % 2) printf "%d", a[(NR + 1) / 2]
+    else printf "%.0f", (a[NR / 2] + a[NR / 2 + 1]) / 2
+  }'
+}
+
+# print_savings_summary: medians per scenario against full-run medians.
+print_savings_summary() {
+  local full_med name tgt med saved pct
+  [ -n "$csv" ] || return
+  [ -s "$timing" ] || return
+  full_med=$(awk -F'\t' '$6 == "PASS" && $4 ~ /^full/ && $5 > 0 { print $5 }' "$timing" | median_of)
+  [ "$full_med" -gt 0 ] 2> /dev/null || full_med=0
+  echo
+  echo "### Median job seconds (benchmark savings)"
+  echo
+  echo "| Scenario | Target | Median job s | Full median s | Saved |"
+  echo "|---|---|---:|---:|---:|"
+  while IFS=$'\t' read -r name tgt; do
+  [ -n "$name" ] || continue
+  med=$(awk -F'\t' -v n="$name" -v t="$tgt" \
+    '$1 == n && $2 == t && $6 == "PASS" && $5 > 0 { print $5 }' "$timing" | median_of)
+  case $med in
+    '' | *[!0-9]*) med=0 ;;
+  esac
+  if [ "$full_med" -gt 0 ] && [ "$med" -gt 0 ]; then
+    saved=$((full_med - med))
+    pct=$(awk -v s="$saved" -v f="$full_med" 'BEGIN { if (f > 0) printf "%.0f", 100 * s / f; else print "0" }')
+    printf '| %s | %s | %s | %s | %s%% |\n' "$name" "$tgt" "$med" "$full_med" "$pct"
+  else
+    printf '| %s | %s | %s | %s | — |\n' "$name" "$tgt" "${med:-0}" "${full_med:-0}"
+  fi
+  done < <(awk -F'\t' '{ print $1 FS $2 }' "$timing" | sort -u)
+}
+
 echo "scenarios: $count, in $jobs at a time"
+if [ "$repeat" -gt 1 ]; then
+  echo "repeat: $repeat"
+fi
 i=0
 running=0
 while [ "$i" -lt "$count" ]; do
@@ -649,7 +758,13 @@ echo "| Scenario | Target | Expected | Result | Pipeline | Note |"
 echo "|---|---|---|---|---|---|"
 for ((i = 1; i <= count; i++)); do
   if [ -f "$work/$i.res" ]; then
-    IFS=$us read -r st tgt name expect _ pnum note < "$work/$i.res"
+    res_line=$(cat "$work/$i.res")
+    st=$(printf '%s' "$res_line" | awk -F "$us" '{ print $1 }')
+    tgt=$(printf '%s' "$res_line" | awk -F "$us" '{ print $2 }')
+    name=$(printf '%s' "$res_line" | awk -F "$us" '{ print $3 }')
+    expect=$(printf '%s' "$res_line" | awk -F "$us" '{ print $4 }')
+    pnum=$(printf '%s' "$res_line" | awk -F "$us" '{ print $6 }')
+    note=$(printf '%s' "$res_line" | awk -F "$us" '{ print $7 }')
   else
     IFS=$'\t' read -r tgt name expect _ < <(sed -n "${i}p" "$rows")
     st=ERROR; pnum=""; note="no result (see the log above)"
@@ -660,6 +775,11 @@ for ((i = 1; i <= count; i++)); do
   printf '| %s | %s | %s | %s | %s | %s |\n' "$name" "$tgt" "$(printf '%s' "$expect" | sed 's/|/\\|/g')" "$st" "$link" "$(printf '%s' "$note" | sed 's/|/\\|/g')"
 done
 echo
+print_savings_summary
+if [ -n "$csv" ]; then
+  echo
+  echo "wrote $csv"
+fi
 if [ "$failed" -eq 0 ]; then
   echo "all $count scenarios passed"
   exit 0
