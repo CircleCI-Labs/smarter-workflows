@@ -477,13 +477,17 @@ data-copied-label="Copied!"
 &lt;td&gt;The job failed and select mode would skip it.&lt;/td&gt;
 &lt;/tr&gt;
 &lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Unmatched&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;The job failed but its name is not in today&amp;rsquo;s workflow (renamed or removed); excluded from recall.&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
 &lt;td&gt;&lt;strong&gt;Flaky&lt;/strong&gt;&lt;/td&gt;
 &lt;td&gt;The job failed then passed on a rerun of the same commit; excluded from recall.&lt;/td&gt;
 &lt;/tr&gt;
 &lt;/tbody&gt;
 &lt;/table&gt;
-&lt;p&gt;&lt;strong&gt;Recall&lt;/strong&gt; is &lt;code&gt;caught / (caught + misses)&lt;/code&gt; over non-flaky failures.&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;Savings&lt;/strong&gt; sums &lt;code&gt;duration_s&lt;/code&gt; over jobs that ran historically but would be skipped, divided by total recorded job time.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Recall&lt;/strong&gt; is &lt;code&gt;caught / (caught + misses)&lt;/code&gt; over non-flaky failures in jobs that still exist in the config.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Savings&lt;/strong&gt; sums &lt;code&gt;duration_s&lt;/code&gt; over &lt;strong&gt;matched&lt;/strong&gt; jobs that ran historically but would be skipped, divided by matched recorded job time. Unmatched job time is reported separately.&lt;/p&gt;
 &lt;h2 data-hextra-search-id="history-file-format"&gt;History file format&lt;span class="hx:absolute hx:-mt-20" id="history-file-format"&gt;&lt;/span&gt;
 &lt;a href="#history-file-format" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;A JSON array of commits:&lt;/p&gt;
 &lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
@@ -509,6 +513,7 @@ data-copied-label="Copied!"
 &lt;/button&gt;
 &lt;/div&gt;
 &lt;/div&gt;
+&lt;p&gt;Optional per-commit &lt;code&gt;parameters&lt;/code&gt; overrides the &lt;code&gt;--parameters&lt;/code&gt; file for that pipeline (same semantics as &lt;code&gt;plan --parameters&lt;/code&gt;).&lt;/p&gt;
 &lt;p&gt;Build a history file with &lt;a href="https://github.com/CircleCI-Labs/smarter-workflows/blob/main/scripts/bench/fetch-history.sh" target="_blank" rel="noopener"&gt;&lt;code&gt;scripts/bench/fetch-history.sh&lt;/code&gt;&lt;/a&gt; (needs a CircleCI API token and a git clone). Fixture parsing is tested by &lt;a href="https://github.com/CircleCI-Labs/smarter-workflows/blob/main/scripts/bench/test-parse.sh" target="_blank" rel="noopener"&gt;&lt;code&gt;scripts/bench/test-parse.sh&lt;/code&gt;&lt;/a&gt;.&lt;/p&gt;
 &lt;h2 data-hextra-search-id="command"&gt;Command&lt;span class="hx:absolute hx:-mt-20" id="command"&gt;&lt;/span&gt;
 &lt;a href="#command" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
@@ -517,6 +522,7 @@ data-copied-label="Copied!"
 &lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; --map impact-map.json.gz &lt;span class="se"&gt;\
 &lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; --config .circleci/continue.yml &lt;span class="se"&gt;\
 &lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; --workflow ci &lt;span class="se"&gt;\
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; --parameters pipeline-params.json &lt;span class="se"&gt;\
 &lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; --mandatory security-scan &lt;span class="se"&gt;\
 &lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; --format md&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
 &lt;button
@@ -530,6 +536,7 @@ data-copied-label="Copied!"
 &lt;/button&gt;
 &lt;/div&gt;
 &lt;/div&gt;
+&lt;p&gt;&lt;code&gt;--parameters&lt;/code&gt; is a JSON object of pipeline parameter values, applied to every commit unless a history record carries its own &lt;code&gt;parameters&lt;/code&gt; object. Use the same file you would pass to &lt;code&gt;plan --parameters&lt;/code&gt; when the continuation config gates workflows or jobs on &lt;code&gt;&amp;lt;&amp;lt; pipeline.parameters.* &amp;gt;&amp;gt;&lt;/code&gt;.&lt;/p&gt;
 &lt;p&gt;&lt;code&gt;--format json&lt;/code&gt; writes the machine-readable report (used for golden tests).&lt;/p&gt;
 &lt;h2 data-hextra-search-id="scheduled-benchmark-on-main"&gt;Scheduled benchmark on main&lt;span class="hx:absolute hx:-mt-20" id="scheduled-benchmark-on-main"&gt;&lt;/span&gt;
 &lt;a href="#scheduled-benchmark-on-main" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;The &lt;code&gt;benchmark&lt;/code&gt; workflow in &lt;code&gt;.circleci/continue.yml&lt;/code&gt; runs when &lt;code&gt;pipeline.trigger.type&lt;/code&gt; is &lt;code&gt;schedule&lt;/code&gt; (the schedule is configured on the project in CircleCI, not in this file). It uses the &lt;code&gt;smarter-workflows-ai&lt;/code&gt; context so &lt;code&gt;fetch-history.sh&lt;/code&gt; can call the API with &lt;code&gt;&amp;lt;&amp;lt; pipeline.project.slug &amp;gt;&amp;gt;&lt;/code&gt; (GitHub App projects use the &lt;code&gt;circleci/org/project&lt;/code&gt; form). It restores the latest impact map cache, fetches the last 200 &lt;code&gt;ci&lt;/code&gt; pipelines, runs backtest, and stores &lt;code&gt;backtest.md&lt;/code&gt; and &lt;code&gt;backtest.json&lt;/code&gt; as artifacts.&lt;/p&gt;
@@ -537,7 +544,8 @@ data-copied-label="Copied!"
 &lt;a href="#limits-of-replay" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ul&gt;
 &lt;li&gt;&lt;strong&gt;One map for all commits.&lt;/strong&gt; The map reflects the repo layout at its revision (usually recent &lt;code&gt;main&lt;/code&gt;). Older commits that touched different paths or job names are approximate.&lt;/li&gt;
 &lt;li&gt;&lt;strong&gt;Changed files only.&lt;/strong&gt; History carries a file list, not full git trees. Adds/deletes may miss directory moves the live planner would see via &lt;code&gt;git ls-tree&lt;/code&gt;.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Workflow drift.&lt;/strong&gt; Jobs removed from the config or renamed are ignored in recall; savings count only jobs present in both history and the current workflow.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Workflow drift.&lt;/strong&gt; Failures in jobs removed from the config or renamed are &lt;strong&gt;unmatched&lt;/strong&gt; (listed separately, not in recall). Savings count only jobs present in today&amp;rsquo;s workflow.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Parameter gates.&lt;/strong&gt; Without &lt;code&gt;--parameters&lt;/code&gt;, workflow &lt;code&gt;when&lt;/code&gt; expressions that depend on pipeline parameters may be unknown, which forces a full run and makes savings look like 0%.&lt;/li&gt;
 &lt;li&gt;&lt;strong&gt;No guardrail replay.&lt;/strong&gt; Backtest does not pass &lt;code&gt;--policy-bundle&lt;/code&gt;; historical guardrail repairs are not simulated.&lt;/li&gt;
 &lt;li&gt;&lt;strong&gt;Flaky detection&lt;/strong&gt; depends on CircleCI job rerun metadata when history is mined; hand-written fixtures set &lt;code&gt;&amp;quot;flaky&amp;quot;: true&lt;/code&gt; explicitly.&lt;/li&gt;
 &lt;/ul&gt;
