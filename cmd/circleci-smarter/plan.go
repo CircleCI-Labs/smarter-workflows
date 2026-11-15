@@ -14,6 +14,7 @@ import (
 	"github.com/CircleCI-Labs/smarter-workflows/internal/diff"
 	"github.com/CircleCI-Labs/smarter-workflows/internal/guard"
 	"github.com/CircleCI-Labs/smarter-workflows/internal/impactmap"
+	"github.com/CircleCI-Labs/smarter-workflows/internal/pipelineparams"
 	"github.com/CircleCI-Labs/smarter-workflows/internal/planner"
 	"github.com/CircleCI-Labs/smarter-workflows/internal/report"
 )
@@ -72,6 +73,7 @@ func runPlan(args []string, stdout, stderr io.Writer) int {
 	policyMeta := fs.String("policy-meta", "", "JSON (or the path of a JSON file) passed to the policies as data.meta (default: built from the CircleCI environment)")
 	out := fs.String("out", "/tmp/smarter/continue.yml", "where to write the continuation config")
 	reportDir := fs.String("report-dir", "/tmp/smarter/plan", "where to write plan.json and plan.md")
+	paramsPath := fs.String("parameters", "", "pipeline parameter values, as a JSON object (for when/unless and continue)")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return planExitOK
@@ -128,6 +130,14 @@ func runPlan(args []string, stdout, stderr io.Writer) int {
 	if err := opts.Validate(); err != nil {
 		return usage("%v", err)
 	}
+	if *paramsPath != "" {
+		params, err := pipelineparams.Load(*paramsPath)
+		if err != nil {
+			fmt.Fprintf(stderr, "circleci-smarter plan: %v\n", err)
+			return planExitFatal
+		}
+		opts.Parameters = params
+	}
 
 	// From here on, the config is the one thing that must be usable.
 	config, err := os.ReadFile(*cfgPath)
@@ -180,6 +190,17 @@ func runPlan(args []string, stdout, stderr io.Writer) int {
 	if err := report.Write(*reportDir, res.Report); err != nil {
 		fmt.Fprintf(stderr, "circleci-smarter plan: cannot write the report: %v\n", err)
 		return planExitFatal
+	}
+	if res.Parameters != nil {
+		data, err := json.Marshal(res.Parameters)
+		if err != nil {
+			fmt.Fprintf(stderr, "circleci-smarter plan: cannot encode parameters: %v\n", err)
+			return planExitFatal
+		}
+		if err := os.WriteFile(filepath.Join(*reportDir, "parameters.json"), data, 0o644); err != nil {
+			fmt.Fprintf(stderr, "circleci-smarter plan: cannot write parameters: %v\n", err)
+			return planExitFatal
+		}
 	}
 	for _, w := range res.Report.Warnings {
 		fmt.Fprintf(stderr, "circleci-smarter plan: warning: %s\n", w)

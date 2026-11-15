@@ -3,6 +3,7 @@
   "mode": "select",
   "full": false,
   "full_reason": "",
+  "workflow_runs": true,
   "workflow": "ci",
   "base": "<base>",
   "head": "<head>",

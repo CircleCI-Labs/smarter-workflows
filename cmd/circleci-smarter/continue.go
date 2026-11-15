@@ -1,9 +1,7 @@
 package main
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -13,6 +11,7 @@ import (
 	"time"
 
 	"github.com/CircleCI-Labs/smarter-workflows/internal/continuation"
+	"github.com/CircleCI-Labs/smarter-workflows/internal/pipelineparams"
 )
 
 // Exit codes of `continue` (spec: "CLI contract").
@@ -80,7 +79,7 @@ func runContinue(args []string, stdout, stderr io.Writer, getenv func(string) st
 	}
 	var params map[string]any
 	if *paramsPath != "" {
-		if params, err = readContinueParameters(*paramsPath); err != nil {
+		if params, err = pipelineparams.Load(*paramsPath); err != nil {
 			fmt.Fprintf(stderr, "continue: %v\n", err)
 			return continueExitFatal
 		}
@@ -101,23 +100,4 @@ func runContinue(args []string, stdout, stderr io.Writer, getenv func(string) st
 	}
 	fmt.Fprintf(stdout, "continue: HTTP %d\n", status)
 	return 0
-}
-
-// readContinueParameters reads a JSON object. Numbers are kept as they are
-// written.
-func readContinueParameters(path string) (map[string]any, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	dec := json.NewDecoder(bytes.NewReader(data))
-	dec.UseNumber()
-	var params map[string]any
-	if err := dec.Decode(&params); err != nil {
-		return nil, fmt.Errorf("%s: pipeline parameters must be a JSON object: %v", path, err)
-	}
-	if dec.More() {
-		return nil, fmt.Errorf("%s: pipeline parameters must be a single JSON object", path)
-	}
-	return params, nil
 }
