@@ -22,11 +22,53 @@
 &lt;td&gt;&lt;code&gt;collect-trace&lt;/code&gt; &amp;lt; 10 s at 100k tracked files&lt;/td&gt;
 &lt;td&gt;&lt;strong&gt;0.355 s&lt;/strong&gt;&lt;/td&gt;
 &lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;v2 map &amp;lt; 20 MiB and decode &amp;lt; 0.5 s at 2000 jobs × 10k files&lt;/td&gt;
+&lt;td&gt;&lt;strong&gt;233 KiB&lt;/strong&gt;, &lt;strong&gt;0.25 s&lt;/strong&gt; decode (&lt;code&gt;TestBenchMapV2FitsTarget&lt;/code&gt;)&lt;/td&gt;
+&lt;/tr&gt;
 &lt;/tbody&gt;
 &lt;/table&gt;
-&lt;p&gt;Both targets passed on this run. Largest single-op planner cases (2000 jobs, 10k-file map) are ~0.27–0.50 s per plan in &lt;code&gt;BenchmarkPlan/&lt;/code&gt; (see full table from &lt;code&gt;perf.sh&lt;/code&gt;).&lt;/p&gt;
-&lt;h2 data-hextra-search-id="impact-map-json-decode"&gt;Impact map JSON decode&lt;span class="hx:absolute hx:-mt-20" id="impact-map-json-decode"&gt;&lt;/span&gt;
-&lt;a href="#impact-map-json-decode" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Decoding a v1 impact map at 2000 jobs × 10k files per job is about &lt;strong&gt;3.5 s&lt;/strong&gt; in &lt;code&gt;BenchmarkImpactMapParse&lt;/code&gt; (JSON &lt;code&gt;encoding/json&lt;/code&gt;, not used on the hot plan path when the map is already loaded). A &lt;strong&gt;compact map format v2&lt;/strong&gt; that another worker is building targets that cost. Separately, hardening work capped &lt;strong&gt;v1 map files at 16 MiB&lt;/strong&gt;; maps larger than that are rejected today and the planner falls back to a full run.&lt;/p&gt;
+&lt;p&gt;All targets passed on this run. Largest single-op planner cases (2000 jobs, 10k-file map) are ~0.27–0.50 s per plan in &lt;code&gt;BenchmarkPlan/&lt;/code&gt; (see full table from &lt;code&gt;perf.sh&lt;/code&gt;).&lt;/p&gt;
+&lt;h2 data-hextra-search-id="impact-map-decode-2000-jobs--10k-files-each"&gt;Impact map decode (2000 jobs × 10k files each)&lt;span class="hx:absolute hx:-mt-20" id="impact-map-decode-2000-jobs--10k-files-each"&gt;&lt;/span&gt;
+&lt;a href="#impact-map-decode-2000-jobs--10k-files-each" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Each job reads 10k paths from a shared pool of 10k repo-relative paths (worst case for v1 path repetition).&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;Format&lt;/th&gt;
+&lt;th style="text-align: right"&gt;On disk&lt;/th&gt;
+&lt;th style="text-align: right"&gt;Decode (median of 3)&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;v1 JSON&lt;/td&gt;
+&lt;td style="text-align: right"&gt;940 MiB&lt;/td&gt;
+&lt;td style="text-align: right"&gt;6.31 s (&lt;code&gt;BenchmarkImpactMapParse&lt;/code&gt; / &lt;code&gt;BenchmarkMapV1Parse2000x10k&lt;/code&gt;)&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;v2 gzip&lt;/td&gt;
+&lt;td style="text-align: right"&gt;233 KiB&lt;/td&gt;
+&lt;td style="text-align: right"&gt;0.25 s (&lt;code&gt;BenchmarkMapV2Parse2000x10k&lt;/code&gt;)&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;v1 maps remain capped at &lt;strong&gt;16 MiB&lt;/strong&gt; on disk (hardening); larger or malformed maps mean a full run. v2 uses separate compressed, decompressed, table and per-job index caps (ADR 7).&lt;/p&gt;
+&lt;p&gt;Reproduce map decode:&lt;/p&gt;
+&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-bash" data-lang="bash"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;go &lt;span class="nb"&gt;test&lt;/span&gt; ./internal/impactmap -bench&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;BenchmarkMapV1Parse|BenchmarkMapV2Parse&amp;#39;&lt;/span&gt; -benchtime&lt;span class="o"&gt;=&lt;/span&gt;3x -count&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="m"&gt;1&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;go &lt;span class="nb"&gt;test&lt;/span&gt; ./internal/impactmap -run TestBenchMapV2FitsTarget -count&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="m"&gt;1&lt;/span&gt; -v
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;go &lt;span class="nb"&gt;test&lt;/span&gt; -run&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;^$&amp;#39;&lt;/span&gt; -bench&lt;span class="o"&gt;=&lt;/span&gt;BenchmarkImpactMapParse -benchmem ./internal/planner/...&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
+&lt;button
+class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+title="Copy code"
+aria-label="Copy code"
+data-copied-label="Copied!"
+&gt;
+&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
 &lt;h2 data-hextra-search-id="environment"&gt;Environment&lt;span class="hx:absolute hx:-mt-20" id="environment"&gt;&lt;/span&gt;
 &lt;a href="#environment" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;table&gt;
 &lt;thead&gt;
@@ -237,7 +279,7 @@ data-copied-label="Copied!"
 &lt;a href="#command" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
 &lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-sh" data-lang="sh"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;circleci-smarter backtest &lt;span class="se"&gt;\
 &lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; --history history.json &lt;span class="se"&gt;\
-&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; --map impact-map.json &lt;span class="se"&gt;\
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; --map impact-map.json.gz &lt;span class="se"&gt;\
 &lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; --config .circleci/continue.yml &lt;span class="se"&gt;\
 &lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; --workflow ci &lt;span class="se"&gt;\
 &lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; --mandatory security-scan &lt;span class="se"&gt;\

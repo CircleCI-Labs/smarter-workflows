@@ -79,8 +79,8 @@ data-copied-label="Copied!"
 &lt;/tr&gt;
 &lt;tr&gt;
 &lt;td&gt;&lt;code&gt;--map&lt;/code&gt;&lt;/td&gt;
-&lt;td&gt;&lt;code&gt;/tmp/smarter/impact-map.json&lt;/code&gt;&lt;/td&gt;
-&lt;td&gt;the impact map; a missing or invalid map means a full run&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;/tmp/smarter/impact-map.json.gz&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;the impact map (v2 gzip, or legacy v1 JSON at &lt;code&gt;impact-map.json&lt;/code&gt;); a missing or invalid map means a full run&lt;/td&gt;
 &lt;/tr&gt;
 &lt;tr&gt;
 &lt;td&gt;&lt;code&gt;--base&lt;/code&gt;&lt;/td&gt;
@@ -515,8 +515,31 @@ data-copied-label="Copied!"
 &lt;/button&gt;
 &lt;/div&gt;
 &lt;/div&gt;
-&lt;h3 data-hextra-search-id="impact-map-json"&gt;Impact map JSON&lt;span class="hx:absolute hx:-mt-20" id="impact-map-json"&gt;&lt;/span&gt;
-&lt;a href="#impact-map-json" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h3&gt;&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;h3 data-hextra-search-id="impact-map"&gt;Impact map&lt;span class="hx:absolute hx:-mt-20" id="impact-map"&gt;&lt;/span&gt;
+&lt;a href="#impact-map" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;&lt;strong&gt;v2 (written by &lt;code&gt;map build&lt;/code&gt;):&lt;/strong&gt; gzip-compressed JSON at &lt;code&gt;impact-map.json.gz&lt;/code&gt;.&lt;/p&gt;
+&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-json" data-lang="json"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;version&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;2&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;revision&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;&amp;lt;sha&amp;gt;&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;created_at&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;&amp;lt;RFC3339&amp;gt;&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;method&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;atime&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="nt"&gt;&amp;#34;files&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:[&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;a/b.go&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;a/c.go&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;],&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;dirs&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:[&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;.&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;a&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;],&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="nt"&gt;&amp;#34;jobs&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:{&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;&amp;lt;job name&amp;gt;&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:{&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;file_idx&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;&amp;lt;base64 delta-varint indices&amp;gt;&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;dir_idx&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;...&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="nt"&gt;&amp;#34;complete&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="kc"&gt;true&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;nodes&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;2&lt;/span&gt;&lt;span class="p"&gt;}}}&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
+&lt;button
+class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+title="Copy code"
+aria-label="Copy code"
+data-copied-label="Copied!"
+&gt;
+&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;files&lt;/code&gt; and &lt;code&gt;dirs&lt;/code&gt; are the sorted, deduplicated path tables for the whole map.&lt;/li&gt;
+&lt;li&gt;Each job&amp;rsquo;s &lt;code&gt;file_idx&lt;/code&gt; / &lt;code&gt;dir_idx&lt;/code&gt; is base64-encoded sorted delta-varints into those tables.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;complete&lt;/code&gt; is true only if every node was supported.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;strong&gt;v1 (legacy cache):&lt;/strong&gt; uncompressed JSON with per-job path lists:&lt;/p&gt;
+&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
 &lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-json" data-lang="json"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;version&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;1&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;revision&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;&amp;lt;sha&amp;gt;&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;created_at&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;&amp;lt;RFC3339&amp;gt;&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;method&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;atime&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
 &lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="nt"&gt;&amp;#34;jobs&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:{&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;&amp;lt;job name&amp;gt;&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:{&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;files&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:[&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;a/b.go&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;],&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;dirs&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:[&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;a&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;],&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;complete&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="kc"&gt;true&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;nodes&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;2&lt;/span&gt;&lt;span class="p"&gt;}}}&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
 &lt;button
@@ -530,10 +553,7 @@ data-copied-label="Copied!"
 &lt;/button&gt;
 &lt;/div&gt;
 &lt;/div&gt;
-&lt;ul&gt;
-&lt;li&gt;Files and dirs are the union over nodes, sorted.&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;complete&lt;/code&gt; is true only if every node was supported.&lt;/li&gt;
-&lt;/ul&gt;
+&lt;p&gt;Readers accept both; writers emit v2 only.&lt;/p&gt;
 &lt;h3 data-hextra-search-id="plan-report"&gt;Plan report&lt;span class="hx:absolute hx:-mt-20" id="plan-report"&gt;&lt;/span&gt;
 &lt;a href="#plan-report" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;&lt;code&gt;plan.json&lt;/code&gt;:&lt;/p&gt;
 &lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
@@ -698,7 +718,7 @@ When &lt;code&gt;when&lt;/code&gt;/&lt;code&gt;unless&lt;/code&gt; can be evalua
 &lt;li&gt;&lt;code&gt;attach_workspace&lt;/code&gt; at &lt;code&gt;/tmp/smarter&lt;/code&gt;;&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;map build&lt;/code&gt;;&lt;/li&gt;
 &lt;li&gt;write &lt;code&gt;.smarter-key&lt;/code&gt; (&lt;code&gt;$CIRCLE_SHA1&lt;/code&gt;);&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;save_cache&lt;/code&gt; with key &lt;code&gt;&amp;lt;--map-key-prefix&amp;gt;-{{ checksum &amp;quot;.smarter-key&amp;quot; }}&lt;/code&gt; (by default &lt;code&gt;smarter-impact-v1-{{ checksum &amp;quot;.smarter-key&amp;quot; }}&lt;/code&gt;) for &lt;code&gt;/tmp/smarter/impact-map.json&lt;/code&gt;;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;save_cache&lt;/code&gt; with key &lt;code&gt;&amp;lt;--map-key-prefix&amp;gt;-{{ checksum &amp;quot;.smarter-key&amp;quot; }}&lt;/code&gt; (by default &lt;code&gt;smarter-impact-v1-{{ checksum &amp;quot;.smarter-key&amp;quot; }}&lt;/code&gt;) for &lt;code&gt;/tmp/smarter/impact-map.json.gz&lt;/code&gt;;&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;store_artifacts&lt;/code&gt;.&lt;/li&gt;
 &lt;/ol&gt;
 &lt;/li&gt;

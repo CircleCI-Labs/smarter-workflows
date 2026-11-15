@@ -306,11 +306,53 @@ data-copied-label="Copied!"
 &lt;td&gt;&lt;code&gt;collect-trace&lt;/code&gt; &amp;lt; 10 s at 100k tracked files&lt;/td&gt;
 &lt;td&gt;&lt;strong&gt;0.355 s&lt;/strong&gt;&lt;/td&gt;
 &lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;v2 map &amp;lt; 20 MiB and decode &amp;lt; 0.5 s at 2000 jobs × 10k files&lt;/td&gt;
+&lt;td&gt;&lt;strong&gt;233 KiB&lt;/strong&gt;, &lt;strong&gt;0.25 s&lt;/strong&gt; decode (&lt;code&gt;TestBenchMapV2FitsTarget&lt;/code&gt;)&lt;/td&gt;
+&lt;/tr&gt;
 &lt;/tbody&gt;
 &lt;/table&gt;
-&lt;p&gt;Both targets passed on this run. Largest single-op planner cases (2000 jobs, 10k-file map) are ~0.27–0.50 s per plan in &lt;code&gt;BenchmarkPlan/&lt;/code&gt; (see full table from &lt;code&gt;perf.sh&lt;/code&gt;).&lt;/p&gt;
-&lt;h2 data-hextra-search-id="impact-map-json-decode"&gt;Impact map JSON decode&lt;span class="hx:absolute hx:-mt-20" id="impact-map-json-decode"&gt;&lt;/span&gt;
-&lt;a href="#impact-map-json-decode" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Decoding a v1 impact map at 2000 jobs × 10k files per job is about &lt;strong&gt;3.5 s&lt;/strong&gt; in &lt;code&gt;BenchmarkImpactMapParse&lt;/code&gt; (JSON &lt;code&gt;encoding/json&lt;/code&gt;, not used on the hot plan path when the map is already loaded). A &lt;strong&gt;compact map format v2&lt;/strong&gt; that another worker is building targets that cost. Separately, hardening work capped &lt;strong&gt;v1 map files at 16 MiB&lt;/strong&gt;; maps larger than that are rejected today and the planner falls back to a full run.&lt;/p&gt;
+&lt;p&gt;All targets passed on this run. Largest single-op planner cases (2000 jobs, 10k-file map) are ~0.27–0.50 s per plan in &lt;code&gt;BenchmarkPlan/&lt;/code&gt; (see full table from &lt;code&gt;perf.sh&lt;/code&gt;).&lt;/p&gt;
+&lt;h2 data-hextra-search-id="impact-map-decode-2000-jobs--10k-files-each"&gt;Impact map decode (2000 jobs × 10k files each)&lt;span class="hx:absolute hx:-mt-20" id="impact-map-decode-2000-jobs--10k-files-each"&gt;&lt;/span&gt;
+&lt;a href="#impact-map-decode-2000-jobs--10k-files-each" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Each job reads 10k paths from a shared pool of 10k repo-relative paths (worst case for v1 path repetition).&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;Format&lt;/th&gt;
+&lt;th style="text-align: right"&gt;On disk&lt;/th&gt;
+&lt;th style="text-align: right"&gt;Decode (median of 3)&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;v1 JSON&lt;/td&gt;
+&lt;td style="text-align: right"&gt;940 MiB&lt;/td&gt;
+&lt;td style="text-align: right"&gt;6.31 s (&lt;code&gt;BenchmarkImpactMapParse&lt;/code&gt; / &lt;code&gt;BenchmarkMapV1Parse2000x10k&lt;/code&gt;)&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;v2 gzip&lt;/td&gt;
+&lt;td style="text-align: right"&gt;233 KiB&lt;/td&gt;
+&lt;td style="text-align: right"&gt;0.25 s (&lt;code&gt;BenchmarkMapV2Parse2000x10k&lt;/code&gt;)&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;v1 maps remain capped at &lt;strong&gt;16 MiB&lt;/strong&gt; on disk (hardening); larger or malformed maps mean a full run. v2 uses separate compressed, decompressed, table and per-job index caps (ADR 7).&lt;/p&gt;
+&lt;p&gt;Reproduce map decode:&lt;/p&gt;
+&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-bash" data-lang="bash"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;go &lt;span class="nb"&gt;test&lt;/span&gt; ./internal/impactmap -bench&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;BenchmarkMapV1Parse|BenchmarkMapV2Parse&amp;#39;&lt;/span&gt; -benchtime&lt;span class="o"&gt;=&lt;/span&gt;3x -count&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="m"&gt;1&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;go &lt;span class="nb"&gt;test&lt;/span&gt; ./internal/impactmap -run TestBenchMapV2FitsTarget -count&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="m"&gt;1&lt;/span&gt; -v
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;go &lt;span class="nb"&gt;test&lt;/span&gt; -run&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;^$&amp;#39;&lt;/span&gt; -bench&lt;span class="o"&gt;=&lt;/span&gt;BenchmarkImpactMapParse -benchmem ./internal/planner/...&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
+&lt;button
+class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+title="Copy code"
+aria-label="Copy code"
+data-copied-label="Copied!"
+&gt;
+&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
 &lt;h2 data-hextra-search-id="environment"&gt;Environment&lt;span class="hx:absolute hx:-mt-20" id="environment"&gt;&lt;/span&gt;
 &lt;a href="#environment" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;table&gt;
 &lt;thead&gt;
@@ -608,8 +650,8 @@ data-copied-label="Copied!"
 &lt;/tr&gt;
 &lt;tr&gt;
 &lt;td&gt;&lt;code&gt;--map&lt;/code&gt;&lt;/td&gt;
-&lt;td&gt;&lt;code&gt;/tmp/smarter/impact-map.json&lt;/code&gt;&lt;/td&gt;
-&lt;td&gt;the impact map; a missing or invalid map means a full run&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;/tmp/smarter/impact-map.json.gz&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;the impact map (v2 gzip, or legacy v1 JSON at &lt;code&gt;impact-map.json&lt;/code&gt;); a missing or invalid map means a full run&lt;/td&gt;
 &lt;/tr&gt;
 &lt;tr&gt;
 &lt;td&gt;&lt;code&gt;--base&lt;/code&gt;&lt;/td&gt;
@@ -1044,8 +1086,31 @@ data-copied-label="Copied!"
 &lt;/button&gt;
 &lt;/div&gt;
 &lt;/div&gt;
-&lt;h3 data-hextra-search-id="impact-map-json"&gt;Impact map JSON&lt;span class="hx:absolute hx:-mt-20" id="impact-map-json"&gt;&lt;/span&gt;
-&lt;a href="#impact-map-json" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h3&gt;&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;h3 data-hextra-search-id="impact-map"&gt;Impact map&lt;span class="hx:absolute hx:-mt-20" id="impact-map"&gt;&lt;/span&gt;
+&lt;a href="#impact-map" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;&lt;strong&gt;v2 (written by &lt;code&gt;map build&lt;/code&gt;):&lt;/strong&gt; gzip-compressed JSON at &lt;code&gt;impact-map.json.gz&lt;/code&gt;.&lt;/p&gt;
+&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-json" data-lang="json"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;version&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;2&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;revision&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;&amp;lt;sha&amp;gt;&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;created_at&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;&amp;lt;RFC3339&amp;gt;&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;method&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;atime&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="nt"&gt;&amp;#34;files&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:[&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;a/b.go&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;a/c.go&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;],&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;dirs&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:[&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;.&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;a&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;],&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="nt"&gt;&amp;#34;jobs&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:{&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;&amp;lt;job name&amp;gt;&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:{&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;file_idx&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;&amp;lt;base64 delta-varint indices&amp;gt;&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;dir_idx&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;...&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="nt"&gt;&amp;#34;complete&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="kc"&gt;true&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;nodes&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;2&lt;/span&gt;&lt;span class="p"&gt;}}}&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
+&lt;button
+class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+title="Copy code"
+aria-label="Copy code"
+data-copied-label="Copied!"
+&gt;
+&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;files&lt;/code&gt; and &lt;code&gt;dirs&lt;/code&gt; are the sorted, deduplicated path tables for the whole map.&lt;/li&gt;
+&lt;li&gt;Each job&amp;rsquo;s &lt;code&gt;file_idx&lt;/code&gt; / &lt;code&gt;dir_idx&lt;/code&gt; is base64-encoded sorted delta-varints into those tables.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;complete&lt;/code&gt; is true only if every node was supported.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;strong&gt;v1 (legacy cache):&lt;/strong&gt; uncompressed JSON with per-job path lists:&lt;/p&gt;
+&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
 &lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-json" data-lang="json"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;version&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;1&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;revision&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;&amp;lt;sha&amp;gt;&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;created_at&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;&amp;lt;RFC3339&amp;gt;&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;method&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;atime&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
 &lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="nt"&gt;&amp;#34;jobs&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:{&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;&amp;lt;job name&amp;gt;&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:{&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;files&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:[&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;a/b.go&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;],&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;dirs&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:[&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;a&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;],&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;complete&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="kc"&gt;true&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;nodes&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;2&lt;/span&gt;&lt;span class="p"&gt;}}}&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
 &lt;button
@@ -1059,10 +1124,7 @@ data-copied-label="Copied!"
 &lt;/button&gt;
 &lt;/div&gt;
 &lt;/div&gt;
-&lt;ul&gt;
-&lt;li&gt;Files and dirs are the union over nodes, sorted.&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;complete&lt;/code&gt; is true only if every node was supported.&lt;/li&gt;
-&lt;/ul&gt;
+&lt;p&gt;Readers accept both; writers emit v2 only.&lt;/p&gt;
 &lt;h3 data-hextra-search-id="plan-report"&gt;Plan report&lt;span class="hx:absolute hx:-mt-20" id="plan-report"&gt;&lt;/span&gt;
 &lt;a href="#plan-report" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;&lt;code&gt;plan.json&lt;/code&gt;:&lt;/p&gt;
 &lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
@@ -1227,7 +1289,7 @@ When &lt;code&gt;when&lt;/code&gt;/&lt;code&gt;unless&lt;/code&gt; can be evalua
 &lt;li&gt;&lt;code&gt;attach_workspace&lt;/code&gt; at &lt;code&gt;/tmp/smarter&lt;/code&gt;;&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;map build&lt;/code&gt;;&lt;/li&gt;
 &lt;li&gt;write &lt;code&gt;.smarter-key&lt;/code&gt; (&lt;code&gt;$CIRCLE_SHA1&lt;/code&gt;);&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;save_cache&lt;/code&gt; with key &lt;code&gt;&amp;lt;--map-key-prefix&amp;gt;-{{ checksum &amp;quot;.smarter-key&amp;quot; }}&lt;/code&gt; (by default &lt;code&gt;smarter-impact-v1-{{ checksum &amp;quot;.smarter-key&amp;quot; }}&lt;/code&gt;) for &lt;code&gt;/tmp/smarter/impact-map.json&lt;/code&gt;;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;save_cache&lt;/code&gt; with key &lt;code&gt;&amp;lt;--map-key-prefix&amp;gt;-{{ checksum &amp;quot;.smarter-key&amp;quot; }}&lt;/code&gt; (by default &lt;code&gt;smarter-impact-v1-{{ checksum &amp;quot;.smarter-key&amp;quot; }}&lt;/code&gt;) for &lt;code&gt;/tmp/smarter/impact-map.json.gz&lt;/code&gt;;&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;store_artifacts&lt;/code&gt;.&lt;/li&gt;
 &lt;/ol&gt;
 &lt;/li&gt;
@@ -1404,7 +1466,7 @@ data-copied-label="Copied!"
 &lt;a href="#command" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
 &lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-sh" data-lang="sh"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;circleci-smarter backtest &lt;span class="se"&gt;\
 &lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; --history history.json &lt;span class="se"&gt;\
-&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; --map impact-map.json &lt;span class="se"&gt;\
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; --map impact-map.json.gz &lt;span class="se"&gt;\
 &lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; --config .circleci/continue.yml &lt;span class="se"&gt;\
 &lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; --workflow ci &lt;span class="se"&gt;\
 &lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; --mandatory security-scan &lt;span class="se"&gt;\
@@ -1717,7 +1779,7 @@ Either way, a PR never waits on a skipped job.&lt;/li&gt;
 &lt;h2 data-hextra-search-id="tools-for-agents"&gt;Tools for agents&lt;span class="hx:absolute hx:-mt-20" id="tools-for-agents"&gt;&lt;/span&gt;
 &lt;a href="#tools-for-agents" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Two commands let an agent (or a person) read a pipeline and check a layout of it, with no plan and no impact map needed:&lt;/p&gt;
 &lt;ul&gt;
-&lt;li&gt;&lt;code&gt;circleci-smarter catalog --config .circleci/continue.yml --map impact-map.json&lt;/code&gt; prints the jobs of a workflow as JSON: each one&amp;rsquo;s kind, executor, contexts, filters, requirements, workspace use and, with a map, how much of the repository it read.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;circleci-smarter catalog --config .circleci/continue.yml --map impact-map.json.gz&lt;/code&gt; prints the jobs of a workflow as JSON: each one&amp;rsquo;s kind, executor, contexts, filters, requirements, workspace use and, with a map, how much of the repository it read.&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;circleci-smarter layout check --config composed.yml --catalog catalog.json --policy-bundle policies --mandatory security-scan --restricted-contexts deploy&lt;/code&gt; checks how the jobs of a workflow wait for each other, and reports each problem with a code and a hint on how to fix it: a &lt;code&gt;requires&lt;/code&gt; that points nowhere, a cycle, a workspace attached before it is persisted, a restricted context with no approval before it, a missing mandatory job, a gate that is not a no-op job or does not wait for every job that runs, and an approval that a branch filter can leave out. It exits 3 when there are errors. A plan the planner writes has a no-op gate and no structural problem that its input did not have.&lt;/li&gt;
 &lt;/ul&gt;
 &lt;p&gt;The &lt;a href="https://circleci-labs.github.io/smarter-workflows/docs/reference/spec/#catalog"&gt;spec&lt;/a&gt; has the formats.&lt;/p&gt;
@@ -1813,34 +1875,38 @@ A job whose filesystem fails the probe gets an incomplete trace.&lt;/li&gt;
 &lt;li&gt;releases and a published orb.&lt;/li&gt;
 &lt;/ul&gt;
 &lt;/li&gt;
-&lt;/ul&gt;</description></item><item><title>4. The catalog is native CircleCI config</title><link>https://circleci-labs.github.io/smarter-workflows/docs/decisions/0004-catalog-is-native-circleci-config/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://circleci-labs.github.io/smarter-workflows/docs/decisions/0004-catalog-is-native-circleci-config/</guid><description>
-&lt;p&gt;Date: 2026-11-13. Status: accepted.&lt;/p&gt;
+&lt;/ul&gt;</description></item><item><title>7. Impact map v2: shared path tables and compact indices</title><link>https://circleci-labs.github.io/smarter-workflows/docs/decisions/0007-impact-map-v2/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://circleci-labs.github.io/smarter-workflows/docs/decisions/0007-impact-map-v2/</guid><description>
+&lt;p&gt;Date: 2026-11-15. Status: accepted.&lt;/p&gt;
 &lt;h2 data-hextra-search-id="context"&gt;Context&lt;span class="hx:absolute hx:-mt-20" id="context"&gt;&lt;/span&gt;
-&lt;a href="#context" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;The first idea was a new &lt;code&gt;catalog.yml&lt;/code&gt; with metadata on each job. That is one more format to learn and keep in sync. The jobs, commands, executors and orbs a team uses already live in its CircleCI config, or in orbs it shares.&lt;/p&gt;
+&lt;a href="#context" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Impact map v1 stores every repo path verbatim in each job&amp;rsquo;s &lt;code&gt;files&lt;/code&gt; and &lt;code&gt;dirs&lt;/code&gt; arrays. On large monorepos the JSON grows with the number of job×path pairs (roughly jobs × average reads), blows past the 16 MiB parse cap, and takes seconds to decode. A realistic shape is thousands of jobs each reading a large fraction of tens or hundreds of thousands of unique paths.&lt;/p&gt;
 &lt;h2 data-hextra-search-id="decision"&gt;Decision&lt;span class="hx:absolute hx:-mt-20" id="decision"&gt;&lt;/span&gt;
-&lt;a href="#decision" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ul&gt;
-&lt;li&gt;&lt;strong&gt;Select mode&lt;/strong&gt; (v0.1): the catalog is the project&amp;rsquo;s own full continuation config (&lt;code&gt;.circleci/continue.yml&lt;/code&gt;). The planner prunes those workflows and keeps the order, approvals, filters and contexts the team wrote.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Planner settings&lt;/strong&gt; (mode, mandatory jobs, full-run paths, extra inputs) are parameters of the orb job, not a new file.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Shared catalogs&lt;/strong&gt; are orbs, pinned to exact versions: the only job-level units that cannot change underneath you.
+&lt;a href="#decision" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ol&gt;
+&lt;li&gt;&lt;strong&gt;On-disk format v2&lt;/strong&gt; (still JSON, gzip-compressed as &lt;code&gt;impact-map.json.gz&lt;/code&gt;):
 &lt;ul&gt;
-&lt;li&gt;URL orbs are allowed only when pinned to a commit SHA.&lt;/li&gt;
-&lt;li&gt;CircleCI functions are step-level units, so they are building blocks for compose mode, not jobs.&lt;/li&gt;
+&lt;li&gt;Sorted &lt;code&gt;files&lt;/code&gt; and &lt;code&gt;dirs&lt;/code&gt; tables: each repo path appears once.&lt;/li&gt;
+&lt;li&gt;Per job, &lt;code&gt;file_idx&lt;/code&gt; and &lt;code&gt;dir_idx&lt;/code&gt; are standard base64 blobs of &lt;strong&gt;sorted delta varints&lt;/strong&gt; over table indices (first index absolute, later indices encode the gap from the previous one).&lt;/li&gt;
+&lt;li&gt;Metadata unchanged: &lt;code&gt;revision&lt;/code&gt;, &lt;code&gt;created_at&lt;/code&gt;, &lt;code&gt;method&lt;/code&gt;, and per-job &lt;code&gt;complete&lt;/code&gt; and &lt;code&gt;nodes&lt;/code&gt;.&lt;/li&gt;
 &lt;/ul&gt;
 &lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Compose mode&lt;/strong&gt; (later): an agent wires jobs from a catalog orb (jobs, commands, executors) into workflows, and the guardrails bound what it can produce.&lt;/li&gt;
-&lt;/ul&gt;
+&lt;li&gt;&lt;strong&gt;Why delta varints instead of bitsets:&lt;/strong&gt; Indices are dense when jobs read many files but sparse when they read few; delta varints are small in the common case, need no third-party format, and decode in one pass with strict bounds. Roaring or raw bitsets win when sets are extremely sparse across a huge table; this workload is usually &amp;ldquo;many indices per job out of a shared table&amp;rdquo;, where varints are simpler and fast enough.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Writers&lt;/strong&gt; (&lt;code&gt;map build&lt;/code&gt;, the trace map job) emit v2 gzip only. &lt;strong&gt;Readers&lt;/strong&gt; accept v1 JSON (legacy cache) and v2 gzip; &lt;code&gt;plan&lt;/code&gt; tries &lt;code&gt;impact-map.json.gz&lt;/code&gt; then &lt;code&gt;impact-map.json&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Caps&lt;/strong&gt; (oversize or malformed → full run): compressed file ≤ 64 MiB; decompressed JSON ≤ 256 MiB; when compressed size &amp;lt; 64 KiB, decompressed must be ≤ 32× compressed (zip-bomb guard); ≤ 4096 jobs; ≤ 200_000 file table entries; ≤ 50_000 dir table entries; ≤ 100_000 indices per job per table; job names ≤ 256 chars. v1 maps keep the former 16 MiB uncompressed cap.&lt;/li&gt;
+&lt;/ol&gt;
 &lt;h2 data-hextra-search-id="consequences"&gt;Consequences&lt;span class="hx:absolute hx:-mt-20" id="consequences"&gt;&lt;/span&gt;
 &lt;a href="#consequences" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ul&gt;
-&lt;li&gt;Adoption means moving the pipeline into &lt;code&gt;continue.yml&lt;/code&gt; and adding one setup job. No new schema.&lt;/li&gt;
-&lt;li&gt;What the planner generates reads like the team&amp;rsquo;s own config, minus the skipped jobs, plus the gate job.&lt;/li&gt;
-&lt;/ul&gt;</description></item><item><title>Threat model (v0.1)</title><link>https://circleci-labs.github.io/smarter-workflows/docs/threat-model/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://circleci-labs.github.io/smarter-workflows/docs/threat-model/</guid><description>
+&lt;li&gt;Monorepo-sized maps fit in cache and decode in sub-second time on developer hardware (see &lt;code&gt;docs/benchmarks-perf.md&lt;/code&gt;).&lt;/li&gt;
+&lt;li&gt;Path tables must stay sorted and deduplicated; corrupt index blobs fail closed at parse time.&lt;/li&gt;
+&lt;li&gt;Cache artifacts change extension; operators with only v1 files still work until the next default-branch map build.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 data-hextra-search-id="verification-2026-11-15"&gt;Verification (2026-11-15)&lt;span class="hx:absolute hx:-mt-20" id="verification-2026-11-15"&gt;&lt;/span&gt;
+&lt;a href="#verification-2026-11-15" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;&lt;code&gt;go test ./internal/impactmap -run TestBenchMapV2FitsTarget&lt;/code&gt; on this branch: synthetic 2000 jobs × 10k files each, v2 gzip under 20 MiB and decode under 0.5 s.&lt;/p&gt;</description></item><item><title>Threat model (v0.1)</title><link>https://circleci-labs.github.io/smarter-workflows/docs/threat-model/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://circleci-labs.github.io/smarter-workflows/docs/threat-model/</guid><description>
 &lt;p&gt;Smarter Workflows runs inside a customer’s CircleCI project: a setup workflow plans which jobs to run on a branch, then continues the pipeline. This page is generic; it does not describe any one org’s policies.&lt;/p&gt;
 &lt;h2 data-hextra-search-id="assets"&gt;Assets&lt;span class="hx:absolute hx:-mt-20" id="assets"&gt;&lt;/span&gt;
 &lt;a href="#assets" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ul&gt;
 &lt;li&gt;&lt;strong&gt;Repository source&lt;/strong&gt; — integrity and confidentiality as for any CI job.&lt;/li&gt;
 &lt;li&gt;&lt;strong&gt;Continuation config&lt;/strong&gt; — defines the jobs that run after setup; may reference contexts and images.&lt;/li&gt;
 &lt;li&gt;&lt;strong&gt;Continuation key&lt;/strong&gt; — secret that authorizes continuing the pipeline (environment variable).&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Impact map&lt;/strong&gt; — JSON in the project cache describing which files each job read on a past full run.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Impact map&lt;/strong&gt; — gzip JSON (v2) or legacy JSON (v1) in the project cache describing which files each job read on a past full run.&lt;/li&gt;
 &lt;li&gt;&lt;strong&gt;Plan report&lt;/strong&gt; — &lt;code&gt;plan.json&lt;/code&gt; / &lt;code&gt;plan.md&lt;/code&gt; with job decisions and diffs.&lt;/li&gt;
 &lt;li&gt;&lt;strong&gt;Trace scripts&lt;/strong&gt; — shell embedded in customer job configs (&lt;code&gt;reset-atime.sh&lt;/code&gt;, &lt;code&gt;collect-trace.sh&lt;/code&gt;).&lt;/li&gt;
 &lt;li&gt;&lt;strong&gt;Policy bundle&lt;/strong&gt; — Rego guardrails evaluated before continuation.&lt;/li&gt;
@@ -1890,7 +1956,7 @@ A job whose filesystem fails the probe gets an incomplete trace.&lt;/li&gt;
 &lt;h2 data-hextra-search-id="threats-and-mitigations"&gt;Threats and mitigations&lt;span class="hx:absolute hx:-mt-20" id="threats-and-mitigations"&gt;&lt;/span&gt;
 &lt;a href="#threats-and-mitigations" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;h3 data-hextra-search-id="forged-or-hostile-impact-map"&gt;Forged or hostile impact map&lt;span class="hx:absolute hx:-mt-20" id="forged-or-hostile-impact-map"&gt;&lt;/span&gt;
 &lt;a href="#forged-or-hostile-impact-map" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;&lt;strong&gt;Threat:&lt;/strong&gt; A branch writes a cache entry claiming jobs did not read files they actually use, so the planner skips work.&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;Mitigations:&lt;/strong&gt; Mandatory jobs always run. Guardrails do not depend on the map. Unusable paths mark a job incomplete (it runs). Oversized or malformed maps are rejected (full run). Map size, job count, and path count are bounded at parse time.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Mitigations:&lt;/strong&gt; Mandatory jobs always run. Guardrails do not depend on the map. Unusable paths mark a job incomplete (it runs). Oversized or malformed maps are rejected (full run). v2 bounds compressed and decompressed bytes, table sizes, job count, and per-job index counts at parse time (v1 keeps a 16 MiB cap). See ADR 7.&lt;/p&gt;
 &lt;p&gt;&lt;strong&gt;Residual risk:&lt;/strong&gt; A plausible forged map can still skip optional jobs until signing on the default branch (&lt;a href="https://circleci-labs.github.io/smarter-workflows/docs/limitations/"&gt;limitations&lt;/a&gt;). Operators should treat map cache as hint data, not proof.&lt;/p&gt;
 &lt;h3 data-hextra-search-id="injection-via-config-map-or-yaml-emission"&gt;Injection via config, map, or YAML emission&lt;span class="hx:absolute hx:-mt-20" id="injection-via-config-map-or-yaml-emission"&gt;&lt;/span&gt;
 &lt;a href="#injection-via-config-map-or-yaml-emission" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;&lt;strong&gt;Threat:&lt;/strong&gt; Job names, paths, or parameters break out of generated YAML or inlined shell.&lt;/p&gt;
@@ -1917,16 +1983,26 @@ A job whose filesystem fails the probe gets an incomplete trace.&lt;/li&gt;
 &lt;li&gt;&lt;a href="https://circleci-labs.github.io/smarter-workflows/docs/limitations/"&gt;Limitations&lt;/a&gt; — forged map and other accepted gaps&lt;/li&gt;
 &lt;li&gt;&lt;a href="https://circleci-labs.github.io/smarter-workflows/docs/how-it-works/"&gt;How it works&lt;/a&gt; — data flow&lt;/li&gt;
 &lt;li&gt;&lt;a href="https://circleci-labs.github.io/smarter-workflows/docs/reference/spec/"&gt;Spec v0.1&lt;/a&gt; — formats and algorithm&lt;/li&gt;
-&lt;/ul&gt;</description></item><item><title>5. A Go binary that is also a circleci CLI extension</title><link>https://circleci-labs.github.io/smarter-workflows/docs/decisions/0005-go-cli-extension/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://circleci-labs.github.io/smarter-workflows/docs/decisions/0005-go-cli-extension/</guid><description>
+&lt;/ul&gt;</description></item><item><title>4. The catalog is native CircleCI config</title><link>https://circleci-labs.github.io/smarter-workflows/docs/decisions/0004-catalog-is-native-circleci-config/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://circleci-labs.github.io/smarter-workflows/docs/decisions/0004-catalog-is-native-circleci-config/</guid><description>
 &lt;p&gt;Date: 2026-11-13. Status: accepted.&lt;/p&gt;
 &lt;h2 data-hextra-search-id="context"&gt;Context&lt;span class="hx:absolute hx:-mt-20" id="context"&gt;&lt;/span&gt;
-&lt;a href="#context" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;The tool has to be easy to adopt in production if product teams like it. The &lt;code&gt;circleci&lt;/code&gt; CLI dispatches &lt;code&gt;circleci &amp;lt;name&amp;gt;&lt;/code&gt; to a binary named &lt;code&gt;circleci-&amp;lt;name&amp;gt;&lt;/code&gt;; Smarter Testing&amp;rsquo;s &lt;code&gt;testsuite&lt;/code&gt; is one such extension. CircleCI&amp;rsquo;s policy engine is a public Go library (&lt;code&gt;circle-policy-agent&lt;/code&gt;), so a Go binary can evaluate policies exactly the way the service does.&lt;/p&gt;
+&lt;a href="#context" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;The first idea was a new &lt;code&gt;catalog.yml&lt;/code&gt; with metadata on each job. That is one more format to learn and keep in sync. The jobs, commands, executors and orbs a team uses already live in its CircleCI config, or in orbs it shares.&lt;/p&gt;
 &lt;h2 data-hextra-search-id="decision"&gt;Decision&lt;span class="hx:absolute hx:-mt-20" id="decision"&gt;&lt;/span&gt;
-&lt;a href="#decision" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Ship a single static Go binary, &lt;code&gt;circleci-smarter&lt;/code&gt;, that can be called directly or as &lt;code&gt;circleci smarter&lt;/code&gt;. It embeds the trace collector script, and links &lt;code&gt;circle-policy-agent&lt;/code&gt; for the pre-flight. The orb downloads a pinned, checksummed release. Until releases exist, it builds from source.&lt;/p&gt;
+&lt;a href="#decision" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;Select mode&lt;/strong&gt; (v0.1): the catalog is the project&amp;rsquo;s own full continuation config (&lt;code&gt;.circleci/continue.yml&lt;/code&gt;). The planner prunes those workflows and keeps the order, approvals, filters and contexts the team wrote.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Planner settings&lt;/strong&gt; (mode, mandatory jobs, full-run paths, extra inputs) are parameters of the orb job, not a new file.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Shared catalogs&lt;/strong&gt; are orbs, pinned to exact versions: the only job-level units that cannot change underneath you.
+&lt;ul&gt;
+&lt;li&gt;URL orbs are allowed only when pinned to a commit SHA.&lt;/li&gt;
+&lt;li&gt;CircleCI functions are step-level units, so they are building blocks for compose mode, not jobs.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Compose mode&lt;/strong&gt; (later): an agent wires jobs from a catalog orb (jobs, commands, executors) into workflows, and the guardrails bound what it can produce.&lt;/li&gt;
+&lt;/ul&gt;
 &lt;h2 data-hextra-search-id="consequences"&gt;Consequences&lt;span class="hx:absolute hx:-mt-20" id="consequences"&gt;&lt;/span&gt;
 &lt;a href="#consequences" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ul&gt;
-&lt;li&gt;One language and one binary, with no runtime dependencies in the planner job.&lt;/li&gt;
-&lt;li&gt;The trace collector stays a small POSIX shell script, so jobs need no extra binary.&lt;/li&gt;
+&lt;li&gt;Adoption means moving the pipeline into &lt;code&gt;continue.yml&lt;/code&gt; and adding one setup job. No new schema.&lt;/li&gt;
+&lt;li&gt;What the planner generates reads like the team&amp;rsquo;s own config, minus the skipped jobs, plus the gate job.&lt;/li&gt;
 &lt;/ul&gt;</description></item><item><title>Validation</title><link>https://circleci-labs.github.io/smarter-workflows/docs/validation/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://circleci-labs.github.io/smarter-workflows/docs/validation/</guid><description>
 &lt;p&gt;What was tested in v0.1, and what each layer found. The results are from 2026-11-14.&lt;/p&gt;
 &lt;h2 data-hextra-search-id="test-layers"&gt;Test layers&lt;span class="hx:absolute hx:-mt-20" id="test-layers"&gt;&lt;/span&gt;
@@ -2131,6 +2207,16 @@ A job whose filesystem fails the probe gets an incomplete trace.&lt;/li&gt;
 &lt;li&gt;Shadow mode on a busy real repository, for real hit and miss rates.&lt;/li&gt;
 &lt;li&gt;The approval and deploy path on the default branch beyond the hold.&lt;/li&gt;
 &lt;li&gt;Tampering with the cached map (see limitations).&lt;/li&gt;
+&lt;/ul&gt;</description></item><item><title>5. A Go binary that is also a circleci CLI extension</title><link>https://circleci-labs.github.io/smarter-workflows/docs/decisions/0005-go-cli-extension/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://circleci-labs.github.io/smarter-workflows/docs/decisions/0005-go-cli-extension/</guid><description>
+&lt;p&gt;Date: 2026-11-13. Status: accepted.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="context"&gt;Context&lt;span class="hx:absolute hx:-mt-20" id="context"&gt;&lt;/span&gt;
+&lt;a href="#context" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;The tool has to be easy to adopt in production if product teams like it. The &lt;code&gt;circleci&lt;/code&gt; CLI dispatches &lt;code&gt;circleci &amp;lt;name&amp;gt;&lt;/code&gt; to a binary named &lt;code&gt;circleci-&amp;lt;name&amp;gt;&lt;/code&gt;; Smarter Testing&amp;rsquo;s &lt;code&gt;testsuite&lt;/code&gt; is one such extension. CircleCI&amp;rsquo;s policy engine is a public Go library (&lt;code&gt;circle-policy-agent&lt;/code&gt;), so a Go binary can evaluate policies exactly the way the service does.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="decision"&gt;Decision&lt;span class="hx:absolute hx:-mt-20" id="decision"&gt;&lt;/span&gt;
+&lt;a href="#decision" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Ship a single static Go binary, &lt;code&gt;circleci-smarter&lt;/code&gt;, that can be called directly or as &lt;code&gt;circleci smarter&lt;/code&gt;. It embeds the trace collector script, and links &lt;code&gt;circle-policy-agent&lt;/code&gt; for the pre-flight. The orb downloads a pinned, checksummed release. Until releases exist, it builds from source.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="consequences"&gt;Consequences&lt;span class="hx:absolute hx:-mt-20" id="consequences"&gt;&lt;/span&gt;
+&lt;a href="#consequences" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ul&gt;
+&lt;li&gt;One language and one binary, with no runtime dependencies in the planner job.&lt;/li&gt;
+&lt;li&gt;The trace collector stays a small POSIX shell script, so jobs need no extra binary.&lt;/li&gt;
 &lt;/ul&gt;</description></item><item><title>6. Every plan passes the guardrails before it continues: check, repair, or fall back</title><link>https://circleci-labs.github.io/smarter-workflows/docs/decisions/0006-preflight-repair-then-full/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://circleci-labs.github.io/smarter-workflows/docs/decisions/0006-preflight-repair-then-full/</guid><description>
 &lt;p&gt;Date: 2026-11-13. Status: accepted.&lt;/p&gt;
 &lt;h2 data-hextra-search-id="context"&gt;Context&lt;span class="hx:absolute hx:-mt-20" id="context"&gt;&lt;/span&gt;
