@@ -136,6 +136,13 @@ jobs:
       - run:
           name: Tests of the orb install script
           command: scripts/test-install.sh
+
+  release-dry-run:
+    docker:
+      - image: cimg/go:1.27.3
+    resource_class: small
+    steps:
+      - checkout
       - run:
           name: Release dry run
           command: scripts/test-release-dry-run.sh
@@ -377,6 +384,7 @@ workflows:
       - go-lint
       - policy-test
       - script-test
+      - release-dry-run
       - docs-site-build
       - orb-validate
       - security-scan
