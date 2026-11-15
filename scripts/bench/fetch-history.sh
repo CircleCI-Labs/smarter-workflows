@@ -3,16 +3,21 @@
 #
 # Usage: fetch-history.sh PROJECT_SLUG WORKFLOW LIMIT OUT.json [CLONE_DIR]
 #
-# PROJECT_SLUG is the CircleCI project slug (for example gh/org/repo).
+# PROJECT_SLUG is the CircleCI project slug (for example circleci/org/repo).
 # WORKFLOW is the workflow name in the continuation config (for example ci).
 # LIMIT is how many recent pipelines to consider (newest first).
 # OUT.json is where the history array is written.
 # CLONE_DIR is an optional local git clone; default: the current directory.
 #
-# Needs CIRCLECI_CLI_TOKEN or CIRCLECI_TOKEN in the environment, and git,
-# jq, and the circleci CLI on PATH. The token is never printed.
+# Needs CIRCLE_TOKEN (the CircleCI CLI reads this). CIRCLECI_TOKEN from CI
+# contexts is copied to CIRCLE_TOKEN when the latter is unset. Also needs git,
+# jq, and the circleci CLI on PATH.
 
 set -eu
+
+if [ -z "${CIRCLE_TOKEN:-}" ] && [ -n "${CIRCLECI_TOKEN:-}" ]; then
+  export CIRCLE_TOKEN="$CIRCLECI_TOKEN"
+fi
 
 usage() {
   echo "usage: fetch-history.sh PROJECT_SLUG WORKFLOW LIMIT OUT.json [CLONE_DIR]" >&2
@@ -39,7 +44,7 @@ if ! command -v circleci >/dev/null 2>&1; then
 fi
 
 api_get() {
-  circleci api get "$1"
+  circleci api "$1"
 }
 
 default_branch() {
@@ -139,9 +144,9 @@ seen=0
 
 while [ "$seen" -lt "$LIMIT" ]; do
   if [ -n "$next_token" ]; then
-    page="$(api_get "/project/${PROJECT_SLUG}/pipeline?page-token=${next_token}")"
+    page="$(api_get "api/v2/project/${PROJECT_SLUG}/pipeline?page-token=${next_token}")"
   else
-    page="$(api_get "/project/${PROJECT_SLUG}/pipeline")"
+    page="$(api_get "api/v2/project/${PROJECT_SLUG}/pipeline")"
   fi
 
   n="$(echo "$page" | jq '.items | length')"
@@ -158,12 +163,12 @@ while [ "$seen" -lt "$LIMIT" ]; do
       continue
     fi
     pipe_id="$(echo "$pipeline" | jq -r '.id')"
-    wf_page="$(api_get "/pipeline/${pipe_id}/workflow")"
+    wf_page="$(api_get "api/v2/pipeline/${pipe_id}/workflow")"
     wf_id="$(echo "$wf_page" | jq -r --arg w "$WORKFLOW" '.items[] | select(.name == $w) | .id' | head -n 1)"
     if [ -z "$wf_id" ] || [ "$wf_id" = "null" ]; then
       continue
     fi
-    jobs_page="$(api_get "/workflow/${wf_id}/job")"
+    jobs_page="$(api_get "api/v2/workflow/${wf_id}/job")"
     # Enrich failed jobs with rerun_success from the job detail API.
     jobs_page="$(echo "$jobs_page" | jq '
       .items |= map(
@@ -171,7 +176,7 @@ while [ "$seen" -lt "$LIMIT" ]; do
       )
     ')"
     for jid in $(echo "$jobs_page" | jq -r '.items[] | select(.status=="failed") | .id'); do
-      detail="$(api_get "/job/${jid}")"
+      detail="$(api_get "api/v2/job/${jid}")"
       ok="$(echo "$detail" | jq -r '([.retries[]? | select(.status=="success")] | length > 0)')"
       jobs_page="$(echo "$jobs_page" | jq --arg id "$jid" --argjson ok "$ok" '
         .items |= map(if .id == $id then . + {rerun_success: $ok} else . end)

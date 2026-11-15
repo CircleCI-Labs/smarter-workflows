@@ -54,7 +54,7 @@ circleci-smarter backtest \
 
 ## Scheduled benchmark on main
 
-The `benchmark` workflow in `.circleci/continue.yml` runs weekly on `main` (and can be triggered manually). It uses the `smarter-workflows-ai` context for API access, restores the latest impact map cache, fetches the last 200 `ci` pipelines, runs backtest, and stores `backtest.md` and `backtest.json` as artifacts.
+The `benchmark` workflow in `.circleci/continue.yml` runs when `pipeline.trigger.type` is `schedule` (the schedule is configured on the project in CircleCI, not in this file). It uses the `smarter-workflows-ai` context so `fetch-history.sh` can call the API with `<< pipeline.project.slug >>` (GitHub App projects use the `circleci/org/project` form). It restores the latest impact map cache, fetches the last 200 `ci` pipelines, runs backtest, and stores `backtest.md` and `backtest.json` as artifacts.
 
 ## Limits of replay
 

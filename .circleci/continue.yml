@@ -267,11 +267,6 @@ jobs:
     steps:
       - checkout
       - install-circleci-cli
-      - run:
-          name: Install jq
-          command: |
-            sudo apt-get update -qq
-            sudo apt-get install -y -qq jq
       - restore_cache:
           keys:
             - smarter-impact-v1-
@@ -283,11 +278,13 @@ jobs:
             CGO_ENABLED=0 go build -trimpath -ldflags "-X main.version=dev-$CIRCLE_SHA1" -o /tmp/smarter/bin/circleci-smarter ./cmd/circleci-smarter
       - run:
           name: Fetch workflow history
+          environment:
+            PROJECT_SLUG: "<< pipeline.project.slug >>"
           command: |
             set -eu
+            command -v jq >/dev/null || { echo "benchmark: jq is required on this image" >&2; exit 1; }
             mkdir -p /tmp/smarter
-            slug="gh/${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}"
-            scripts/bench/fetch-history.sh "$slug" ci 200 /tmp/smarter/history.json .
+            scripts/bench/fetch-history.sh "$PROJECT_SLUG" ci 200 /tmp/smarter/history.json .
       - run:
           name: Backtest recall and savings
           command: |
@@ -366,13 +363,7 @@ workflows:
             tags:
               only: /^v.*/
   benchmark:
-    triggers:
-      - schedule:
-          # Mondays 12:00 UTC on main.
-          cron: "0 12 * * 1"
-          filters:
-            branches:
-              only: main
+    when: pipeline.trigger.type == "schedule"
     jobs:
       - benchmark:
           context:
