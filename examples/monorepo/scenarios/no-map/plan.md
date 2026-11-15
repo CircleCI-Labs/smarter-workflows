@@ -1,4 +1,4 @@
-**Smarter Workflows, select mode:** 7 of 9 jobs running. Full run: no usable impact map: there is no impact map at /tmp/smarter/impact-map.json.
+**Smarter Workflows, select mode:** 7 of 9 jobs running. Full run: no usable impact map: there is no impact map at /tmp/smarter/impact-map.json.gz.
 
 | Job | Run | Reason |
 |---|---|---|

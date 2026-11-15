@@ -24,12 +24,28 @@ Snapshot of planner, config I/O and trace-script performance on one machine. Reg
 |--------|--------|
 | Plan p95 &lt; 2 s at 2000 jobs and 10k-file maps | **0.166 s** p95 (`BenchmarkPlanLatency2000`) |
 | `collect-trace` &lt; 10 s at 100k tracked files | **0.355 s** |
+| v2 map &lt; 20 MiB and decode &lt; 0.5 s at 2000 jobs × 10k files | **233 KiB**, **0.25 s** decode (`TestBenchMapV2FitsTarget`) |
 
-Both targets passed on this run. Largest single-op planner cases (2000 jobs, 10k-file map) are ~0.27–0.50 s per plan in `BenchmarkPlan/` (see full table from `perf.sh`).
+All targets passed on this run. Largest single-op planner cases (2000 jobs, 10k-file map) are ~0.27–0.50 s per plan in `BenchmarkPlan/` (see full table from `perf.sh`).
 
-## Impact map JSON decode
+## Impact map decode (2000 jobs × 10k files each)
 
-Decoding a v1 impact map at 2000 jobs × 10k files per job is about **3.5 s** in `BenchmarkImpactMapParse` (JSON `encoding/json`, not used on the hot plan path when the map is already loaded). A **compact map format v2** that another worker is building targets that cost. Separately, hardening work capped **v1 map files at 16 MiB**; maps larger than that are rejected today and the planner falls back to a full run.
+Each job reads 10k paths from a shared pool of 10k repo-relative paths (worst case for v1 path repetition).
+
+| Format | On disk | Decode (median of 3) |
+| --- | ---: | ---: |
+| v1 JSON | 940 MiB | 6.31 s (`BenchmarkImpactMapParse` / `BenchmarkMapV1Parse2000x10k`) |
+| v2 gzip | 233 KiB | 0.25 s (`BenchmarkMapV2Parse2000x10k`) |
+
+v1 maps remain capped at **16 MiB** on disk (hardening); larger or malformed maps mean a full run. v2 uses separate compressed, decompressed, table and per-job index caps (ADR 7).
+
+Reproduce map decode:
+
+```bash
+go test ./internal/impactmap -bench='BenchmarkMapV1Parse|BenchmarkMapV2Parse' -benchtime=3x -count=1
+go test ./internal/impactmap -run TestBenchMapV2FitsTarget -count=1 -v
+go test -run='^$' -bench=BenchmarkImpactMapParse -benchmem ./internal/planner/...
+```
 
 ## Environment
 

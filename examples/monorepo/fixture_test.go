@@ -3,6 +3,7 @@ package monorepo_test
 import (
 	"os"
 	"path"
+	"reflect"
 	"regexp"
 	"slices"
 	"strings"
@@ -42,7 +43,7 @@ func baseTree() map[string]string {
 // TestImpactMapMatchesTheExample keeps the three example artifacts in step:
 // the map, the config and the repository tree the scenarios run on.
 func TestImpactMapMatchesTheExample(t *testing.T) {
-	raw, err := os.ReadFile("impact-map.json")
+	raw, err := os.ReadFile("impact-map.json.gz")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,8 +56,22 @@ func TestImpactMapMatchesTheExample(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(canon) != string(raw) {
-		t.Errorf("impact-map.json is not in canonical form; it should be:\n%s", canon)
+	again, err := impactmap.Parse(canon)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Revision != again.Revision || len(m.Jobs) != len(again.Jobs) {
+		t.Fatalf("round-trip header mismatch: got %+v", again)
+	}
+	for name, job := range m.Jobs {
+		aj := again.Jobs[name]
+		if aj == nil || job.Complete != aj.Complete || job.Nodes != aj.Nodes {
+			t.Errorf("job %s mismatch after round-trip", name)
+			continue
+		}
+		if !reflect.DeepEqual(job.FilePaths(), aj.FilePaths()) || !reflect.DeepEqual(job.DirPaths(), aj.DirPaths()) {
+			t.Errorf("job %s paths mismatch after round-trip", name)
+		}
 	}
 	if !regexp.MustCompile(`^[0-9a-f]{40}$`).MatchString(m.Revision) || m.Method != "atime" {
 		t.Errorf("revision = %q, method = %q", m.Revision, m.Method)
@@ -76,17 +91,17 @@ func TestImpactMapMatchesTheExample(t *testing.T) {
 		if !job.Complete || job.Nodes != 1 {
 			t.Errorf("%s: complete = %v, nodes = %d", name, job.Complete, job.Nodes)
 		}
-		for _, f := range job.Files {
+		for _, f := range job.FilePaths() {
 			if _, ok := tree[f]; !ok {
 				t.Errorf("%s reads %s, which is not in the base tree", name, f)
 			}
 		}
-		for _, d := range job.Dirs {
+		for _, d := range job.DirPaths() {
 			if !dirs[d] {
 				t.Errorf("%s lists %s, which is not a directory of the base tree", name, d)
 			}
 		}
-		if !slices.IsSorted(job.Files) || !slices.IsSorted(job.Dirs) {
+		if !slices.IsSorted(job.FilePaths()) || !slices.IsSorted(job.DirPaths()) {
 			t.Errorf("%s: lists are not sorted", name)
 		}
 	}

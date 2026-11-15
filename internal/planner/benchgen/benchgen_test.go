@@ -20,11 +20,20 @@ func TestGeneratedConfigsParse(t *testing.T) {
 }
 
 func TestGeneratedImpactMapsParse(t *testing.T) {
-	names := benchgen.JobNames(benchgen.ShapeFanout, 100)
 	for _, files := range benchgen.MapFileCounts {
-		data := benchgen.ImpactMapJSON(names, files)
-		if _, err := impactmap.Parse(data); err != nil {
-			t.Fatalf("files=%d: %v", files, err)
+		jobs := 100
+		if files == 10000 {
+			jobs = 10 // unique paths stay under MaxUniqueFiles
+		}
+		names := benchgen.JobNames(benchgen.ShapeFanout, jobs)
+		v1 := benchgen.ImpactMapV1JSON(names, files)
+		if len(v1) <= impactmap.MaxMapFileBytes {
+			if _, err := impactmap.Parse(v1); err != nil {
+				t.Fatalf("v1 files=%d: %v", files, err)
+			}
+		}
+		if _, err := impactmap.Parse(benchgen.ImpactMapV2Gzip(names, files)); err != nil {
+			t.Fatalf("v2 files=%d: %v", files, err)
 		}
 	}
 }

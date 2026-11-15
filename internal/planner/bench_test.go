@@ -98,21 +98,28 @@ func BenchmarkPlanLatency2000(b *testing.B) {
 	b.ReportMetric(times[len(times)-1], "max_sec")
 }
 
-// ImpactMapParse measures JSON decode of a large map (used while loading maps).
+// ImpactMapParse measures decode of a large map (v1 JSON and v2 gzip).
 func BenchmarkImpactMapParse(b *testing.B) {
 	for _, jobs := range []int{100, 500, 2000} {
 		for _, mapFiles := range benchgen.MapFileCounts {
 			names := benchgen.JobNames(benchgen.ShapeFanout, jobs)
-			data := benchgen.ImpactMapJSON(names, mapFiles)
-			b.Run(fmt.Sprintf("jobs%d/files%d", jobs, mapFiles), func(b *testing.B) {
-				b.SetBytes(int64(len(data)))
-				b.ReportAllocs()
-				for b.Loop() {
-					if _, err := impactmap.Parse(data); err != nil {
-						b.Fatal(err)
+			for _, tc := range []struct {
+				tag  string
+				data []byte
+			}{
+				{"v1", benchgen.ImpactMapV1JSON(names, mapFiles)},
+				{"v2", benchgen.ImpactMapV2Gzip(names, mapFiles)},
+			} {
+				b.Run(fmt.Sprintf("%s/jobs%d/files%d", tc.tag, jobs, mapFiles), func(b *testing.B) {
+					b.SetBytes(int64(len(tc.data)))
+					b.ReportAllocs()
+					for b.Loop() {
+						if _, err := impactmap.Parse(tc.data); err != nil {
+							b.Fatal(err)
+						}
 					}
-				}
-			})
+				})
+			}
 		}
 	}
 }

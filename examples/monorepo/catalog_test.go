@@ -10,14 +10,14 @@ import (
 )
 
 // The catalog of the example, with its impact map, is a golden file: it is
-// what `circleci-smarter catalog --config continue.yml --map impact-map.json`
+// what `circleci-smarter catalog --config continue.yml --map impact-map.json.gz`
 // prints, and the sample of the catalog format that the spec points to.
 func TestCatalogOfTheExample(t *testing.T) {
 	cfg, err := config.Parse([]byte(exampleConfig()))
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := impactmap.Load("impact-map.json")
+	m, err := impactmap.Load("impact-map.json.gz")
 	if err != nil {
 		t.Fatal(err)
 	}

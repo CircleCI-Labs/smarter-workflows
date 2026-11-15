@@ -342,7 +342,7 @@ jobs:
           name: Backtest recall and savings
           command: |
             set -eu
-            map=/tmp/smarter/impact-map.json
+            map=/tmp/smarter/impact-map.json.gz
             if [ ! -s "$map" ]; then
               echo "benchmark: no impact map in cache; run a full pipeline on main first" >&2
               exit 1

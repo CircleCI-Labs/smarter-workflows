@@ -51,7 +51,7 @@ func TestMapKeyPrefixIsTheSaveCacheKeyOfTheMapJob(t *testing.T) {
 				t.Errorf("save_cache key = %q, want %q", save["key"], tc.want)
 			}
 			// Only the key changes: the path and the other steps stay.
-			if got := toStrings(save["paths"]); !slices.Equal(got, []string{"/tmp/smarter/impact-map.json"}) {
+			if got := toStrings(save["paths"]); !slices.Equal(got, []string{"/tmp/smarter/impact-map.json.gz"}) {
 				t.Errorf("save_cache paths = %v", got)
 			}
 			// No pipeline parameters or new expressions come in with the prefix.

@@ -8,6 +8,7 @@ import (
 	"go.yaml.in/yaml/v3"
 
 	"github.com/CircleCI-Labs/smarter-workflows/internal/config"
+	"github.com/CircleCI-Labs/smarter-workflows/internal/impactmap"
 	"github.com/CircleCI-Labs/smarter-workflows/internal/report"
 	"github.com/CircleCI-Labs/smarter-workflows/internal/tracescript"
 )
@@ -54,13 +55,13 @@ func (p *planner) impactMapJob() *yaml.Node {
 				"key", `smarter-bin-v1-{{ checksum ".smarter-version" }}-{{ arch }}`)),
 			config.Map("attach_workspace", config.Map("at", TraceDir)),
 			config.RunStep("smarter: build impact map", "", "",
-				shellQuote(p.o.BinPath)+" map build --traces "+TraceDir+"/traces --revision \"$CIRCLE_SHA1\" --out "+TraceDir+"/impact-map.json\n"),
+				shellQuote(p.o.BinPath)+" map build --traces "+TraceDir+"/traces --revision \"$CIRCLE_SHA1\" --out "+TraceDir+"/"+impactmap.MapFilenameV2+"\n"),
 			config.RunStep("smarter: write cache key", "", "",
 				"printf '%s\\n' \"$CIRCLE_SHA1\" > .smarter-key\n"),
 			config.Map("save_cache", config.Map(
 				"key", p.o.MapKeyPrefix+`-{{ checksum ".smarter-key" }}`,
-				"paths", config.Strs(TraceDir+"/impact-map.json"))),
-			config.Map("store_artifacts", config.Map("path", TraceDir+"/impact-map.json")),
+				"paths", config.Strs(TraceDir+"/"+impactmap.MapFilenameV2))),
+			config.Map("store_artifacts", config.Map("path", TraceDir+"/"+impactmap.MapFilenameV2)),
 		),
 	)
 }

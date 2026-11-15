@@ -51,7 +51,7 @@ Durations:
 ### `catalog`
 
 ```
-circleci-smarter catalog --config .circleci/continue.yml [--map impact-map.json] [--workflow NAME]
+circleci-smarter catalog --config .circleci/continue.yml [--map impact-map.json.gz] [--workflow NAME]
 ```
 
 | Flag | Meaning |

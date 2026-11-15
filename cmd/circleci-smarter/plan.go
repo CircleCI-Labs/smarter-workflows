@@ -43,7 +43,7 @@ func runPlan(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	cfgPath := fs.String("config", ".circleci/continue.yml", "the full continuation config (the catalog)")
 	workflow := fs.String("workflow", "", "the workflow to plan (default: the only workflow)")
-	mapPath := fs.String("map", "/tmp/smarter/impact-map.json", "the impact map; a missing or invalid map means a full run")
+	mapPath := fs.String("map", impactmap.DefaultMapPath, "the impact map; a missing or invalid map means a full run")
 	base := fs.String("base", "", "the diff base (default: what the base command prints)")
 	head := fs.String("head", "HEAD", "the head commit")
 	branch := fs.String("branch", "", "the branch (default: $CIRCLE_BRANCH)")
@@ -242,15 +242,26 @@ func planRunningBinary() string {
 // planLoadMap reads the impact map. A map that is missing or unusable is not
 // an error: it means a full run, and the reason goes in the report.
 func planLoadMap(path string) (*impactmap.Map, string) {
-	m, err := impactmap.Load(path)
-	switch {
-	case err == nil:
-		return m, ""
-	case errors.Is(err, os.ErrNotExist):
-		return nil, "there is no impact map at " + path
-	default:
-		return nil, fmt.Sprintf("%s: %v", path, err)
+	var (
+		lastErr error
+		missing = true
+	)
+	for _, p := range impactmap.LoadCandidates(path) {
+		m, err := impactmap.Load(p)
+		switch {
+		case err == nil:
+			return m, ""
+		case errors.Is(err, os.ErrNotExist):
+			continue
+		default:
+			missing = false
+			lastErr = err
+		}
 	}
+	if missing {
+		return nil, "there is no impact map at " + path
+	}
+	return nil, fmt.Sprintf("%s: %v", path, lastErr)
 }
 
 // planLoadGuardrails builds the guardrail checker. When it cannot (no policy

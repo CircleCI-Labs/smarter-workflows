@@ -37,6 +37,7 @@ GLOSSARY.md | Glossary | The words this project uses, and what each one means.
 docs/adr/0001-select-jobs-not-tests.md | 1. Select jobs, not tests | Decide at the level of jobs and workflows, and leave the choice of tests to the tools that make it.
 docs/adr/0002-skip-only-when-proven.md | 2. Skip only when proven | Skip a job only when the impact map proves that the change cannot reach it.
 docs/adr/0003-impact-map-from-traces-on-main.md | 3. Impact map from traces | Build the impact map from the file-access traces of full runs on the default branch.
+docs/adr/0007-impact-map-v2.md | 7. Impact map v2 | Shared path tables, delta-varint indices and gzip for large monorepos.
 docs/adr/0004-catalog-is-native-circleci-config.md | 4. Native catalog | The catalog is the project's own CircleCI config, not a new format.
 docs/adr/0005-go-cli-extension.md | 5. Go CLI extension | One static Go binary that also works as a circleci CLI extension.
 docs/adr/0006-preflight-repair-then-full.md | 6. Guardrail pre-flight | Every plan passes the guardrails before it continues: check, repair, or fall back to a full run.

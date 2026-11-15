@@ -179,13 +179,27 @@ func ImpactMap(jobs []string, filesPerJob int) *impactmap.Map {
 	return m
 }
 
-// ImpactMapJSON is ImpactMap encoded for benchmarks that parse JSON.
-func ImpactMapJSON(jobs []string, filesPerJob int) []byte {
+// ImpactMapV1JSON is a v1 map for benchmarks that measure legacy JSON decode.
+func ImpactMapV1JSON(jobs []string, filesPerJob int) []byte {
+	data, err := ImpactMap(jobs, filesPerJob).MarshalV1()
+	if err != nil {
+		panic(err)
+	}
+	return data
+}
+
+// ImpactMapV2Gzip is a v2 on-disk map for benchmarks that measure production decode.
+func ImpactMapV2Gzip(jobs []string, filesPerJob int) []byte {
 	data, err := ImpactMap(jobs, filesPerJob).Marshal()
 	if err != nil {
 		panic(err)
 	}
 	return data
+}
+
+// ImpactMapJSON is ImpactMapV1JSON (BenchmarkImpactMapParse measures v1 JSON).
+func ImpactMapJSON(jobs []string, filesPerJob int) []byte {
+	return ImpactMapV1JSON(jobs, filesPerJob)
 }
 
 // DiffChanges returns n modified-file changes with distinct paths.
