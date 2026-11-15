@@ -1,0 +1,155 @@
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Smarter Workflows – Contribute</title><link>https://circleci-labs.github.io/smarter-workflows/docs/contribute/</link><description>Recent content in Contribute on Smarter Workflows</description><generator>Hugo -- gohugo.io</generator><language>en-US</language><atom:link href="https://circleci-labs.github.io/smarter-workflows/docs/contribute/index.xml" rel="self" type="application/rss+xml"/><item><title>Contributing</title><link>https://circleci-labs.github.io/smarter-workflows/docs/contribute/contributing/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://circleci-labs.github.io/smarter-workflows/docs/contribute/contributing/</guid><description>
+&lt;p&gt;Thank you for helping to improve Smarter Workflows, a CircleCI Labs project. Field engineers review issues and pull requests on a best-effort basis, with no SLA. Report a security problem by email, not in an issue (&lt;a href="https://circleci-labs.github.io/smarter-workflows/docs/contribute/security/"&gt;SECURITY.md&lt;/a&gt;).&lt;/p&gt;
+&lt;h2 data-hextra-search-id="reporting-a-bug"&gt;Reporting a bug&lt;span class="hx:absolute hx:-mt-20" id="reporting-a-bug"&gt;&lt;/span&gt;
+&lt;a href="#reporting-a-bug" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Search the &lt;a href="https://github.com/CircleCI-Labs/smarter-workflows/issues" target="_blank" rel="noopener"&gt;existing issues&lt;/a&gt; first, and check that you use the latest release or &lt;code&gt;main&lt;/code&gt;. Then open a new issue. Include:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;The planner version (&lt;code&gt;circleci-smarter version&lt;/code&gt;, or the orb version) and the mode you ran in (&lt;code&gt;shadow&lt;/code&gt; or &lt;code&gt;select&lt;/code&gt;).&lt;/li&gt;
+&lt;li&gt;The &lt;code&gt;plan.md&lt;/code&gt; and &lt;code&gt;plan.json&lt;/code&gt; that the plan job stores as the artifacts &lt;code&gt;smarter-plan/&lt;/code&gt;. They list every job, whether it ran, and why.&lt;/li&gt;
+&lt;li&gt;The files that the change touched, what the plan did, and what you expected.&lt;/li&gt;
+&lt;li&gt;The part of your &lt;code&gt;continue.yml&lt;/code&gt; that shows the problem, reduced to the few jobs that matter.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Remove tokens, internal host names and private code from everything you paste.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="requesting-a-feature"&gt;Requesting a feature&lt;span class="hx:absolute hx:-mt-20" id="requesting-a-feature"&gt;&lt;/span&gt;
+&lt;a href="#requesting-a-feature" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Open an issue. Describe the problem, and name the command, the flag or the file it affects. For problems in the CircleCI platform, contact &lt;a href="https://support.circleci.com/hc/en-us" target="_blank" rel="noopener"&gt;CircleCI support&lt;/a&gt; instead.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="opening-a-pull-request"&gt;Opening a pull request&lt;span class="hx:absolute hx:-mt-20" id="opening-a-pull-request"&gt;&lt;/span&gt;
+&lt;a href="#opening-a-pull-request" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Before you open a pull request:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;Discuss large changes in an issue first.&lt;/li&gt;
+&lt;li&gt;Run the checks of &lt;a href="#development"&gt;Development&lt;/a&gt;.&lt;/li&gt;
+&lt;li&gt;Update &lt;code&gt;docs/&lt;/code&gt; when you change a flag, a file format or a default.&lt;/li&gt;
+&lt;li&gt;Write every commit message, and the pull request title, as a Conventional Commit (&lt;a href="#commit-messages"&gt;Commit messages&lt;/a&gt;).&lt;/li&gt;
+&lt;li&gt;Check that the diff has no tokens, host names, or customer or vendor names. The repository is public.&lt;/li&gt;
+&lt;li&gt;Add a dependency only when its release is at least 7 days old, and pin it exactly: in &lt;code&gt;go.mod&lt;/code&gt;, and by version and checksum for a tool that CI downloads.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;A pull request that changes only documentation (&lt;code&gt;docs/&lt;/code&gt;, &lt;code&gt;site/&lt;/code&gt;, Markdown files) runs the docs site build and skips the jobs that do not read those files. That is the planner at work: this repository plans its own pipeline (&lt;a href="https://circleci-labs.github.io/smarter-workflows/docs/how-it-works/"&gt;How it works&lt;/a&gt;).&lt;/p&gt;
+&lt;h3 data-hextra-search-id="commit-messages"&gt;Commit messages&lt;span class="hx:absolute hx:-mt-20" id="commit-messages"&gt;&lt;/span&gt;
+&lt;a href="#commit-messages" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;Use &lt;a href="https://www.conventionalcommits.org/" target="_blank" rel="noopener"&gt;Conventional Commits&lt;/a&gt;: &lt;code&gt;type(scope): summary&lt;/code&gt;. Keep each commit small and atomic.&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;Type&lt;/th&gt;
+&lt;th&gt;Use for&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;feat&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;A new capability, or a changed command, flag or file format&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;fix&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;A bug fix&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;docs&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;Documentation only&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;test&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;Tests only&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;ci&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;The CircleCI pipeline&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;chore&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;Maintenance with no user-visible change&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;refactor&lt;/code&gt;, &lt;code&gt;perf&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;Code changes that keep behavior, or improve speed&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;A breaking change adds &lt;code&gt;!&lt;/code&gt; after the type or scope (&lt;code&gt;feat(plan)!: rename a flag&lt;/code&gt;), or a &lt;code&gt;BREAKING CHANGE:&lt;/code&gt; footer that says what the user has to change.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="development"&gt;Development&lt;span class="hx:absolute hx:-mt-20" id="development"&gt;&lt;/span&gt;
+&lt;a href="#development" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Requirements: Go (the version in &lt;code&gt;go.mod&lt;/code&gt;), and the &lt;a href="https://circleci.com/docs/guides/toolkit/circleci-cli/" target="_blank" rel="noopener"&gt;CircleCI CLI&lt;/a&gt;, which the tests use to validate every config that the planner generates. Set &lt;code&gt;REQUIRE_CIRCLECI_CLI=1&lt;/code&gt; to make a missing CLI fail the tests instead of skipping them.&lt;/p&gt;
+&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-bash" data-lang="bash"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;gofmt -l .
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;go vet ./...
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;go &lt;span class="nb"&gt;test&lt;/span&gt; ./...
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;circleci policy &lt;span class="nb"&gt;test&lt;/span&gt; policies
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;scripts/test-trace.sh&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
+&lt;button
+class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+title="Copy code"
+aria-label="Copy code"
+data-copied-label="Copied!"
+&gt;
+&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;p&gt;The commands check formatting (the output must be empty), vet, the Go tests, the Rego tests of the guardrail bundle, and the trace scripts. The trace tests need git, GNU find and GNU touch, and &lt;code&gt;REQUIRE_ATIME=1&lt;/code&gt; makes a filesystem without access times fail them instead of skipping them. CI also runs &lt;code&gt;shellcheck -s sh internal/tracescript/*.sh scripts/*.sh&lt;/code&gt;. The golden files of the example monorepo change with &lt;code&gt;go test ./examples/monorepo -update&lt;/code&gt;: read the diff before you commit it.&lt;/p&gt;
+&lt;p&gt;&lt;a href="https://circleci-labs.github.io/smarter-workflows/docs/validation/"&gt;Validation&lt;/a&gt; lists every test layer, and &lt;code&gt;.circleci/continue.yml&lt;/code&gt; is the pipeline that runs them.&lt;/p&gt;
+&lt;p&gt;Keep the repository generic: no customer, vendor-specific or internal names, host names or links. Never print environment variables or secrets in a script, a test or a log.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="documentation"&gt;Documentation&lt;span class="hx:absolute hx:-mt-20" id="documentation"&gt;&lt;/span&gt;
+&lt;a href="#documentation" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Documentation follows the &lt;a href="https://circleci.com/docs/contributors/docs-style/style-and-voice/" target="_blank" rel="noopener"&gt;CircleCI docs style&lt;/a&gt;: sentence-case headings, active voice, no contractions, and short sentences. Every &lt;code&gt;docs/*.md&lt;/code&gt; page has front matter with &lt;code&gt;page-title&lt;/code&gt;, &lt;code&gt;page-audience&lt;/code&gt;, and &lt;code&gt;page-description&lt;/code&gt;.&lt;/p&gt;
+&lt;h3 data-hextra-search-id="documentation-site"&gt;Documentation site&lt;span class="hx:absolute hx:-mt-20" id="documentation-site"&gt;&lt;/span&gt;
+&lt;a href="#documentation-site" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;The documentation is also a site on GitHub Pages: &lt;a href="https://circleci-labs.github.io/smarter-workflows/" target="_blank" rel="noopener"&gt;https://circleci-labs.github.io/smarter-workflows/&lt;/a&gt;. CircleCI builds it with &lt;a href="https://gohugo.io/" target="_blank" rel="noopener"&gt;Hugo&lt;/a&gt; and the &lt;a href="https://github.com/imfing/hextra" target="_blank" rel="noopener"&gt;Hextra&lt;/a&gt; theme, and pushes it to the &lt;code&gt;gh-pages&lt;/code&gt; branch. The Markdown stays the only source, and nothing in it is written for the site: &lt;code&gt;README.md&lt;/code&gt; is the home page, and &lt;code&gt;site/nav.txt&lt;/code&gt; lists the other pages (&lt;code&gt;docs/&lt;/code&gt;, the glossary, the composer skill, the compose eval, the demo, this file and the security policy).&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Add every new, renamed or removed page to &lt;code&gt;site/nav.txt&lt;/code&gt;.&lt;/strong&gt; &lt;code&gt;site/stage.sh&lt;/code&gt; fails on a Markdown file below &lt;code&gt;docs/&lt;/code&gt; that the list misses, and on a listed file that does not exist, so &lt;code&gt;docs-site-build&lt;/code&gt; catches a page that would be missing from the sidebar. &lt;code&gt;STAGE_LENIENT=1&lt;/code&gt; turns both errors into warnings while you restructure. A relative link to a file that is a page of the site goes to that page, and a link to any other file of the repository goes to GitHub.&lt;/p&gt;
+&lt;p&gt;To preview the site, install Hugo extended 0.168.0 and Go (Hugo downloads the theme as a Go module), then run from the repository root:&lt;/p&gt;
+&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-bash" data-lang="bash"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;site/stage.sh
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="nb"&gt;cd&lt;/span&gt; site &lt;span class="o"&gt;&amp;amp;&amp;amp;&lt;/span&gt; hugo server --bind 127.0.0.1 --baseURL http://127.0.0.1:1313/&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
+&lt;button
+class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+title="Copy code"
+aria-label="Copy code"
+data-copied-label="Copied!"
+&gt;
+&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;p&gt;Run &lt;code&gt;site/stage.sh&lt;/code&gt; again after you change a page. To run the check of the pipeline, install &lt;a href="https://github.com/lycheeverse/lychee" target="_blank" rel="noopener"&gt;lychee&lt;/a&gt; and run &lt;code&gt;(cd site &amp;amp;&amp;amp; hugo --minify --panicOnWarning) &amp;amp;&amp;amp; site/check.sh&lt;/code&gt;. It checks every link and heading anchor of the built site, offline.&lt;/p&gt;
+&lt;p&gt;The job &lt;code&gt;docs-site-build&lt;/code&gt; runs this check on every branch. It reads only the docs and the site sources, so the planner skips it for a change that touches neither. The job &lt;code&gt;docs-site-publish&lt;/code&gt; runs on &lt;code&gt;main&lt;/code&gt; only, in the workflow &lt;code&gt;docs-site&lt;/code&gt;, and pushes the site to &lt;code&gt;gh-pages&lt;/code&gt; with the context &lt;code&gt;smarter-workflows-release&lt;/code&gt;. Hugo and lychee are pinned by version and SHA-256 in the command &lt;code&gt;docs-site&lt;/code&gt; of &lt;code&gt;.circleci/continue.yml&lt;/code&gt;: a new version needs its new checksum, from the release page of the tool, in the same change.&lt;/p&gt;
+&lt;p&gt;A maintainer does this once:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;
+&lt;p&gt;Put a fine-grained token for this repository only, with the repository permission &lt;strong&gt;Contents: read and write&lt;/strong&gt; and nothing else, in the variable &lt;code&gt;GITHUB_TOKEN&lt;/code&gt; of the context &lt;code&gt;smarter-workflows-release&lt;/code&gt;. Without the variable the job builds and checks the site and publishes nothing.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;Restrict the context to this project, and refuse SSH reruns:&lt;/p&gt;
+&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-bash" data-lang="bash"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;circleci context restriction create smarter-workflows-release --org &amp;lt;ORG&amp;gt; --type project --value &amp;lt;PROJECT_ID&amp;gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;circleci context restriction create smarter-workflows-release --org &amp;lt;ORG&amp;gt; --type expression &lt;span class="se"&gt;\
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; --value &lt;span class="s1"&gt;&amp;#39;not job.ssh.enabled and not (pipeline.config_source starts-with &amp;#34;api&amp;#34;)&amp;#39;&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
+&lt;button
+class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+title="Copy code"
+aria-label="Copy code"
+data-copied-label="Copied!"
+&gt;
+&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;After the first publication, open Settings, Pages, and set &lt;strong&gt;Source&lt;/strong&gt; to &lt;strong&gt;Deploy from a branch&lt;/strong&gt;, the branch to &lt;code&gt;gh-pages&lt;/code&gt; and the folder to &lt;code&gt;/ (root)&lt;/code&gt;. GitHub then deploys every push to that branch. There is no workflow file to maintain.&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;h2 data-hextra-search-id="license"&gt;License&lt;span class="hx:absolute hx:-mt-20" id="license"&gt;&lt;/span&gt;
+&lt;a href="#license" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;By contributing, you agree that your contributions are licensed under the &lt;a href="https://github.com/CircleCI-Labs/smarter-workflows/blob/main/LICENSE" target="_blank" rel="noopener"&gt;MIT license&lt;/a&gt;.&lt;/p&gt;</description></item><item><title>Security policy</title><link>https://circleci-labs.github.io/smarter-workflows/docs/contribute/security/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://circleci-labs.github.io/smarter-workflows/docs/contribute/security/</guid><description>
+&lt;h2 data-hextra-search-id="reporting-a-vulnerability"&gt;Reporting a vulnerability&lt;span class="hx:absolute hx:-mt-20" id="reporting-a-vulnerability"&gt;&lt;/span&gt;
+&lt;a href="#reporting-a-vulnerability" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;&lt;strong&gt;Do not open a public issue or pull request for a security vulnerability.&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;Email &lt;a href="mailto:security@circleci.com"&gt;security@circleci.com&lt;/a&gt;, whether the problem is in Smarter Workflows or in the CircleCI platform. CircleCI&amp;rsquo;s security team receives the report. The project sets no response target, and CircleCI has no bounty program (&lt;a href="https://circleci.com/security/" target="_blank" rel="noopener"&gt;process&lt;/a&gt;).&lt;/p&gt;
+&lt;p&gt;For a sensitive report, encrypt the message with the key at &lt;a href="https://circleci.com/.well-known/pgp-key.txt" target="_blank" rel="noopener"&gt;https://circleci.com/.well-known/pgp-key.txt&lt;/a&gt;.&lt;/p&gt;
+&lt;p&gt;Include the steps to reproduce, the release or commit, and the planner version (&lt;code&gt;circleci-smarter version&lt;/code&gt;).&lt;/p&gt;
+&lt;h2 data-hextra-search-id="supported-versions"&gt;Supported versions&lt;span class="hx:absolute hx:-mt-20" id="supported-versions"&gt;&lt;/span&gt;
+&lt;a href="#supported-versions" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Smarter Workflows is at version &lt;code&gt;0.x&lt;/code&gt;. Fixes land on &lt;code&gt;main&lt;/code&gt; and ship in the next release. The code and the design have not been independently reviewed or penetration-tested.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="support"&gt;Support&lt;span class="hx:absolute hx:-mt-20" id="support"&gt;&lt;/span&gt;
+&lt;a href="#support" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Smarter Workflows is a CircleCI Labs project. CircleCI support does not cover it, and field engineers handle bugs and feature requests on a best-effort basis, with no SLA. Use &lt;a href="https://github.com/CircleCI-Labs/smarter-workflows/issues" target="_blank" rel="noopener"&gt;GitHub issues&lt;/a&gt; for problems that are not security vulnerabilities.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="what-the-planner-does-with-your-credentials-and-your-repository"&gt;What the planner does with your credentials and your repository&lt;span class="hx:absolute hx:-mt-20" id="what-the-planner-does-with-your-credentials-and-your-repository"&gt;&lt;/span&gt;
+&lt;a href="#what-the-planner-does-with-your-credentials-and-your-repository" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;&lt;a href="https://circleci-labs.github.io/smarter-workflows/docs/limitations/"&gt;Limitations&lt;/a&gt; lists the known gaps in detail.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;The continuation key (&lt;code&gt;CIRCLE_CONTINUATION_KEY&lt;/code&gt;) is read only by &lt;code&gt;circleci-smarter continue&lt;/code&gt;. It never prints the key or the request body, only the status code.&lt;/li&gt;
+&lt;li&gt;A trace records the paths of the tracked files that a job read and the directories it listed, not their contents. The impact map is built from those paths.&lt;/li&gt;
+&lt;li&gt;The impact map lives in the project cache, and any branch can write a cache entry. A forged map could make the planner skip jobs. Mandatory jobs and the guardrails do not depend on the map, and every default branch run is a full run. Signing the map on the default branch is planned.&lt;/li&gt;
+&lt;li&gt;The guardrail bundle runs locally in the setup job, against the config that the planner generated. The same bundle can be enforced org-wide as a config policy.&lt;/li&gt;
+&lt;/ul&gt;</description></item></channel></rss>

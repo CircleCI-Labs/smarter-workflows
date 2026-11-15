@@ -1,0 +1,144 @@
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Smarter Workflows – Decisions</title><link>https://circleci-labs.github.io/smarter-workflows/docs/decisions/</link><description>Recent content in Decisions on Smarter Workflows</description><generator>Hugo -- gohugo.io</generator><language>en-US</language><atom:link href="https://circleci-labs.github.io/smarter-workflows/docs/decisions/index.xml" rel="self" type="application/rss+xml"/><item><title>1. Select jobs, not tests</title><link>https://circleci-labs.github.io/smarter-workflows/docs/decisions/0001-select-jobs-not-tests/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://circleci-labs.github.io/smarter-workflows/docs/decisions/0001-select-jobs-not-tests/</guid><description>
+&lt;p&gt;Date: 2026-11-13. Status: accepted.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="context"&gt;Context&lt;span class="hx:absolute hx:-mt-20" id="context"&gt;&lt;/span&gt;
+&lt;a href="#context" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Picking tests is already well served: CircleCI Smarter Testing, and the test impact tools from several other vendors. What nobody covers well on CircleCI is which &lt;em&gt;jobs&lt;/em&gt; and &lt;em&gt;workflows&lt;/em&gt; a change needs, together with their order, approvals, filters and contexts.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="decision"&gt;Decision&lt;span class="hx:absolute hx:-mt-20" id="decision"&gt;&lt;/span&gt;
+&lt;a href="#decision" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Smarter Workflows decides at the level of jobs and workflows. Inside a job it runs, test selection is left to Smarter Testing or to whatever tool the job already uses.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="consequences"&gt;Consequences&lt;span class="hx:absolute hx:-mt-20" id="consequences"&gt;&lt;/span&gt;
+&lt;a href="#consequences" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ul&gt;
+&lt;li&gt;The two layers compose: Smarter Workflows skips whole jobs, and Smarter Testing trims the tests inside the jobs that run.&lt;/li&gt;
+&lt;li&gt;The unit of everything here (impact map, plan, report) is a workflow job, never a test.&lt;/li&gt;
+&lt;/ul&gt;</description></item><item><title>2. Skip a job only when the impact map proves the change cannot reach it</title><link>https://circleci-labs.github.io/smarter-workflows/docs/decisions/0002-skip-only-when-proven/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://circleci-labs.github.io/smarter-workflows/docs/decisions/0002-skip-only-when-proven/</guid><description>
+&lt;p&gt;Date: 2026-11-13. Status: accepted (open for review).&lt;/p&gt;
+&lt;h2 data-hextra-search-id="context"&gt;Context&lt;span class="hx:absolute hx:-mt-20" id="context"&gt;&lt;/span&gt;
+&lt;a href="#context" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;A skipped job that would have failed (a miss) costs more than an extra job that passes. Path filters miss when their globs drift from what jobs really read. Learned models miss when history is thin. GitHub branch protection also waits forever on a required check whose job was skipped.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="decision"&gt;Decision&lt;span class="hx:absolute hx:-mt-20" id="decision"&gt;&lt;/span&gt;
+&lt;a href="#decision" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ol&gt;
+&lt;li&gt;Every job runs unless the planner can show that the change touches none of its inputs:
+&lt;ul&gt;
+&lt;li&gt;no changed file is among the files the job read in the last traced full run;&lt;/li&gt;
+&lt;li&gt;no added or deleted file sits in a directory the job listed.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;These always run:
+&lt;ul&gt;
+&lt;li&gt;jobs with no trace, or an incomplete trace;&lt;/li&gt;
+&lt;li&gt;mandatory jobs;&lt;/li&gt;
+&lt;li&gt;every ancestor (&lt;code&gt;requires&lt;/code&gt;) of a selected job, approvals included.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;A full run happens:
+&lt;ul&gt;
+&lt;li&gt;on the default branch and on tags;&lt;/li&gt;
+&lt;li&gt;for scheduled pipelines;&lt;/li&gt;
+&lt;li&gt;when the change touches the pipeline definition (&lt;code&gt;.circleci/**&lt;/code&gt; by default);&lt;/li&gt;
+&lt;li&gt;when there is no impact map, the diff base cannot be found, or the planner hits any error;&lt;/li&gt;
+&lt;li&gt;when the head commit asks for one.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;Every decision layer added later (history, models) can only &lt;em&gt;add&lt;/em&gt; jobs.&lt;/li&gt;
+&lt;li&gt;Every workflow the planner prunes ends in one gate job, &lt;code&gt;smarter-gate&lt;/code&gt;, which requires every selected job that will run. It is a no-op job (&lt;code&gt;type: no-op&lt;/code&gt;), so it costs no credits. So the workflow always exists and its check always reports:
+&lt;ul&gt;
+&lt;li&gt;GitHub App projects report one check per workflow, and branch protection requires that check;&lt;/li&gt;
+&lt;li&gt;with per-job statuses, branch protection requires the gate alone.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;h2 data-hextra-search-id="consequences"&gt;Consequences&lt;span class="hx:absolute hx:-mt-20" id="consequences"&gt;&lt;/span&gt;
+&lt;a href="#consequences" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ul&gt;
+&lt;li&gt;Savings come from skipping the parts of the job graph a change cannot reach, such as other services in a monorepo. Shared early jobs, like a repo-wide lint, still run.&lt;/li&gt;
+&lt;li&gt;It assumes a job&amp;rsquo;s behaviour depends on the repo files it reads. Inputs from outside the repo (the network, the time, secrets, upstream images) are covered by the full run on the default branch, by mandatory jobs, and by extra inputs a project declares by hand.&lt;/li&gt;
+&lt;li&gt;A project may already use a no-op job that nothing requires as its one required status check (a gatekeeper, such as &lt;code&gt;all-tests-passed&lt;/code&gt;). The planner always keeps it, and cuts what it waits for to the jobs that stay, or to the gate, so its check always reports and never passes early.&lt;/li&gt;
+&lt;li&gt;A job that does not run on the branch (its own &lt;code&gt;filters&lt;/code&gt; leave it out, or all the jobs it requires are left out) is never selected, even when it is mandatory. The planner does not edit the project&amp;rsquo;s filters or requirements to force a job. It leaves such a job out, and a mandatory one gets a warning. It drops a &lt;code&gt;requires&lt;/code&gt; name only when it names a job that does not run, which CircleCI ignores anyway.&lt;/li&gt;
+&lt;li&gt;Skipping a job on confidence alone, without proof, is out of scope until shadow-mode data shows recall of at least 99% for that job.&lt;/li&gt;
+&lt;/ul&gt;</description></item><item><title>3. Build the impact map from file-access traces of full runs on the default branch</title><link>https://circleci-labs.github.io/smarter-workflows/docs/decisions/0003-impact-map-from-traces-on-main/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://circleci-labs.github.io/smarter-workflows/docs/decisions/0003-impact-map-from-traces-on-main/</guid><description>
+&lt;p&gt;Date: 2026-11-13. Status: accepted.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="context"&gt;Context&lt;span class="hx:absolute hx:-mt-20" id="context"&gt;&lt;/span&gt;
+&lt;a href="#context" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Smarter Testing builds an impact map on the default branch, then uses it on other branches to pick the tests a change affects. This project wants the same loop for jobs:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;a full run on the default branch rebuilds the map;&lt;/li&gt;
+&lt;li&gt;branches use it;&lt;/li&gt;
+&lt;li&gt;a merge triggers the next full run, which rebuilds it again.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;A job&amp;rsquo;s equivalent of test coverage is the set of repo files it reads. There are several ways to record that:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;Hand-written globs&lt;/strong&gt; go stale.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Language analyzers&lt;/strong&gt; need one per ecosystem, and miss scripts and config files.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;strace&lt;/code&gt; and &lt;code&gt;LD_PRELOAD&lt;/code&gt;&lt;/strong&gt; are slow, and Go binaries bypass libc.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;fanotify and eBPF&lt;/strong&gt; need privileges that Docker jobs do not have.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Access times (atime)&lt;/strong&gt; cost nothing. Under the usual &lt;code&gt;relatime&lt;/code&gt; mount option, the first read after a write always updates a file&amp;rsquo;s atime. A freshly checked-out file has atime equal to mtime, so a file that was read has atime greater than mtime.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 data-hextra-search-id="decision"&gt;Decision&lt;span class="hx:absolute hx:-mt-20" id="decision"&gt;&lt;/span&gt;
+&lt;a href="#decision" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ol&gt;
+&lt;li&gt;On full runs of the default branch, the planner adds two steps to every job of the pruned workflow:
+&lt;ul&gt;
+&lt;li&gt;Right after checkout, a reset step sets the atime of every tracked file and directory to the epoch, because checkout itself reads every file. It also probes that atime works on that filesystem.&lt;/li&gt;
+&lt;li&gt;A post-step records the tracked files and the directories whose atime has since moved past the epoch: the ones the job read or listed.
+A job whose filesystem fails the probe gets an incomplete trace.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;A final job merges the traces into the impact map.&lt;/li&gt;
+&lt;li&gt;It saves the map to the project cache under a key derived from the commit SHA.&lt;/li&gt;
+&lt;li&gt;On other branches, the planner restores the map for the merge-base commit, falling back to the newest map.&lt;/li&gt;
+&lt;li&gt;Only green full runs produce a map.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;h2 data-hextra-search-id="consequences"&gt;Consequences&lt;span class="hx:absolute hx:-mt-20" id="consequences"&gt;&lt;/span&gt;
+&lt;a href="#consequences" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ul&gt;
+&lt;li&gt;No ML, no per-language code, no hand-written globs. The map explains itself: &amp;ldquo;this job read these files&amp;rdquo;.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;noatime&lt;/code&gt; filesystems, busybox &lt;code&gt;find&lt;/code&gt; and non-Linux executors give incomplete traces, so those jobs always run.&lt;/li&gt;
+&lt;li&gt;Because a read is &amp;ldquo;atime past the epoch&amp;rdquo;, an input that is read and then rewritten in the same job (a formatter run with &lt;code&gt;-w&lt;/code&gt;) still counts as read. Traces still miss inputs from outside the repo: see ADR 2 for how those are covered.&lt;/li&gt;
+&lt;li&gt;Cache entries can expire (default retention) and can be written by any branch. A missing map means a full run. Mandatory jobs and guardrails do not depend on the map. Signing the map on the default branch is planned hardening.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 data-hextra-search-id="verification-2026-11-13"&gt;Verification (2026-11-13)&lt;span class="hx:absolute hx:-mt-20" id="verification-2026-11-13"&gt;&lt;/span&gt;
+&lt;a href="#verification-2026-11-13" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Tested on CircleCI&amp;rsquo;s docker executor (&lt;code&gt;cimg/base&lt;/code&gt;, overlay, relatime) and machine executor (&lt;code&gt;ubuntu-2404&lt;/code&gt;, ext4, relatime):&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;After the &lt;code&gt;checkout&lt;/code&gt; step, 43 of 44 tracked files already had atime newer than mtime, because checkout reads them.&lt;/li&gt;
+&lt;li&gt;After the reset step, a job that ran &lt;code&gt;cat README.md; ls docs&lt;/code&gt; was traced as exactly &lt;code&gt;README.md&lt;/code&gt; and &lt;code&gt;docs&lt;/code&gt;.&lt;/li&gt;
+&lt;/ul&gt;</description></item><item><title>4. The catalog is native CircleCI config</title><link>https://circleci-labs.github.io/smarter-workflows/docs/decisions/0004-catalog-is-native-circleci-config/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://circleci-labs.github.io/smarter-workflows/docs/decisions/0004-catalog-is-native-circleci-config/</guid><description>
+&lt;p&gt;Date: 2026-11-13. Status: accepted.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="context"&gt;Context&lt;span class="hx:absolute hx:-mt-20" id="context"&gt;&lt;/span&gt;
+&lt;a href="#context" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;The first idea was a new &lt;code&gt;catalog.yml&lt;/code&gt; with metadata on each job. That is one more format to learn and keep in sync. The jobs, commands, executors and orbs a team uses already live in its CircleCI config, or in orbs it shares.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="decision"&gt;Decision&lt;span class="hx:absolute hx:-mt-20" id="decision"&gt;&lt;/span&gt;
+&lt;a href="#decision" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;Select mode&lt;/strong&gt; (v0.1): the catalog is the project&amp;rsquo;s own full continuation config (&lt;code&gt;.circleci/continue.yml&lt;/code&gt;). The planner prunes those workflows and keeps the order, approvals, filters and contexts the team wrote.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Planner settings&lt;/strong&gt; (mode, mandatory jobs, full-run paths, extra inputs) are parameters of the orb job, not a new file.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Shared catalogs&lt;/strong&gt; are orbs, pinned to exact versions: the only job-level units that cannot change underneath you.
+&lt;ul&gt;
+&lt;li&gt;URL orbs are allowed only when pinned to a commit SHA.&lt;/li&gt;
+&lt;li&gt;CircleCI functions are step-level units, so they are building blocks for compose mode, not jobs.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Compose mode&lt;/strong&gt; (later): an agent wires jobs from a catalog orb (jobs, commands, executors) into workflows, and the guardrails bound what it can produce.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 data-hextra-search-id="consequences"&gt;Consequences&lt;span class="hx:absolute hx:-mt-20" id="consequences"&gt;&lt;/span&gt;
+&lt;a href="#consequences" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ul&gt;
+&lt;li&gt;Adoption means moving the pipeline into &lt;code&gt;continue.yml&lt;/code&gt; and adding one setup job. No new schema.&lt;/li&gt;
+&lt;li&gt;What the planner generates reads like the team&amp;rsquo;s own config, minus the skipped jobs, plus the gate job.&lt;/li&gt;
+&lt;/ul&gt;</description></item><item><title>5. A Go binary that is also a circleci CLI extension</title><link>https://circleci-labs.github.io/smarter-workflows/docs/decisions/0005-go-cli-extension/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://circleci-labs.github.io/smarter-workflows/docs/decisions/0005-go-cli-extension/</guid><description>
+&lt;p&gt;Date: 2026-11-13. Status: accepted.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="context"&gt;Context&lt;span class="hx:absolute hx:-mt-20" id="context"&gt;&lt;/span&gt;
+&lt;a href="#context" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;The tool has to be easy to adopt in production if product teams like it. The &lt;code&gt;circleci&lt;/code&gt; CLI dispatches &lt;code&gt;circleci &amp;lt;name&amp;gt;&lt;/code&gt; to a binary named &lt;code&gt;circleci-&amp;lt;name&amp;gt;&lt;/code&gt;; Smarter Testing&amp;rsquo;s &lt;code&gt;testsuite&lt;/code&gt; is one such extension. CircleCI&amp;rsquo;s policy engine is a public Go library (&lt;code&gt;circle-policy-agent&lt;/code&gt;), so a Go binary can evaluate policies exactly the way the service does.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="decision"&gt;Decision&lt;span class="hx:absolute hx:-mt-20" id="decision"&gt;&lt;/span&gt;
+&lt;a href="#decision" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Ship a single static Go binary, &lt;code&gt;circleci-smarter&lt;/code&gt;, that can be called directly or as &lt;code&gt;circleci smarter&lt;/code&gt;. It embeds the trace collector script, and links &lt;code&gt;circle-policy-agent&lt;/code&gt; for the pre-flight. The orb downloads a pinned, checksummed release. Until releases exist, it builds from source.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="consequences"&gt;Consequences&lt;span class="hx:absolute hx:-mt-20" id="consequences"&gt;&lt;/span&gt;
+&lt;a href="#consequences" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ul&gt;
+&lt;li&gt;One language and one binary, with no runtime dependencies in the planner job.&lt;/li&gt;
+&lt;li&gt;The trace collector stays a small POSIX shell script, so jobs need no extra binary.&lt;/li&gt;
+&lt;/ul&gt;</description></item><item><title>6. Every plan passes the guardrails before it continues: check, repair, or fall back</title><link>https://circleci-labs.github.io/smarter-workflows/docs/decisions/0006-preflight-repair-then-full/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://circleci-labs.github.io/smarter-workflows/docs/decisions/0006-preflight-repair-then-full/</guid><description>
+&lt;p&gt;Date: 2026-11-13. Status: accepted.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="context"&gt;Context&lt;span class="hx:absolute hx:-mt-20" id="context"&gt;&lt;/span&gt;
+&lt;a href="#context" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;CircleCI config policies also evaluate the continuation config. Server-side enforcement needs the Scale plan, and a continuation the server rejects fails the pipeline after the setup job has already spent its one continuation.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="decision"&gt;Decision&lt;span class="hx:absolute hx:-mt-20" id="decision"&gt;&lt;/span&gt;
+&lt;a href="#decision" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ol&gt;
+&lt;li&gt;The planner runs the project&amp;rsquo;s policy bundle locally, against the config it generated, using &lt;code&gt;circle-policy-agent&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;Policies in the bundle tag violations the planner can fix with a machine-readable code, e.g. &lt;code&gt;[smarter:require-job=security-scan]&lt;/code&gt;. The planner applies the fix and plans again, up to 3 times.&lt;/li&gt;
+&lt;li&gt;A violation it cannot fix turns the plan into a full run, which is checked again.&lt;/li&gt;
+&lt;li&gt;If even the full config fails, the setup job fails with the violations listed, without continuing.&lt;/li&gt;
+&lt;li&gt;The same bundle can be pushed as org policy, limited to the projects that opt in, starting with soft-fail.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;h2 data-hextra-search-id="consequences"&gt;Consequences&lt;span class="hx:absolute hx:-mt-20" id="consequences"&gt;&lt;/span&gt;
+&lt;a href="#consequences" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ul&gt;
+&lt;li&gt;Guardrails work on every plan, Scale or not. On Scale they are also enforced server-side.&lt;/li&gt;
+&lt;li&gt;Policies cannot read parameters as values, so the planner emits literal config and never adds parameters.&lt;/li&gt;
+&lt;li&gt;Compose mode will reuse the same loop, with an agent doing the repair.&lt;/li&gt;
+&lt;/ul&gt;</description></item></channel></rss>

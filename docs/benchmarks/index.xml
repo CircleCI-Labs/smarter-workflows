@@ -1,0 +1,267 @@
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Smarter Workflows – Benchmarks</title><link>https://circleci-labs.github.io/smarter-workflows/docs/benchmarks/</link><description>Recent content in Benchmarks on Smarter Workflows</description><generator>Hugo -- gohugo.io</generator><language>en-US</language><atom:link href="https://circleci-labs.github.io/smarter-workflows/docs/benchmarks/index.xml" rel="self" type="application/rss+xml"/><item><title>Performance benchmarks</title><link>https://circleci-labs.github.io/smarter-workflows/docs/benchmarks/benchmarks-perf/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://circleci-labs.github.io/smarter-workflows/docs/benchmarks/benchmarks-perf/</guid><description>
+&lt;p&gt;Snapshot of planner, config I/O and trace-script performance on one machine. Regenerate before comparing across releases.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="method"&gt;Method&lt;span class="hx:absolute hx:-mt-20" id="method"&gt;&lt;/span&gt;
+&lt;a href="#method" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;&lt;strong&gt;Planner (&lt;code&gt;testing.B&lt;/code&gt;)&lt;/strong&gt; — Package &lt;code&gt;internal/planner/benchgen&lt;/code&gt; builds synthetic &lt;code&gt;continue.yml&lt;/code&gt; files at 10, 100, 500 and 2000 workflow jobs in three shapes (wide fan-out, deep chain, diamond), with matrix entries and approvals every 7th / 11th job. Impact maps hold 100 or 10,000 repo-relative files per job; diffs list 1, 50 or 1000 changed paths. Benchmarks call &lt;code&gt;planner.Run&lt;/code&gt; in select mode with an in-memory repo (no git). &lt;code&gt;BenchmarkPlanLatency2000&lt;/code&gt; reports plan wall-time p95 at 2000 jobs with a 10k-file map (fan-out, 50-file diff).&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Config (&lt;code&gt;testing.B&lt;/code&gt;)&lt;/strong&gt; — &lt;code&gt;BenchmarkConfigParse&lt;/code&gt; and &lt;code&gt;BenchmarkConfigEmit&lt;/code&gt; on the same generated YAML.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Trace scripts&lt;/strong&gt; — &lt;code&gt;scripts/bench/trace-bench.sh&lt;/code&gt; builds temporary git repos with 1k, 10k and 100k tracked empty files under &lt;code&gt;f/&lt;/code&gt;, runs &lt;code&gt;reset-atime.sh&lt;/code&gt; then &lt;code&gt;collect-trace.sh&lt;/code&gt;, and records wall seconds.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Driver&lt;/strong&gt; — &lt;code&gt;sh scripts/bench/perf.sh&lt;/code&gt; runs all of the above and prints Markdown tables.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="targets-2026-11-15"&gt;Targets (2026-11-15)&lt;span class="hx:absolute hx:-mt-20" id="targets-2026-11-15"&gt;&lt;/span&gt;
+&lt;a href="#targets-2026-11-15" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;Target&lt;/th&gt;
+&lt;th&gt;Result&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;Plan p95 &amp;lt; 2 s at 2000 jobs and 10k-file maps&lt;/td&gt;
+&lt;td&gt;&lt;strong&gt;0.166 s&lt;/strong&gt; p95 (&lt;code&gt;BenchmarkPlanLatency2000&lt;/code&gt;)&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;collect-trace&lt;/code&gt; &amp;lt; 10 s at 100k tracked files&lt;/td&gt;
+&lt;td&gt;&lt;strong&gt;0.355 s&lt;/strong&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;Both targets passed on this run. Largest single-op planner cases (2000 jobs, 10k-file map) are ~0.27–0.50 s per plan in &lt;code&gt;BenchmarkPlan/&lt;/code&gt; (see full table from &lt;code&gt;perf.sh&lt;/code&gt;).&lt;/p&gt;
+&lt;h2 data-hextra-search-id="impact-map-json-decode"&gt;Impact map JSON decode&lt;span class="hx:absolute hx:-mt-20" id="impact-map-json-decode"&gt;&lt;/span&gt;
+&lt;a href="#impact-map-json-decode" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Decoding a v1 impact map at 2000 jobs × 10k files per job is about &lt;strong&gt;3.5 s&lt;/strong&gt; in &lt;code&gt;BenchmarkImpactMapParse&lt;/code&gt; (JSON &lt;code&gt;encoding/json&lt;/code&gt;, not used on the hot plan path when the map is already loaded). A &lt;strong&gt;compact map format v2&lt;/strong&gt; that another worker is building targets that cost. Separately, hardening work capped &lt;strong&gt;v1 map files at 16 MiB&lt;/strong&gt;; maps larger than that are rejected today and the planner falls back to a full run.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="environment"&gt;Environment&lt;span class="hx:absolute hx:-mt-20" id="environment"&gt;&lt;/span&gt;
+&lt;a href="#environment" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;Field&lt;/th&gt;
+&lt;th&gt;Value&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;CPU&lt;/td&gt;
+&lt;td&gt;Intel(R) Xeon(R) 6975P-C&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Cores&lt;/td&gt;
+&lt;td&gt;16&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Go&lt;/td&gt;
+&lt;td&gt;go1.27.4 linux/amd64&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h2 data-hextra-search-id="trace-scripts-seconds"&gt;Trace scripts (seconds)&lt;span class="hx:absolute hx:-mt-20" id="trace-scripts-seconds"&gt;&lt;/span&gt;
+&lt;a href="#trace-scripts-seconds" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th style="text-align: right"&gt;Tracked files&lt;/th&gt;
+&lt;th style="text-align: right"&gt;reset-atime&lt;/th&gt;
+&lt;th style="text-align: right"&gt;collect-trace&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td style="text-align: right"&gt;1,000&lt;/td&gt;
+&lt;td style="text-align: right"&gt;1.060&lt;/td&gt;
+&lt;td style="text-align: right"&gt;0.032&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td style="text-align: right"&gt;10,000&lt;/td&gt;
+&lt;td style="text-align: right"&gt;1.122&lt;/td&gt;
+&lt;td style="text-align: right"&gt;0.063&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td style="text-align: right"&gt;100,000&lt;/td&gt;
+&lt;td style="text-align: right"&gt;1.464&lt;/td&gt;
+&lt;td style="text-align: right"&gt;0.355&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h2 data-hextra-search-id="planner-highlights-2000-jobs-nsop"&gt;Planner highlights (2000 jobs, ns/op)&lt;span class="hx:absolute hx:-mt-20" id="planner-highlights-2000-jobs-nsop"&gt;&lt;/span&gt;
+&lt;a href="#planner-highlights-2000-jobs-nsop" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;Benchmark&lt;/th&gt;
+&lt;th style="text-align: right"&gt;ns/op&lt;/th&gt;
+&lt;th style="text-align: right"&gt;allocs/op&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;fanout/map100/diff1&lt;/td&gt;
+&lt;td style="text-align: right"&gt;117,497,799&lt;/td&gt;
+&lt;td style="text-align: right"&gt;730,285&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;fanout/map10000/diff1&lt;/td&gt;
+&lt;td style="text-align: right"&gt;260,066,110&lt;/td&gt;
+&lt;td style="text-align: right"&gt;744,178&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;fanout/map10000/diff1000&lt;/td&gt;
+&lt;td style="text-align: right"&gt;391,603,013&lt;/td&gt;
+&lt;td style="text-align: right"&gt;749,057&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;chain/map10000/diff1000&lt;/td&gt;
+&lt;td style="text-align: right"&gt;503,390,971&lt;/td&gt;
+&lt;td style="text-align: right"&gt;863,957&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;diamond/map10000/diff1000&lt;/td&gt;
+&lt;td style="text-align: right"&gt;389,229,904&lt;/td&gt;
+&lt;td style="text-align: right"&gt;777,106&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h2 data-hextra-search-id="config-io-highlights-2000-jobs-nsop"&gt;Config I/O highlights (2000 jobs, ns/op)&lt;span class="hx:absolute hx:-mt-20" id="config-io-highlights-2000-jobs-nsop"&gt;&lt;/span&gt;
+&lt;a href="#config-io-highlights-2000-jobs-nsop" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;Benchmark&lt;/th&gt;
+&lt;th style="text-align: right"&gt;ns/op&lt;/th&gt;
+&lt;th style="text-align: right"&gt;allocs/op&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;ConfigParse/fanout&lt;/td&gt;
+&lt;td style="text-align: right"&gt;23,449,701&lt;/td&gt;
+&lt;td style="text-align: right"&gt;239,684&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;ConfigEmit/fanout&lt;/td&gt;
+&lt;td style="text-align: right"&gt;36,943,698&lt;/td&gt;
+&lt;td style="text-align: right"&gt;49,867&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h2 data-hextra-search-id="how-to-rerun"&gt;How to rerun&lt;span class="hx:absolute hx:-mt-20" id="how-to-rerun"&gt;&lt;/span&gt;
+&lt;a href="#how-to-rerun" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;From the repository root (expect several minutes for the full Go benchmark matrix):&lt;/p&gt;
+&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-sh" data-lang="sh"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;sh scripts/bench/perf.sh&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
+&lt;button
+class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+title="Copy code"
+aria-label="Copy code"
+data-copied-label="Copied!"
+&gt;
+&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;p&gt;Go only:&lt;/p&gt;
+&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-sh" data-lang="sh"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;go &lt;span class="nb"&gt;test&lt;/span&gt; -run&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;^$&amp;#39;&lt;/span&gt; -bench&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;BenchmarkPlan/|BenchmarkConfig|BenchmarkImpactMapParse&amp;#39;&lt;/span&gt; -benchmem ./internal/planner/... ./internal/config/...&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
+&lt;button
+class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+title="Copy code"
+aria-label="Copy code"
+data-copied-label="Copied!"
+&gt;
+&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;p&gt;Trace only:&lt;/p&gt;
+&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-sh" data-lang="sh"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;sh scripts/bench/trace-bench.sh&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
+&lt;button
+class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+title="Copy code"
+aria-label="Copy code"
+data-copied-label="Copied!"
+&gt;
+&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;</description></item><item><title>Backtest</title><link>https://circleci-labs.github.io/smarter-workflows/docs/benchmarks/benchmarks-backtest/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://circleci-labs.github.io/smarter-workflows/docs/benchmarks/benchmarks-backtest/</guid><description>
+&lt;p&gt;The &lt;code&gt;backtest&lt;/code&gt; command replays historical CI runs against &lt;strong&gt;today&amp;rsquo;s&lt;/strong&gt; impact map and reports how often select mode would still have run failing jobs (recall) and how much job time it would have skipped (savings).&lt;/p&gt;
+&lt;h2 data-hextra-search-id="method"&gt;Method&lt;span class="hx:absolute hx:-mt-20" id="method"&gt;&lt;/span&gt;
+&lt;a href="#method" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;For each record in a history file, the planner runs in &lt;strong&gt;select mode&lt;/strong&gt; with the recorded &lt;code&gt;base&lt;/code&gt;, &lt;code&gt;commit&lt;/code&gt;, &lt;code&gt;branch&lt;/code&gt;, and &lt;code&gt;changed&lt;/code&gt; paths. That reuses &lt;code&gt;internal/planner&lt;/code&gt; exactly as &lt;code&gt;plan --mode select&lt;/code&gt; does; backtest does not duplicate selection logic.&lt;/p&gt;
+&lt;p&gt;For each job that ran in CI:&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;Outcome&lt;/th&gt;
+&lt;th&gt;Meaning&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Caught&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;The job failed and select mode would still run it.&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Miss&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;The job failed and select mode would skip it.&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;strong&gt;Flaky&lt;/strong&gt;&lt;/td&gt;
+&lt;td&gt;The job failed then passed on a rerun of the same commit; excluded from recall.&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;&lt;strong&gt;Recall&lt;/strong&gt; is &lt;code&gt;caught / (caught + misses)&lt;/code&gt; over non-flaky failures.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Savings&lt;/strong&gt; sums &lt;code&gt;duration_s&lt;/code&gt; over jobs that ran historically but would be skipped, divided by total recorded job time.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="history-file-format"&gt;History file format&lt;span class="hx:absolute hx:-mt-20" id="history-file-format"&gt;&lt;/span&gt;
+&lt;a href="#history-file-format" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;A JSON array of commits:&lt;/p&gt;
+&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-json" data-lang="json"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="p"&gt;[&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="nt"&gt;&amp;#34;commit&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;sha&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="nt"&gt;&amp;#34;base&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;merge-base sha&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="nt"&gt;&amp;#34;branch&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;feature/x&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="nt"&gt;&amp;#34;changed&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="p"&gt;[{&lt;/span&gt; &lt;span class="nt"&gt;&amp;#34;path&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;pkg/foo.go&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="nt"&gt;&amp;#34;status&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;M&amp;#34;&lt;/span&gt; &lt;span class="p"&gt;}],&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="nt"&gt;&amp;#34;jobs&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="p"&gt;[&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="p"&gt;{&lt;/span&gt; &lt;span class="nt"&gt;&amp;#34;name&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;go-test&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="nt"&gt;&amp;#34;status&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="s2"&gt;&amp;#34;failed&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="nt"&gt;&amp;#34;duration_s&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt; &lt;span class="mf"&gt;120.5&lt;/span&gt; &lt;span class="p"&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="p"&gt;]&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="p"&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="p"&gt;]&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
+&lt;button
+class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+title="Copy code"
+aria-label="Copy code"
+data-copied-label="Copied!"
+&gt;
+&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;p&gt;Build a history file with &lt;a href="https://github.com/CircleCI-Labs/smarter-workflows/blob/main/scripts/bench/fetch-history.sh" target="_blank" rel="noopener"&gt;&lt;code&gt;scripts/bench/fetch-history.sh&lt;/code&gt;&lt;/a&gt; (needs a CircleCI API token and a git clone). Fixture parsing is tested by &lt;a href="https://github.com/CircleCI-Labs/smarter-workflows/blob/main/scripts/bench/test-parse.sh" target="_blank" rel="noopener"&gt;&lt;code&gt;scripts/bench/test-parse.sh&lt;/code&gt;&lt;/a&gt;.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="command"&gt;Command&lt;span class="hx:absolute hx:-mt-20" id="command"&gt;&lt;/span&gt;
+&lt;a href="#command" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-sh" data-lang="sh"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;circleci-smarter backtest &lt;span class="se"&gt;\
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; --history history.json &lt;span class="se"&gt;\
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; --map impact-map.json &lt;span class="se"&gt;\
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; --config .circleci/continue.yml &lt;span class="se"&gt;\
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; --workflow ci &lt;span class="se"&gt;\
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; --mandatory security-scan &lt;span class="se"&gt;\
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; --format md&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
+&lt;button
+class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+title="Copy code"
+aria-label="Copy code"
+data-copied-label="Copied!"
+&gt;
+&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;p&gt;&lt;code&gt;--format json&lt;/code&gt; writes the machine-readable report (used for golden tests).&lt;/p&gt;
+&lt;h2 data-hextra-search-id="scheduled-benchmark-on-main"&gt;Scheduled benchmark on main&lt;span class="hx:absolute hx:-mt-20" id="scheduled-benchmark-on-main"&gt;&lt;/span&gt;
+&lt;a href="#scheduled-benchmark-on-main" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;The &lt;code&gt;benchmark&lt;/code&gt; workflow in &lt;code&gt;.circleci/continue.yml&lt;/code&gt; runs when &lt;code&gt;pipeline.trigger.type&lt;/code&gt; is &lt;code&gt;schedule&lt;/code&gt; (the schedule is configured on the project in CircleCI, not in this file). It uses the &lt;code&gt;smarter-workflows-ai&lt;/code&gt; context so &lt;code&gt;fetch-history.sh&lt;/code&gt; can call the API with &lt;code&gt;&amp;lt;&amp;lt; pipeline.project.slug &amp;gt;&amp;gt;&lt;/code&gt; (GitHub App projects use the &lt;code&gt;circleci/org/project&lt;/code&gt; form). It restores the latest impact map cache, fetches the last 200 &lt;code&gt;ci&lt;/code&gt; pipelines, runs backtest, and stores &lt;code&gt;backtest.md&lt;/code&gt; and &lt;code&gt;backtest.json&lt;/code&gt; as artifacts.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="limits-of-replay"&gt;Limits of replay&lt;span class="hx:absolute hx:-mt-20" id="limits-of-replay"&gt;&lt;/span&gt;
+&lt;a href="#limits-of-replay" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;One map for all commits.&lt;/strong&gt; The map reflects the repo layout at its revision (usually recent &lt;code&gt;main&lt;/code&gt;). Older commits that touched different paths or job names are approximate.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Changed files only.&lt;/strong&gt; History carries a file list, not full git trees. Adds/deletes may miss directory moves the live planner would see via &lt;code&gt;git ls-tree&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Workflow drift.&lt;/strong&gt; Jobs removed from the config or renamed are ignored in recall; savings count only jobs present in both history and the current workflow.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;No guardrail replay.&lt;/strong&gt; Backtest does not pass &lt;code&gt;--policy-bundle&lt;/code&gt;; historical guardrail repairs are not simulated.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Flaky detection&lt;/strong&gt; depends on CircleCI job rerun metadata when history is mined; hand-written fixtures set &lt;code&gt;&amp;quot;flaky&amp;quot;: true&lt;/code&gt; explicitly.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Use backtest to compare maps and tuning over time, not as a guarantee for every past commit.&lt;/p&gt;</description></item></channel></rss>

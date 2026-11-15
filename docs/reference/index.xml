@@ -1,0 +1,821 @@
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Smarter Workflows – Reference</title><link>https://circleci-labs.github.io/smarter-workflows/docs/reference/</link><description>Recent content in Reference on Smarter Workflows</description><generator>Hugo -- gohugo.io</generator><language>en-US</language><atom:link href="https://circleci-labs.github.io/smarter-workflows/docs/reference/index.xml" rel="self" type="application/rss+xml"/><item><title>Spec v0.1</title><link>https://circleci-labs.github.io/smarter-workflows/docs/reference/spec/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://circleci-labs.github.io/smarter-workflows/docs/reference/spec/</guid><description>
+&lt;p&gt;Status: building. Decisions: &lt;a href="https://circleci-labs.github.io/smarter-workflows/docs/decisions/"&gt;docs/adr/&lt;/a&gt;. Words: &lt;a href="https://circleci-labs.github.io/smarter-workflows/docs/reference/glossary/"&gt;Glossary&lt;/a&gt;.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="goal"&gt;Goal&lt;span class="hx:absolute hx:-mt-20" id="goal"&gt;&lt;/span&gt;
+&lt;a href="#goal" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;A setup workflow runs the &lt;code&gt;circleci-smarter&lt;/code&gt; planner. For a branch, the planner prunes the planned workflow of &lt;code&gt;.circleci/continue.yml&lt;/code&gt; down to the jobs the change can reach. It checks the result against the guardrails and continues the pipeline. On the default branch it runs everything, traces each job&amp;rsquo;s file reads, and rebuilds the impact map.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="not-in-v01"&gt;Not in v0.1&lt;span class="hx:absolute hx:-mt-20" id="not-in-v01"&gt;&lt;/span&gt;
+&lt;a href="#not-in-v01" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ul&gt;
+&lt;li&gt;History mining and learned rules.&lt;/li&gt;
+&lt;li&gt;Model deciders (LLMs or hosted decision models).&lt;/li&gt;
+&lt;li&gt;Compose mode.&lt;/li&gt;
+&lt;li&gt;Signing the map.&lt;/li&gt;
+&lt;li&gt;Multi-workflow pruning (other workflows pass through with the same meaning).&lt;/li&gt;
+&lt;li&gt;Matrix expansion (matrix entries always run).&lt;/li&gt;
+&lt;li&gt;Looking inside a job group (an entry that names one always runs, as one unit).&lt;/li&gt;
+&lt;li&gt;Expression filters (they are reported and left out of the gate).&lt;/li&gt;
+&lt;li&gt;Chunk sidecar integration.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 data-hextra-search-id="layout"&gt;Layout&lt;span class="hx:absolute hx:-mt-20" id="layout"&gt;&lt;/span&gt;
+&lt;a href="#layout" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;div&gt;&lt;pre&gt;&lt;code&gt;cmd/circleci-smarter/ main.go (dispatch) &amp;#43; one file per command, each registering itself in init()
+internal/config/ parse, prune, inject and emit CircleCI YAML (yaml.Node, so order and comments are kept)
+internal/diff/ base resolution (merge-base), changed files
+internal/impactmap/ map format, trace TSV parsing, `map build`
+internal/planner/ the selection algorithm, plan, the gate and the trace/map job injection; the layout check
+internal/catalog/ the catalog JSON of a workflow (`catalog`)
+internal/pipelineparams/ JSON pipeline parameter files for plan and continue
+internal/report/ plan.json and plan.md
+internal/tracescript/ the embedded collect-trace.sh (go:embed)
+internal/policy/ local evaluation with circle-policy-agent; repair codes
+internal/continuation/ POST /api/v2/pipeline/continue
+policies/ the Rego guardrail bundle &amp;#43; tests
+orb/src/ orb-tools layout: commands install, collect-trace; job plan; scripts/
+.circleci/ config.yml (setup, dogfood) &amp;#43; continue.yml (this repo&amp;#39;s full pipeline)
+examples/monorepo/ an example continue.yml, impact map and scenarios with golden plans&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
+&lt;button
+class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+title="Copy code"
+aria-label="Copy code"
+data-copied-label="Copied!"
+&gt;
+&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;h2 data-hextra-search-id="cli-contract-circleci-smarter-command"&gt;CLI contract (&lt;code&gt;circleci-smarter &amp;lt;command&amp;gt;&lt;/code&gt;)&lt;span class="hx:absolute hx:-mt-20" id="cli-contract-circleci-smarter-command"&gt;&lt;/span&gt;
+&lt;a href="#cli-contract-circleci-smarter-command" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Exit codes for all commands:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;0: ok;&lt;/li&gt;
+&lt;li&gt;1: fatal error;&lt;/li&gt;
+&lt;li&gt;2: usage error;&lt;/li&gt;
+&lt;li&gt;3: the guardrails failed and the pipeline must not continue (&lt;code&gt;plan&lt;/code&gt;, &lt;code&gt;policy check&lt;/code&gt;), or the layout has errors (&lt;code&gt;layout check&lt;/code&gt;).&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 data-hextra-search-id="base"&gt;&lt;code&gt;base&lt;/code&gt;&lt;span class="hx:absolute hx:-mt-20" id="base"&gt;&lt;/span&gt;
+&lt;a href="#base" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;Prints the diff base SHA for the current checkout, or prints nothing (exit 0) when the branch gets a full run.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Flags: &lt;code&gt;--default-branch&lt;/code&gt; (default &lt;code&gt;main&lt;/code&gt;) and &lt;code&gt;--branch&lt;/code&gt; (default &lt;code&gt;$CIRCLE_BRANCH&lt;/code&gt;).&lt;/li&gt;
+&lt;li&gt;The base is &lt;code&gt;git merge-base origin/&amp;lt;default&amp;gt; HEAD&lt;/code&gt;. Run &lt;code&gt;git fetch origin &amp;lt;default&amp;gt;&lt;/code&gt; first when &lt;code&gt;origin/&amp;lt;default&amp;gt;&lt;/code&gt; is missing.&lt;/li&gt;
+&lt;li&gt;On the default branch, on a tag (&lt;code&gt;$CIRCLE_TAG&lt;/code&gt;), or on any git failure, print nothing.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 data-hextra-search-id="plan"&gt;&lt;code&gt;plan&lt;/code&gt;&lt;span class="hx:absolute hx:-mt-20" id="plan"&gt;&lt;/span&gt;
+&lt;a href="#plan" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h3&gt;&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;Flag&lt;/th&gt;
+&lt;th&gt;Default&lt;/th&gt;
+&lt;th&gt;Meaning&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;--config&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;.circleci/continue.yml&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;the full continuation config (the catalog)&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;--workflow&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;the only workflow&lt;/td&gt;
+&lt;td&gt;the workflow to plan; an error if the config has several and none is named&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;--map&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;/tmp/smarter/impact-map.json&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;the impact map; a missing or invalid map means a full run&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;--base&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;computed as &lt;code&gt;base&lt;/code&gt; does&lt;/td&gt;
+&lt;td&gt;the diff base&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;--head&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;HEAD&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;--branch&lt;/code&gt;, &lt;code&gt;--tag&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;$CIRCLE_BRANCH&lt;/code&gt;, &lt;code&gt;$CIRCLE_TAG&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;--default-branch&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;main&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;--trigger-type&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;empty&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;schedule&lt;/code&gt; means a full run&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;--mode&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;shadow&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;shadow&lt;/code&gt; or &lt;code&gt;select&lt;/code&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;--mandatory&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;empty&lt;/td&gt;
+&lt;td&gt;comma-separated job names&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;--full-run-paths&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;.circleci/**&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;comma-separated globs (doublestar); any match means a full run&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;--extra-inputs&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;empty&lt;/td&gt;
+&lt;td&gt;declared inputs, &lt;code&gt;job=glob|glob,job2=glob&lt;/code&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;--ignore-paths&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;empty&lt;/td&gt;
+&lt;td&gt;globs that never select a job (they still count for &lt;code&gt;--full-run-paths&lt;/code&gt;)&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;--force-full&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;false&lt;/td&gt;
+&lt;td&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;--trace&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;auto&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;auto&lt;/code&gt;, &lt;code&gt;on&lt;/code&gt; or &lt;code&gt;off&lt;/code&gt;; &lt;code&gt;auto&lt;/code&gt; means on for full runs on the default branch&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;--trace-orb-jobs&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;false&lt;/td&gt;
+&lt;td&gt;also trace orb jobs (assumes their executor is Linux)&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;--gate-job&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;smarter-gate&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;the name of the gate job, which is a no-op job (step 6)&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;--map-image&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;a pinned &lt;code&gt;cimg/base:&amp;lt;yyyy.mm&amp;gt;&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;the docker image of the &lt;code&gt;smarter-impact-map&lt;/code&gt; job (step 8). The gate has no image&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;--gate-image&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;the same&lt;/td&gt;
+&lt;td&gt;deprecated alias of &lt;code&gt;--map-image&lt;/code&gt;: the flag used to set the image of the gate and the map job, and it still sets the map job&amp;rsquo;s. It prints a warning&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;--map-key-prefix&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;smarter-impact-v1&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;the start of the cache key the map job saves the impact map under, &lt;code&gt;&amp;lt;prefix&amp;gt;-&amp;lt;checksum of the commit&amp;gt;&lt;/code&gt;; letters, digits, &lt;code&gt;.&lt;/code&gt;, &lt;code&gt;_&lt;/code&gt; and &lt;code&gt;-&lt;/code&gt;. Pipelines of one project share its cache, so give each its own, and restore with the same prefix. Restore keys match by prefix: no prefix may start with another one plus a dash&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;--policy-bundle&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;empty&lt;/td&gt;
+&lt;td&gt;run the pre-flight and repair loop (ADR 6)&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;--policy-meta&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;built from env&lt;/td&gt;
+&lt;td&gt;JSON passed as &lt;code&gt;data.meta&lt;/code&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;--out&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;/tmp/smarter/continue.yml&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;--report-dir&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;/tmp/smarter/plan&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;--parameters&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;empty&lt;/td&gt;
+&lt;td&gt;pipeline parameter values, as a JSON object: used to evaluate workflow &lt;code&gt;when&lt;/code&gt;/&lt;code&gt;unless&lt;/code&gt; and written to &lt;code&gt;&amp;lt;report-dir&amp;gt;/parameters.json&lt;/code&gt; for &lt;code&gt;continue&lt;/code&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;The head commit message forces a full run when it contains &lt;code&gt;[smarter full]&lt;/code&gt; (case-insensitive) or a &lt;code&gt;Smarter-Full: true&lt;/code&gt; trailer.&lt;/p&gt;
+&lt;p&gt;After a usable config is loaded, an internal error never fails the command. The planner writes a full plan instead, records the reason, and exits 0. That full plan still carries the gate job (and, on the default branch, the trace steps). Only a config that the planner cannot add the gate to (the gate&amp;rsquo;s name is taken, or two jobs share a name) is passed through as it came, without the gate, with a warning.&lt;/p&gt;
+&lt;h3 data-hextra-search-id="map-build"&gt;&lt;code&gt;map build&lt;/code&gt;&lt;span class="hx:absolute hx:-mt-20" id="map-build"&gt;&lt;/span&gt;
+&lt;a href="#map-build" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h3&gt;&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;div&gt;&lt;pre&gt;&lt;code&gt;circleci-smarter map build --traces DIR --revision SHA --out PATH&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
+&lt;button
+class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+title="Copy code"
+aria-label="Copy code"
+data-copied-label="Copied!"
+&gt;
+&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;p&gt;Merges every &lt;code&gt;*.tsv&lt;/code&gt; in DIR into one map.&lt;/p&gt;
+&lt;h3 data-hextra-search-id="policy-check"&gt;&lt;code&gt;policy check&lt;/code&gt;&lt;span class="hx:absolute hx:-mt-20" id="policy-check"&gt;&lt;/span&gt;
+&lt;a href="#policy-check" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h3&gt;&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;div&gt;&lt;pre&gt;&lt;code&gt;circleci-smarter policy check --config PATH --bundle DIR [--meta PATH] [--format text|json]&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
+&lt;button
+class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+title="Copy code"
+aria-label="Copy code"
+data-copied-label="Copied!"
+&gt;
+&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;p&gt;Exit codes: 0 means pass or soft-fail only; 3 means a hard violation.&lt;/p&gt;
+&lt;h3 data-hextra-search-id="catalog"&gt;&lt;code&gt;catalog&lt;/code&gt;&lt;span class="hx:absolute hx:-mt-20" id="catalog"&gt;&lt;/span&gt;
+&lt;a href="#catalog" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h3&gt;&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;div&gt;&lt;pre&gt;&lt;code&gt;circleci-smarter catalog [--config PATH] [--workflow NAME] [--map PATH]&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
+&lt;button
+class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+title="Copy code"
+aria-label="Copy code"
+data-copied-label="Copied!"
+&gt;
+&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;p&gt;Prints, as JSON, the jobs of one workflow: what an agent needs to compose a workflow from them.&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;Flag&lt;/th&gt;
+&lt;th&gt;Default&lt;/th&gt;
+&lt;th&gt;Meaning&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;--config&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;.circleci/continue.yml&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;the continuation config&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;--workflow&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;the only workflow&lt;/td&gt;
+&lt;td&gt;an error (exit 2) if the config has several and none is named&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;--map&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;none&lt;/td&gt;
+&lt;td&gt;an impact map. Without one, no job has inputs. A map that is missing only warns; one that cannot be read is an error&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;Exit codes: 0 for a catalog, 1 for an error, 2 for a usage error.&lt;/p&gt;
+&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-json" data-lang="json"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;version&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;1&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;workflow&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;ci&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;map_revision&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;&amp;lt;sha or empty&amp;gt;&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="nt"&gt;&amp;#34;jobs&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:[{&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;name&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;api-test&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;ref&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;api-test&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;kind&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;build&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="nt"&gt;&amp;#34;executor&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:{&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;type&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;docker&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;image&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;cimg/go:1.26&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;resource_class&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;},&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="nt"&gt;&amp;#34;contexts&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:[],&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;filters&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:{},&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;requires&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:[{&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;job&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;lint&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;status&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:[&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;success&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;]}],&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;required_by&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:[&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;hold-deploy&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;],&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="nt"&gt;&amp;#34;workspace&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:{&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;persists&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:[],&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;attaches&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="kc"&gt;false&lt;/span&gt;&lt;span class="p"&gt;},&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;serial_group&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;matrix&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="kc"&gt;null&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="nt"&gt;&amp;#34;inputs&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:{&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;traced&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="kc"&gt;true&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;complete&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="kc"&gt;true&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;files&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;8&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;dirs&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;2&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;top_dirs&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:[&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;.&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;libs/shared&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;services/api&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;]},&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="nt"&gt;&amp;#34;steps&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:[&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;checkout&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;run: Test the API&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;]}],&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="nt"&gt;&amp;#34;job_groups&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:[{&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;name&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;rollout&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;jobs&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:[&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;deploy&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;verify&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;]}]}&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
+&lt;button
+class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+title="Copy code"
+aria-label="Copy code"
+data-copied-label="Copied!"
+&gt;
+&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;p&gt;&lt;a href="https://github.com/CircleCI-Labs/smarter-workflows/blob/main/examples/monorepo/catalog.json" target="_blank" rel="noopener"&gt;&lt;code&gt;examples/monorepo/catalog.json&lt;/code&gt;&lt;/a&gt; is a full sample (a golden file of the tests).&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;One entry per job of the workflow&lt;/strong&gt; (&lt;code&gt;jobs&lt;/code&gt;), sorted by &lt;code&gt;name&lt;/code&gt;, which is the entry&amp;rsquo;s &lt;code&gt;name:&lt;/code&gt; if set, else its job. &lt;code&gt;ref&lt;/code&gt; is the job it runs.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;kind&lt;/code&gt;&lt;/strong&gt; is one of:
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;build&lt;/code&gt;: a job that runs steps;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;approval&lt;/code&gt;: &lt;code&gt;type: approval&lt;/code&gt;, on the entry or in the job&amp;rsquo;s definition;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;no-op&lt;/code&gt;: &lt;code&gt;type: no-op&lt;/code&gt; in the definition;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;release&lt;/code&gt;: &lt;code&gt;type: release&lt;/code&gt; in the definition;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;orb&lt;/code&gt;: a job the config does not define;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;matrix&lt;/code&gt;: an entry with a matrix, whatever it runs;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;job-group&lt;/code&gt;: an entry that names a group of the top-level &lt;code&gt;job-groups&lt;/code&gt;.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;executor&lt;/code&gt;&lt;/strong&gt; is &lt;code&gt;docker&lt;/code&gt;, &lt;code&gt;machine&lt;/code&gt;, &lt;code&gt;macos&lt;/code&gt;, &lt;code&gt;windows&lt;/code&gt; or &lt;code&gt;unknown&lt;/code&gt;, with the image (&lt;code&gt;xcode:&amp;lt;version&amp;gt;&lt;/code&gt; for macOS) and the resource class as written. An executor named by &lt;code&gt;executor:&lt;/code&gt; is looked up. Approvals, no-op jobs and release jobs have no executor, so they say &lt;code&gt;unknown&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;requires&lt;/code&gt;&lt;/strong&gt; (sorted by job) has the statuses of each requirement: &lt;code&gt;[&amp;quot;success&amp;quot;]&lt;/code&gt; for a bare name. &lt;code&gt;required_by&lt;/code&gt; names the entries that require this one.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;filters&lt;/code&gt;&lt;/strong&gt; are the entry&amp;rsquo;s &lt;code&gt;branches&lt;/code&gt; and &lt;code&gt;tags&lt;/code&gt; filters as written, or &lt;code&gt;{&amp;quot;expression&amp;quot;:true}&lt;/code&gt; for an expression. &lt;code&gt;{}&lt;/code&gt; means none.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;workspace&lt;/code&gt;&lt;/strong&gt;: &lt;code&gt;persists&lt;/code&gt; lists the &lt;code&gt;paths&lt;/code&gt; of the job&amp;rsquo;s &lt;code&gt;persist_to_workspace&lt;/code&gt; steps, and &lt;code&gt;attaches&lt;/code&gt; says whether it has an &lt;code&gt;attach_workspace&lt;/code&gt; step. Steps in a local command, and in the entry&amp;rsquo;s own &lt;code&gt;pre-steps&lt;/code&gt; and &lt;code&gt;post-steps&lt;/code&gt;, count. Both are &lt;code&gt;null&lt;/code&gt; when the steps are not visible.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;serial_group&lt;/code&gt;&lt;/strong&gt; is the entry&amp;rsquo;s &lt;code&gt;serial-group&lt;/code&gt; as written (&amp;quot;&amp;quot; if none). &lt;strong&gt;&lt;code&gt;matrix&lt;/code&gt;&lt;/strong&gt; is &lt;code&gt;null&lt;/code&gt;, or &lt;code&gt;{&amp;quot;alias&amp;quot;:&amp;quot;&amp;quot;,&amp;quot;parameters&amp;quot;:{&amp;quot;os&amp;quot;:[&amp;quot;linux&amp;quot;,&amp;quot;mac&amp;quot;]}}&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;inputs&lt;/code&gt;&lt;/strong&gt; is what the impact map knows: &lt;code&gt;traced&lt;/code&gt; is true when the job has an entry, &lt;code&gt;complete&lt;/code&gt; and the counts are its. &lt;code&gt;top_dirs&lt;/code&gt; are the directories of the files it read, two path segments deep (&lt;code&gt;.&lt;/code&gt; is the root), or one when that gives more than 12; at most 12, sorted.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;steps&lt;/code&gt;&lt;/strong&gt; names each step in order: &lt;code&gt;checkout&lt;/code&gt;, &lt;code&gt;run: &amp;lt;name or first line, up to 80 characters&amp;gt;&lt;/code&gt;, or the step&amp;rsquo;s key. An orb job is &lt;code&gt;[&amp;quot;unknown&amp;quot;]&lt;/code&gt;, with an &lt;code&gt;unknown&lt;/code&gt; executor and &lt;code&gt;null&lt;/code&gt; workspace, unless the orb is defined inline in the config. So is a job group. An approval, a no-op job and a release job have no steps (&lt;code&gt;[]&lt;/code&gt;).&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;job_groups&lt;/code&gt;&lt;/strong&gt; lists the groups of the config, sorted, with the names of the jobs inside each.&lt;/li&gt;
+&lt;li&gt;The output is deterministic: lists that mean a set are sorted, and nothing depends on the order of the workflow or of the YAML maps.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 data-hextra-search-id="layout-check"&gt;&lt;code&gt;layout check&lt;/code&gt;&lt;span class="hx:absolute hx:-mt-20" id="layout-check"&gt;&lt;/span&gt;
+&lt;a href="#layout-check" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h3&gt;&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;div&gt;&lt;pre&gt;&lt;code&gt;circleci-smarter layout check [--config PATH] [--workflow NAME] [--catalog FILE]
+[--policy-bundle DIR] [--mandatory LIST] [--restricted-contexts LIST]
+[--gate-job NAME] [--format json|text]&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
+&lt;button
+class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+title="Copy code"
+aria-label="Copy code"
+data-copied-label="Copied!"
+&gt;
+&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;p&gt;Checks the layout of one workflow, the way its jobs wait for each other, before it runs. It reads the workflow with the planner&amp;rsquo;s own graph, and plans nothing.&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;Flag&lt;/th&gt;
+&lt;th&gt;Default&lt;/th&gt;
+&lt;th&gt;Meaning&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;--config&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;.circleci/continue.yml&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;the config to check&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;--workflow&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;the only workflow&lt;/td&gt;
+&lt;td&gt;an error (exit 2) if the config has several and none is named&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;--catalog&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;none&lt;/td&gt;
+&lt;td&gt;what &lt;code&gt;catalog&lt;/code&gt; printed. For a job that the config does not define (a layout may name the jobs of another file), it says what the job is and what it does with workspaces&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;--policy-bundle&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;none&lt;/td&gt;
+&lt;td&gt;also evaluate the guardrail bundle on the config: each violation is a finding&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;--mandatory&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;none&lt;/td&gt;
+&lt;td&gt;comma-separated jobs that the workflow must hold&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;--restricted-contexts&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;none&lt;/td&gt;
+&lt;td&gt;comma-separated contexts that only a job downstream of an approval may use&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;--gate-job&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;smarter-gate&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;the gate job. An empty value skips the gate checks&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;--format&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;json&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;json&lt;/code&gt; or &lt;code&gt;text&lt;/code&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;Exit codes: 0 when there are no errors (warnings are fine), 3 when there are errors, 1 when the check itself fails (the config or the bundle cannot be read), 2 for a usage error.&lt;/p&gt;
+&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-json" data-lang="json"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;version&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;1&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;workflow&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;ci&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;ok&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="kc"&gt;false&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="nt"&gt;&amp;#34;findings&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:[{&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;code&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;dangling-requires&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;severity&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;error&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;job&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;deploy&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="nt"&gt;&amp;#34;message&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;deploy requires lintt, which no job of workflow ci answers to&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="nt"&gt;&amp;#34;fix_hint&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;add a job called lintt to the workflow, or remove it from the requires of deploy&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;}]}&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
+&lt;button
+class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+title="Copy code"
+aria-label="Copy code"
+data-copied-label="Copied!"
+&gt;
+&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;p&gt;&lt;code&gt;job&lt;/code&gt; is the entry to edit (the missing job, for &lt;code&gt;mandatory-missing&lt;/code&gt; and &lt;code&gt;gate-missing&lt;/code&gt;; the first job to add, for a policy repair). The findings are sorted: errors first, then by code, then by place in the workflow.&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;Code&lt;/th&gt;
+&lt;th&gt;Severity&lt;/th&gt;
+&lt;th&gt;Fires when&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;dangling-requires&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;error&lt;/td&gt;
+&lt;td&gt;a &lt;code&gt;requires&lt;/code&gt; names no entry of the workflow (an &lt;code&gt;&amp;lt;&amp;lt; expression &amp;gt;&amp;gt;&lt;/code&gt; cannot be judged). The hint says when the name is a job inside a job group, or the job of an entry that has a &lt;code&gt;name:&lt;/code&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;cycle&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;error&lt;/td&gt;
+&lt;td&gt;entries wait for each other, or one requires itself&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;consumer-before-producer&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;error&lt;/td&gt;
+&lt;td&gt;a job attaches a workspace, and none of the jobs it requires, directly or not, persists one. A job whose steps are not visible (an orb job, a job group) counts as a producer and is never reported&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;restricted-context-without-approval&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;error&lt;/td&gt;
+&lt;td&gt;an entry that is not an approval uses a &lt;code&gt;--restricted-contexts&lt;/code&gt; context, and has no approval among its ancestors&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;mandatory-missing&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;error&lt;/td&gt;
+&lt;td&gt;a &lt;code&gt;--mandatory&lt;/code&gt; job is not in the workflow (by its name there)&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;gate-missing&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;error&lt;/td&gt;
+&lt;td&gt;no entry is called &lt;code&gt;--gate-job&lt;/code&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;gate-not-noop&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;error&lt;/td&gt;
+&lt;td&gt;the gate&amp;rsquo;s job is not defined with &lt;code&gt;type: no-op&lt;/code&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;gate-missing-requirement&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;error&lt;/td&gt;
+&lt;td&gt;a job that will run is not an ancestor of the gate. Not counted: approvals and no-op jobs, jobs downstream of an approval, jobs that require a status other than success, jobs that come after the gate, and the planner&amp;rsquo;s &lt;code&gt;smarter-impact-map&lt;/code&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;gate-awaits-status-job&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;error&lt;/td&gt;
+&lt;td&gt;the gate, or a job it awaits, requires a job status other than success: it may never run, and the gate would wait for it for ever&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;filtered-approval-footgun&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;warning&lt;/td&gt;
+&lt;td&gt;a job requires an approval and at least one other job, and on some branch or tag the approval&amp;rsquo;s filters (or those of what it requires) leave the approval out while the job still runs. CircleCI ignores a requirement on a job that does not run, so the job runs without the approval. Filters are tried on every name they spell out, on a name that each regular expression matches, and on one name that no filter has&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;policy:&amp;lt;rule&amp;gt;&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;error or warning&lt;/td&gt;
+&lt;td&gt;the guardrail bundle reports the rule: error for a hard violation, warning for a soft one. The message is the bundle&amp;rsquo;s&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;duplicate-name&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;error&lt;/td&gt;
+&lt;td&gt;two entries answer to one name, so a &lt;code&gt;requires&lt;/code&gt; cannot say which it means&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;A job group is one unit here: the check does not look inside it, so a restricted context used by a job inside a group is not seen.&lt;/p&gt;
+&lt;h3 data-hextra-search-id="continue"&gt;&lt;code&gt;continue&lt;/code&gt;&lt;span class="hx:absolute hx:-mt-20" id="continue"&gt;&lt;/span&gt;
+&lt;a href="#continue" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h3&gt;&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;div&gt;&lt;pre&gt;&lt;code&gt;circleci-smarter continue --config PATH [--parameters PATH]&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
+&lt;button
+class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+title="Copy code"
+aria-label="Copy code"
+data-copied-label="Copied!"
+&gt;
+&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;ul&gt;
+&lt;li&gt;Reads &lt;code&gt;CIRCLE_CONTINUATION_KEY&lt;/code&gt;, and &lt;code&gt;CIRCLECI_API_HOST&lt;/code&gt; (default &lt;code&gt;https://circleci.com&lt;/code&gt;).&lt;/li&gt;
+&lt;li&gt;POSTs to &lt;code&gt;/api/v2/pipeline/continue&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;Retries on 429 and 5xx: 3 tries, waiting 1, 2 then 4 s.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Never prints the key or the request body.&lt;/strong&gt; It prints only the status code.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 data-hextra-search-id="version"&gt;&lt;code&gt;version&lt;/code&gt;&lt;span class="hx:absolute hx:-mt-20" id="version"&gt;&lt;/span&gt;
+&lt;a href="#version" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;Prints the version: &lt;code&gt;dev-&amp;lt;sha&amp;gt;&lt;/code&gt; when built from source, otherwise the release tag.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="file-formats"&gt;File formats&lt;span class="hx:absolute hx:-mt-20" id="file-formats"&gt;&lt;/span&gt;
+&lt;a href="#file-formats" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;h3 data-hextra-search-id="trace-tsv"&gt;Trace TSV&lt;span class="hx:absolute hx:-mt-20" id="trace-tsv"&gt;&lt;/span&gt;
+&lt;a href="#trace-tsv" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;The collector writes one file per job node: &lt;code&gt;&amp;lt;traces-dir&amp;gt;/&amp;lt;first 16 hex of sha256(job name)&amp;gt;.&amp;lt;node index&amp;gt;.tsv&lt;/code&gt;.&lt;/p&gt;
+&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;div&gt;&lt;pre&gt;&lt;code&gt;# smarter-trace v1
+job &amp;lt;workflow job name, i.e. $CIRCLE_JOB&amp;gt;
+node &amp;lt;$CIRCLE_NODE_INDEX or 0&amp;gt;
+method atime
+supported true|false
+reason &amp;lt;why unsupported, optional&amp;gt;
+F &amp;lt;repo-relative path of a git-tracked file that was read&amp;gt;
+D &amp;lt;repo-relative directory that was listed; &amp;#34;.&amp;#34; is the root&amp;gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
+&lt;button
+class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+title="Copy code"
+aria-label="Copy code"
+data-copied-label="Copied!"
+&gt;
+&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;h3 data-hextra-search-id="impact-map-json"&gt;Impact map JSON&lt;span class="hx:absolute hx:-mt-20" id="impact-map-json"&gt;&lt;/span&gt;
+&lt;a href="#impact-map-json" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h3&gt;&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-json" data-lang="json"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;version&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;1&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;revision&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;&amp;lt;sha&amp;gt;&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;created_at&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;&amp;lt;RFC3339&amp;gt;&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;method&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;atime&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="nt"&gt;&amp;#34;jobs&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:{&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;&amp;lt;job name&amp;gt;&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:{&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;files&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:[&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;a/b.go&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;],&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;dirs&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:[&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;a&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;],&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;complete&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="kc"&gt;true&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;nodes&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;2&lt;/span&gt;&lt;span class="p"&gt;}}}&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
+&lt;button
+class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+title="Copy code"
+aria-label="Copy code"
+data-copied-label="Copied!"
+&gt;
+&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;ul&gt;
+&lt;li&gt;Files and dirs are the union over nodes, sorted.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;complete&lt;/code&gt; is true only if every node was supported.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 data-hextra-search-id="plan-report"&gt;Plan report&lt;span class="hx:absolute hx:-mt-20" id="plan-report"&gt;&lt;/span&gt;
+&lt;a href="#plan-report" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;&lt;code&gt;plan.json&lt;/code&gt;:&lt;/p&gt;
+&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-json" data-lang="json"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="p"&gt;{&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;version&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="mi"&gt;1&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;mode&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;select&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;full&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="kc"&gt;false&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;full_reason&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;workflow_runs&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="kc"&gt;true&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;workflow_skip_reason&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;workflow&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;ci&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="nt"&gt;&amp;#34;base&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;&amp;lt;sha&amp;gt;&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;head&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;&amp;lt;sha&amp;gt;&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;branch&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;x&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;map_revision&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;&amp;lt;sha&amp;gt;&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;map_created_at&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;...&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="nt"&gt;&amp;#34;changed&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:[{&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;path&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;a/b.go&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;status&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;M&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;}],&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="nt"&gt;&amp;#34;jobs&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:[{&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;name&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;api-test&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;run&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="kc"&gt;true&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;reasons&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:[&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;reads services/api/main.go&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;]}],&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="nt"&gt;&amp;#34;gate&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:{&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;name&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;smarter-gate&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;requires&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:[&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;...&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;]},&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="nt"&gt;&amp;#34;guardrails&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:{&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;status&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="s2"&gt;&amp;#34;PASS&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;repairs&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:[],&lt;/span&gt;&lt;span class="nt"&gt;&amp;#34;violations&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:[]},&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; &lt;span class="nt"&gt;&amp;#34;warnings&amp;#34;&lt;/span&gt;&lt;span class="p"&gt;:[]}&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
+&lt;button
+class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+title="Copy code"
+aria-label="Copy code"
+data-copied-label="Copied!"
+&gt;
+&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;p&gt;&lt;code&gt;plan.md&lt;/code&gt; is a human summary for the job&amp;rsquo;s artifacts and (later) a PR comment:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;one line: the mode, N of M jobs running, and the full-run reason if there is one;&lt;/li&gt;
+&lt;li&gt;a table of jobs, with run or skip and the first reason;&lt;/li&gt;
+&lt;li&gt;up to 50 changed files.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 data-hextra-search-id="the-algorithm-planned-workflow-w"&gt;The algorithm (planned workflow W)&lt;span class="hx:absolute hx:-mt-20" id="the-algorithm-planned-workflow-w"&gt;&lt;/span&gt;
+&lt;a href="#the-algorithm-planned-workflow-w" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;The planner first loads the config. It expands every YAML alias and merge key into an independent copy and drops the anchors, so that no edit below can reach a node that another part of the config shares. The emitted YAML means what the input meant; its formatting (indentation, anchors) may differ.&lt;/p&gt;
+&lt;h3 data-hextra-search-id="what-an-entry-runs"&gt;What an entry runs&lt;span class="hx:absolute hx:-mt-20" id="what-an-entry-runs"&gt;&lt;/span&gt;
+&lt;a href="#what-an-entry-runs" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;The planner reads what each entry of W runs from the job&amp;rsquo;s definition (&lt;code&gt;jobs:&lt;/code&gt; of the config), and from the top-level &lt;code&gt;job-groups&lt;/code&gt;:&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;Kind&lt;/th&gt;
+&lt;th&gt;Written as&lt;/th&gt;
+&lt;th&gt;Selected by&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;job&lt;/td&gt;
+&lt;td&gt;a job that runs steps (&lt;code&gt;type: build&lt;/code&gt;, the default)&lt;/td&gt;
+&lt;td&gt;its inputs (step 3), or the closure (step 4)&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;approval&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;type: approval&lt;/code&gt; on the entry, or in the job&amp;rsquo;s definition&lt;/td&gt;
+&lt;td&gt;the closure only&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;no-op&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;type: no-op&lt;/code&gt; in the job&amp;rsquo;s definition: no executor, no steps, no credits&lt;/td&gt;
+&lt;td&gt;the closure. One that no entry requires is a gatekeeper, and is always kept (step 7)&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;release&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;type: release&lt;/code&gt; in the job&amp;rsquo;s definition (&lt;code&gt;plan_name&lt;/code&gt;): it tracks the release that a deploy job planned&lt;/td&gt;
+&lt;td&gt;any job it requires being selected (step 4)&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;job group&lt;/td&gt;
+&lt;td&gt;the name of a group under the top-level &lt;code&gt;job-groups&lt;/code&gt;, used as a job&lt;/td&gt;
+&lt;td&gt;nothing: it always runs, as one unit (step 3)&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;orb job&lt;/td&gt;
+&lt;td&gt;a job that the config does not define&lt;/td&gt;
+&lt;td&gt;its inputs; no map entry means it runs&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;An approval, a no-op job and a release job run no steps, so they are never traced and have no inputs. A job group is not looked into: v0.1 plans it as one opaque unit. A &lt;code&gt;serial-group&lt;/code&gt; key of an entry, and the &lt;code&gt;job-groups&lt;/code&gt; key, are never touched: they come out as they went in.&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;Full run.&lt;/strong&gt; Plan a full run when any of these holds:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;--force-full&lt;/code&gt;;&lt;/li&gt;
+&lt;li&gt;the branch is the default branch, or there is a tag;&lt;/li&gt;
+&lt;li&gt;the trigger type is &lt;code&gt;schedule&lt;/code&gt;;&lt;/li&gt;
+&lt;li&gt;the head commit asks for one;&lt;/li&gt;
+&lt;li&gt;there is no base, or no usable map;&lt;/li&gt;
+&lt;li&gt;a changed path (old or new) matches &lt;code&gt;--full-run-paths&lt;/code&gt;;&lt;/li&gt;
+&lt;li&gt;W has a &lt;code&gt;when&lt;/code&gt; or &lt;code&gt;unless&lt;/code&gt; that cannot be evaluated (see below).
+When &lt;code&gt;when&lt;/code&gt;/&lt;code&gt;unless&lt;/code&gt; can be evaluated and is false for this pipeline (&lt;code&gt;workflow_runs&lt;/code&gt; in the plan report), the workflow is left untouched (no gate, no pruning) and every job is reported as skipped.
+1b. &lt;strong&gt;Workflow &lt;code&gt;when&lt;/code&gt;/&lt;code&gt;unless&lt;/code&gt;.&lt;/strong&gt; After the full-run checks above, evaluate W&amp;rsquo;s &lt;code&gt;when&lt;/code&gt; and &lt;code&gt;unless&lt;/code&gt; when every value they use is known: literal booleans; &lt;code&gt;&amp;lt;&amp;lt; pipeline.parameters.NAME &amp;gt;&amp;gt;&lt;/code&gt;; logic statements &lt;code&gt;and&lt;/code&gt;, &lt;code&gt;or&lt;/code&gt;, &lt;code&gt;not&lt;/code&gt;, &lt;code&gt;equal&lt;/code&gt; and &lt;code&gt;matches&lt;/code&gt;; and the string expression form (&lt;code&gt;pipeline.git.branch == &amp;quot;main&amp;quot;&lt;/code&gt;, &lt;code&gt;!=&lt;/code&gt;, &lt;code&gt;and&lt;/code&gt;/&lt;code&gt;or&lt;/code&gt;/&lt;code&gt;not&lt;/code&gt;, &lt;code&gt;starts-with&lt;/code&gt;). Known pipeline values come from &lt;code&gt;--branch&lt;/code&gt;, &lt;code&gt;--tag&lt;/code&gt;, &lt;code&gt;--trigger-type&lt;/code&gt; and &lt;code&gt;--parameters&lt;/code&gt;. If evaluation succeeds and the workflow would not run, stop (step 1, last bullet). If any subexpression is unknown or unsupported, treat it like step 1 (full run). If it would run, continue.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;Changes.&lt;/strong&gt; Run &lt;code&gt;git diff --name-status -M -z &amp;lt;base&amp;gt; &amp;lt;head&amp;gt;&lt;/code&gt;.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Renames count as the old path deleted plus the new path added.&lt;/li&gt;
+&lt;li&gt;Paths that match &lt;code&gt;--ignore-paths&lt;/code&gt; are dropped before step 3.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;Direct selection.&lt;/strong&gt; For each entry J of W (its effective name is &lt;code&gt;name:&lt;/code&gt; if set, else the job reference). An entry that does not run on this branch or tag (step 5) is never selected, whatever else holds, so it never seeds step 4:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;approval&lt;/strong&gt; and &lt;strong&gt;no-op&lt;/strong&gt; entries are decided by the closure in step 4, and so are &lt;strong&gt;release&lt;/strong&gt; entries (by the rule there). None has a trace, so none has inputs of its own, and &lt;code&gt;--mandatory&lt;/code&gt; does not force them. The exception is a &lt;strong&gt;gatekeeper&lt;/strong&gt;: a no-op entry that no entry requires, that waits for success only, and that runs on this branch or tag (step 5). It is kept, with the reason &amp;ldquo;kept: a no-op gatekeeper&amp;rdquo;, whatever else is selected. It selects nothing: it is not part of the closure;&lt;/li&gt;
+&lt;li&gt;a &lt;strong&gt;job group&lt;/strong&gt; entry runs, with the reason &amp;ldquo;job group: runs as one unit, as v0.1 does not look inside it&amp;rdquo; (and it is not traced, step 8);&lt;/li&gt;
+&lt;li&gt;a &lt;strong&gt;matrix&lt;/strong&gt; entry runs;&lt;/li&gt;
+&lt;li&gt;a &lt;strong&gt;mandatory&lt;/strong&gt; job runs. If step 5 says it does not run here, the planner leaves it out and records a warning; it does not force a job to run;&lt;/li&gt;
+&lt;li&gt;a job whose &lt;strong&gt;extra inputs&lt;/strong&gt; match a changed path runs;&lt;/li&gt;
+&lt;li&gt;a job with &lt;strong&gt;no map entry, or an incomplete one&lt;/strong&gt;, runs;&lt;/li&gt;
+&lt;li&gt;a job that &lt;strong&gt;read a changed file&lt;/strong&gt; runs;&lt;/li&gt;
+&lt;li&gt;for an &lt;strong&gt;added or deleted path P&lt;/strong&gt;, J runs if J listed the parent directory of P. It also runs if J listed any ancestor directory whose direct child on P&amp;rsquo;s path is a directory that is new at the head or gone from the base (use &lt;code&gt;git ls-tree&lt;/code&gt; at the base and the head);&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;otherwise J is skipped&lt;/strong&gt;, with the reason &amp;ldquo;inputs unchanged&amp;rdquo;.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;Closure.&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Every &lt;code&gt;requires&lt;/code&gt; ancestor of a selected job is selected, approvals and no-op jobs included, except an ancestor that does not run (step 5). CircleCI ignores a requirement on such a job, and step 7 drops it. So an approval, or a no-op job that some entry requires, is skipped when no selected job requires it, with the reason &amp;ldquo;no selected job requires this approval&amp;rdquo; (or &amp;ldquo;no-op job&amp;rdquo;).&lt;/li&gt;
+&lt;li&gt;A release entry is selected when any job it requires is selected (&amp;ldquo;tracks the release of X&amp;rdquo;); its other requirements are selected like those of any selected job. Otherwise it is skipped: &amp;ldquo;none of the jobs it requires is selected&amp;rdquo;.&lt;/li&gt;
+&lt;li&gt;Producers are local jobs with &lt;code&gt;persist_to_workspace&lt;/code&gt;; consumers are local jobs with &lt;code&gt;attach_workspace&lt;/code&gt;. Steps in a local command, and in the entry&amp;rsquo;s own &lt;code&gt;pre-steps&lt;/code&gt; and &lt;code&gt;post-steps&lt;/code&gt;, count. Orb jobs and job groups count as both.&lt;/li&gt;
+&lt;li&gt;When a selected producer K has a consumer J downstream of it, J is selected.&lt;/li&gt;
+&lt;li&gt;Repeat both rules until nothing changes.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;Will it run?&lt;/strong&gt; Evaluate &lt;code&gt;filters&lt;/code&gt; for the current branch or tag:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;CircleCI semantics: string or list, and &lt;code&gt;/regex/&lt;/code&gt; is a full match;&lt;/li&gt;
+&lt;li&gt;jobs do not run on tags without a matching &lt;code&gt;tags.only&lt;/code&gt;;&lt;/li&gt;
+&lt;li&gt;expression (string) filters are unknown; they are reported;&lt;/li&gt;
+&lt;li&gt;this is CircleCI&amp;rsquo;s own rule (configuration reference, &lt;code&gt;requires&lt;/code&gt;): a requirement on a job that does not run is ignored, but a job whose requirements are all filtered out does not run either. So a job runs only if its own filters allow it &lt;strong&gt;and, when it has requirements, at least one of them runs&lt;/strong&gt;, all the way up the graph. A job with one filtered-out requirement and one that runs still runs, after the one that runs;&lt;/li&gt;
+&lt;li&gt;a requirement on a job status other than success (&lt;code&gt;- build: failed&lt;/code&gt;), or on a name that no entry answers to, makes the job unknown, unless its own filters already say it does not run.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;Gate.&lt;/strong&gt; Add the job &lt;code&gt;smarter-gate&lt;/code&gt;:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;its definition is &lt;code&gt;smarter-gate: {type: no-op}&lt;/code&gt;, with no executor and no steps, so it costs no credits. This is CircleCI&amp;rsquo;s documented gatekeeper pattern for one required status check. It needs a workflow entry like any job, and it fails only if a job it requires fails;&lt;/li&gt;
+&lt;li&gt;its workflow entry requires every selected job that will certainly run (step 5 says yes), except approvals, no-op jobs (they run no steps, so they fail only with the jobs they require, which the gate waits for) and jobs downstream of an approval (an approval that step 5 says does not run is not there to wait for). A selected job that is unknown is left out, with a warning that names it: a job whose filters cannot be evaluated, or &lt;code&gt;smarter-gate does not wait for X: it requires a job status other than success&lt;/code&gt; (a job that waits for a failure may never run, and the gate would wait for it for ever);&lt;/li&gt;
+&lt;li&gt;if nothing else is selected, W contains only the gate.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;Emit.&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;Select mode:&lt;/strong&gt; remove the skipped entries from W. From the entries that stay, drop a &lt;code&gt;requires&lt;/code&gt; name only when it names a removed job that does not run (step 5): CircleCI ignores it, so the meaning is the same. Never drop the last name of a list, and never a name that is a job that runs: that could change what runs. If the plan would, it is an internal error: a full run.&lt;/li&gt;
+&lt;li&gt;A &lt;strong&gt;gatekeeper&lt;/strong&gt; (step 3) stays in select mode, and its &lt;code&gt;requires&lt;/code&gt; is cut to the entries that stay: every name of an entry that is removed goes, whether that entry would run or not, and the items that stay keep their form. If none stays, it requires the gate, so that it never passes before the selected jobs have. A project that makes its gatekeeper (say &lt;code&gt;all-tests-passed&lt;/code&gt;) the required status check keeps one that reports. A gatekeeper that does not run on this branch (all it requires is filtered out) is left out like any entry that does not run.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Shadow mode:&lt;/strong&gt; keep every entry. The report still shows what select mode would have skipped.&lt;/li&gt;
+&lt;li&gt;Every other part of the config keeps its meaning: other workflows, jobs, orbs, comments and key order.&lt;/li&gt;
+&lt;li&gt;Never add pipeline parameters. Emit literals only.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;Trace&lt;/strong&gt; (full runs on the default branch, when &lt;code&gt;--trace&lt;/code&gt; resolves to on):&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;On every entry of W that is a local Linux job (docker, or machine with a Linux image), append &lt;code&gt;post-steps&lt;/code&gt;. An approval, a no-op job, a release job, a job group and a matrix entry get none. Orb jobs are included only with &lt;code&gt;--trace-orb-jobs&lt;/code&gt;; without it, an orb entry gets no &lt;code&gt;pre-steps&lt;/code&gt; and no &lt;code&gt;post-steps&lt;/code&gt;. A &lt;code&gt;pre-steps&lt;/code&gt; or &lt;code&gt;post-steps&lt;/code&gt; key with no value is an empty list. An entry whose &lt;code&gt;pre-steps&lt;/code&gt; or &lt;code&gt;post-steps&lt;/code&gt; is not a list gets no trace, with a warning: the others are traced, and since it has no map entry, later plans always run it.
+&lt;ul&gt;
+&lt;li&gt;a &lt;code&gt;run&lt;/code&gt; step named &lt;code&gt;smarter: collect trace&lt;/code&gt;, with &lt;code&gt;when: always&lt;/code&gt;, &lt;code&gt;shell: /bin/sh&lt;/code&gt;, and as its command the embedded &lt;code&gt;collect-trace.sh&lt;/code&gt;;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;persist_to_workspace&lt;/code&gt; with root &lt;code&gt;/tmp/smarter&lt;/code&gt; and paths &lt;code&gt;[traces]&lt;/code&gt;.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;If the spike (W3) shows that &lt;code&gt;checkout&lt;/code&gt; itself reads files, also insert a step right after &lt;code&gt;checkout&lt;/code&gt; in those local job definitions that resets the atime of tracked files to epoch 0. The planner cannot reach the &lt;code&gt;checkout&lt;/code&gt; inside an orb job, so with &lt;code&gt;--trace-orb-jobs&lt;/code&gt; an orb entry gets &lt;code&gt;pre-steps&lt;/code&gt; &lt;code&gt;[checkout, &amp;lt;that reset step&amp;gt;]&lt;/code&gt; instead: it checks out first, then resets, and the orb job&amp;rsquo;s own &lt;code&gt;checkout&lt;/code&gt; follows.&lt;/li&gt;
+&lt;li&gt;Add the job &lt;code&gt;smarter-impact-map&lt;/code&gt;. It requires every traced entry that is not downstream of an approval. Its steps:
+&lt;ol&gt;
+&lt;li&gt;write &lt;code&gt;.smarter-version&lt;/code&gt; (the planner&amp;rsquo;s own version, as a literal);&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;restore_cache&lt;/code&gt; with key &lt;code&gt;smarter-bin-v1-{{ checksum &amp;quot;.smarter-version&amp;quot; }}-{{ arch }}&lt;/code&gt;;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;attach_workspace&lt;/code&gt; at &lt;code&gt;/tmp/smarter&lt;/code&gt;;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;map build&lt;/code&gt;;&lt;/li&gt;
+&lt;li&gt;write &lt;code&gt;.smarter-key&lt;/code&gt; (&lt;code&gt;$CIRCLE_SHA1&lt;/code&gt;);&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;save_cache&lt;/code&gt; with key &lt;code&gt;&amp;lt;--map-key-prefix&amp;gt;-{{ checksum &amp;quot;.smarter-key&amp;quot; }}&lt;/code&gt; (by default &lt;code&gt;smarter-impact-v1-{{ checksum &amp;quot;.smarter-key&amp;quot; }}&lt;/code&gt;) for &lt;code&gt;/tmp/smarter/impact-map.json&lt;/code&gt;;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;store_artifacts&lt;/code&gt;.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;Guardrails&lt;/strong&gt; (when &lt;code&gt;--policy-bundle&lt;/code&gt; is set):&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;code&gt;policy.Check&lt;/code&gt; the emitted config.&lt;/li&gt;
+&lt;li&gt;For a hard violation carrying &lt;code&gt;[smarter:require-job=NAME]&lt;/code&gt;, force NAME and plan again (at most 3 rounds). Forcing selects the job; it cannot make a job run that step 5 says does not run here, so the violation stays and step 3 applies.&lt;/li&gt;
+&lt;li&gt;If hard violations are left, plan a full run and check again.&lt;/li&gt;
+&lt;li&gt;If that still fails, exit 3.&lt;/li&gt;
+&lt;li&gt;Soft violations go into the report as warnings.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;h2 data-hextra-search-id="guardrail-bundle-policies"&gt;Guardrail bundle (&lt;code&gt;policies/&lt;/code&gt;)&lt;span class="hx:absolute hx:-mt-20" id="guardrail-bundle-policies"&gt;&lt;/span&gt;
+&lt;a href="#guardrail-bundle-policies" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;package org&lt;/code&gt;, using CircleCI&amp;rsquo;s policy conventions (&lt;code&gt;policy_name&lt;/code&gt;, &lt;code&gt;enable_hard&lt;/code&gt;) and &lt;code&gt;data.circleci.config&lt;/code&gt; helpers where they fit.&lt;/li&gt;
+&lt;li&gt;The settings are constants at the top of the file, for projects to edit.&lt;/li&gt;
+&lt;li&gt;Rules:
+&lt;ol&gt;
+&lt;li&gt;&lt;strong&gt;Required jobs&lt;/strong&gt; (&lt;code&gt;security-scan&lt;/code&gt; by default) are present in every workflow of a non-setup config. The message carries the repair code.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Restricted contexts&lt;/strong&gt; (e.g. &lt;code&gt;deploy&lt;/code&gt;): allowed only on listed jobs, only on listed branches or on tags, and only downstream of an approval job (&lt;code&gt;type: approval&lt;/code&gt; on the entry, or in the job&amp;rsquo;s definition).&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Resource classes&lt;/strong&gt; come from an allowlist. Check the source jobs, and &lt;code&gt;_compiled_&lt;/code&gt; when it is present. A no-op job has no executor, so it is not checked.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Registry orbs&lt;/strong&gt; are pinned to an exact &lt;code&gt;x.y.z&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;URL orbs&lt;/strong&gt; carry a 40-hex commit SHA.&lt;/li&gt;
+&lt;li&gt;A continuation config does &lt;strong&gt;not declare &lt;code&gt;setup: true&lt;/code&gt;&lt;/strong&gt;.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;/li&gt;
+&lt;li&gt;Tests: Rego &lt;code&gt;_test.rego&lt;/code&gt; files plus Go fixture tests through &lt;code&gt;internal/policy&lt;/code&gt;. Locally there is no &lt;code&gt;_compiled_&lt;/code&gt;, so rules must cope with it being absent.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 data-hextra-search-id="the-orb-and-the-dogfood-pipeline"&gt;The orb and the dogfood pipeline&lt;span class="hx:absolute hx:-mt-20" id="the-orb-and-the-dogfood-pipeline"&gt;&lt;/span&gt;
+&lt;a href="#the-orb-and-the-dogfood-pipeline" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;orb/src/&lt;/code&gt;&lt;/strong&gt; (orb-tools tree, packed to one file):
+&lt;ul&gt;
+&lt;li&gt;command &lt;code&gt;install&lt;/code&gt; (&lt;code&gt;source: release|build&lt;/code&gt;; &lt;code&gt;build&lt;/code&gt; runs &lt;code&gt;go build&lt;/code&gt; from the current checkout and saves the &lt;code&gt;smarter-bin-v1-…&lt;/code&gt; cache);&lt;/li&gt;
+&lt;li&gt;command &lt;code&gt;collect-trace&lt;/code&gt;;&lt;/li&gt;
+&lt;li&gt;job &lt;code&gt;plan&lt;/code&gt;, with parameters mirroring the &lt;code&gt;plan&lt;/code&gt; flags. It runs: checkout, install, &lt;code&gt;base&lt;/code&gt; → &lt;code&gt;.smarter-key&lt;/code&gt;, restore the map cache (exact key, then the &lt;code&gt;&amp;lt;map-key-prefix&amp;gt;-&lt;/code&gt; prefix, &lt;code&gt;smarter-impact-v1-&lt;/code&gt; by default), &lt;code&gt;plan&lt;/code&gt;, store the report, &lt;code&gt;continue&lt;/code&gt;.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;.circleci/config.yml&lt;/code&gt;&lt;/strong&gt;: setup, with an inline &lt;code&gt;plan&lt;/code&gt; job that builds from source (the orb is not published yet).&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;.circleci/continue.yml&lt;/code&gt;&lt;/strong&gt;: this repo&amp;rsquo;s own full pipeline, which includes:
+&lt;ul&gt;
+&lt;li&gt;Go tests and lint;&lt;/li&gt;
+&lt;li&gt;policy tests;&lt;/li&gt;
+&lt;li&gt;shellcheck and collector tests;&lt;/li&gt;
+&lt;li&gt;orb validation;&lt;/li&gt;
+&lt;li&gt;the docs site build (&lt;code&gt;docs-site-build&lt;/code&gt;), which reads only the docs and the site sources, and the publication of the site from &lt;code&gt;main&lt;/code&gt; (&lt;code&gt;docs-site-publish&lt;/code&gt;, in the workflow &lt;code&gt;docs-site&lt;/code&gt;);&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;security-scan&lt;/code&gt; (mandatory; &lt;code&gt;govulncheck&lt;/code&gt;);&lt;/li&gt;
+&lt;li&gt;a build → e2e pair over a workspace;&lt;/li&gt;
+&lt;li&gt;a tag-only signed binary release after &lt;code&gt;hold-release&lt;/code&gt;, with dev and production orb publish jobs.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 data-hextra-search-id="tests-and-gates-before-any-merge-to-main"&gt;Tests and gates (before any merge to main)&lt;span class="hx:absolute hx:-mt-20" id="tests-and-gates-before-any-merge-to-main"&gt;&lt;/span&gt;
+&lt;a href="#tests-and-gates-before-any-merge-to-main" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;gofmt -l&lt;/code&gt; is empty, and &lt;code&gt;go vet ./...&lt;/code&gt; and &lt;code&gt;go test ./...&lt;/code&gt; pass.&lt;/li&gt;
+&lt;li&gt;Golden tests for the planner scenarios in &lt;code&gt;examples/monorepo/&lt;/code&gt;:
+&lt;ul&gt;
+&lt;li&gt;docs-only;&lt;/li&gt;
+&lt;li&gt;one service;&lt;/li&gt;
+&lt;li&gt;a shared library;&lt;/li&gt;
+&lt;li&gt;an added file in a listed directory;&lt;/li&gt;
+&lt;li&gt;a &lt;code&gt;.circleci&lt;/code&gt; change;&lt;/li&gt;
+&lt;li&gt;no map;&lt;/li&gt;
+&lt;li&gt;a mandatory job missing and then repaired.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;Robustness cases cover each job type (approval set in the definition, no-op, release, job group, &lt;code&gt;serial-group&lt;/code&gt;). Every plan has a no-op gate and no structural problem that &lt;code&gt;layout check&lt;/code&gt; would report and the input did not have.&lt;/li&gt;
+&lt;li&gt;The catalog of the example (&lt;code&gt;examples/monorepo/catalog.json&lt;/code&gt;) is a golden file, refreshed with &lt;code&gt;go test ./examples/monorepo -update&lt;/code&gt; like the scenarios.&lt;/li&gt;
+&lt;li&gt;Every config the planner generates validates with &lt;code&gt;circleci config validate&lt;/code&gt; when the CLI is present. Set &lt;code&gt;REQUIRE_CIRCLECI_CLI=1&lt;/code&gt; in CI so that a missing CLI fails, not skips.&lt;/li&gt;
+&lt;li&gt;Collector tests run in a temp git repo. With &lt;code&gt;REQUIRE_ATIME=1&lt;/code&gt;, a filesystem without atime support fails the test.&lt;/li&gt;
+&lt;li&gt;The continuation client is tested against &lt;code&gt;httptest&lt;/code&gt;, and the test asserts the key never appears in the output.&lt;/li&gt;
+&lt;/ul&gt;</description></item><item><title>Glossary</title><link>https://circleci-labs.github.io/smarter-workflows/docs/reference/glossary/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://circleci-labs.github.io/smarter-workflows/docs/reference/glossary/</guid><description>
+&lt;p&gt;The words this project uses, and what each one means. There are no implementation details here. For those, see the &lt;a href="https://circleci-labs.github.io/smarter-workflows/docs/reference/spec/"&gt;spec&lt;/a&gt; and the &lt;a href="https://circleci-labs.github.io/smarter-workflows/docs/decisions/"&gt;decisions&lt;/a&gt;.&lt;/p&gt;
+&lt;dl&gt;
+&lt;dt&gt;&lt;strong&gt;Change&lt;/strong&gt;&lt;/dt&gt;
+&lt;dd&gt;The set of files a branch changes, compared with the commit it branched from on the default branch.&lt;/dd&gt;
+&lt;dt&gt;&lt;strong&gt;Planner&lt;/strong&gt;&lt;/dt&gt;
+&lt;dd&gt;The step in the setup workflow that decides, for one change, which jobs of the pipeline run.&lt;/dd&gt;
+&lt;dt&gt;&lt;strong&gt;Plan&lt;/strong&gt;&lt;/dt&gt;
+&lt;dd&gt;What the planner decides for one pipeline: the jobs that run, the jobs that are skipped and the reason for each, and the continuation config that carries this out.&lt;/dd&gt;
+&lt;dt&gt;&lt;strong&gt;Full run&lt;/strong&gt;&lt;/dt&gt;
+&lt;dd&gt;A pipeline that runs every job. The default branch, scheduled pipelines, changes to the pipeline definition, and any case the planner is unsure about all get a full run.&lt;/dd&gt;
+&lt;dt&gt;&lt;strong&gt;Impact map&lt;/strong&gt;&lt;/dt&gt;
+&lt;dd&gt;For each job, the files it read and the directories it listed during the last full run on the default branch. It is rebuilt after every green full run, and branches use it to see which jobs a change can affect.&lt;/dd&gt;
+&lt;dt&gt;&lt;strong&gt;Trace&lt;/strong&gt;&lt;/dt&gt;
+&lt;dd&gt;The record of the files one job read, taken at the end of the job. The impact map is built from traces.&lt;/dd&gt;
+&lt;dt&gt;&lt;strong&gt;Inputs (of a job)&lt;/strong&gt;&lt;/dt&gt;
+&lt;dd&gt;The files and directories in a job&amp;rsquo;s trace. A job whose inputs a change does not touch is a candidate to skip.&lt;/dd&gt;
+&lt;dt&gt;&lt;strong&gt;Shadow mode&lt;/strong&gt;&lt;/dt&gt;
+&lt;dd&gt;The planner makes and reports a plan, but every job still runs. Shadow mode measures what select mode would save, and what it would miss.&lt;/dd&gt;
+&lt;dt&gt;&lt;strong&gt;Select mode&lt;/strong&gt;&lt;/dt&gt;
+&lt;dd&gt;The planner runs only the jobs its plan selects.&lt;/dd&gt;
+&lt;dt&gt;&lt;strong&gt;Compose mode&lt;/strong&gt;&lt;/dt&gt;
+&lt;dd&gt;A later mode: an agent builds jobs and workflows from approved building blocks, within the guardrails.&lt;/dd&gt;
+&lt;dt&gt;&lt;strong&gt;Mandatory job&lt;/strong&gt;&lt;/dt&gt;
+&lt;dd&gt;A job that runs in every pipeline, whatever the change, such as a security scan.&lt;/dd&gt;
+&lt;dt&gt;&lt;strong&gt;Gate job&lt;/strong&gt;&lt;/dt&gt;
+&lt;dd&gt;The last job of the workflow, which waits for every selected job. It always runs, so a branch protection rule can require it alone, even when other jobs are skipped. It is a no-op job: no executor, no steps, no credits.&lt;/dd&gt;
+&lt;dt&gt;&lt;strong&gt;No-op job&lt;/strong&gt;&lt;/dt&gt;
+&lt;dd&gt;A job defined with &lt;code&gt;type: no-op&lt;/code&gt;. It runs nothing and costs no credits. It succeeds when the jobs it requires succeed.&lt;/dd&gt;
+&lt;dt&gt;&lt;strong&gt;Gatekeeper&lt;/strong&gt;&lt;/dt&gt;
+&lt;dd&gt;A no-op job that no other job requires, which a project uses as its one required status check (for example &lt;code&gt;all-tests-passed&lt;/code&gt;). Select mode always keeps it, and cuts what it waits for to the jobs that stay.&lt;/dd&gt;
+&lt;dt&gt;&lt;strong&gt;Layout&lt;/strong&gt;&lt;/dt&gt;
+&lt;dd&gt;How the jobs of one workflow wait for each other (&lt;code&gt;requires&lt;/code&gt;, approvals, filters), as opposed to what each job does. &lt;code&gt;layout check&lt;/code&gt; reports what is wrong with it.&lt;/dd&gt;
+&lt;dt&gt;&lt;strong&gt;Guardrail&lt;/strong&gt;&lt;/dt&gt;
+&lt;dd&gt;A config policy that every generated config must pass. Examples: mandatory jobs, contexts allowed only on certain jobs and branches, an approval before a deploy.&lt;/dd&gt;
+&lt;dt&gt;&lt;strong&gt;Pre-flight&lt;/strong&gt;&lt;/dt&gt;
+&lt;dd&gt;The planner&amp;rsquo;s own check of its config against the guardrails, before it continues the pipeline.&lt;/dd&gt;
+&lt;dt&gt;&lt;strong&gt;Repair&lt;/strong&gt;&lt;/dt&gt;
+&lt;dd&gt;A change the planner makes to its plan so that it passes a guardrail, such as adding a missing mandatory job. A failure it cannot repair turns the plan into a full run.&lt;/dd&gt;
+&lt;dt&gt;&lt;strong&gt;Miss&lt;/strong&gt;&lt;/dt&gt;
+&lt;dd&gt;A job the plan skipped (or, in shadow mode, would have skipped) that would have failed.&lt;/dd&gt;
+&lt;dt&gt;&lt;strong&gt;Savings&lt;/strong&gt;&lt;/dt&gt;
+&lt;dd&gt;The credits and minutes that skipped jobs did not spend.&lt;/dd&gt;
+&lt;dt&gt;&lt;strong&gt;Catalog&lt;/strong&gt;&lt;/dt&gt;
+&lt;dd&gt;The jobs, commands, executors and orbs the planner may pick from. In select mode, the catalog is the project&amp;rsquo;s own pipeline config.&lt;/dd&gt;
+&lt;/dl&gt;</description></item></channel></rss>
