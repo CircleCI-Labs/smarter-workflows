@@ -173,6 +173,10 @@ func runPlan(args []string, stdout, stderr io.Writer) int {
 		return planExitFatal
 	}
 
+	if err := validOutputPath(*reportDir); err != nil {
+		fmt.Fprintf(stderr, "circleci-smarter plan: cannot write the report: output path: %v\n", err)
+		return planExitFatal
+	}
 	if err := report.Write(*reportDir, res.Report); err != nil {
 		fmt.Fprintf(stderr, "circleci-smarter plan: cannot write the report: %v\n", err)
 		return planExitFatal
@@ -194,11 +198,7 @@ func runPlan(args []string, stdout, stderr io.Writer) int {
 		}
 		return planExitGuardrails
 	}
-	if err := os.MkdirAll(filepath.Dir(*out), 0o755); err != nil {
-		fmt.Fprintf(stderr, "circleci-smarter plan: cannot write the config: %v\n", err)
-		return planExitFatal
-	}
-	if err := os.WriteFile(*out, res.Config, 0o644); err != nil {
+	if err := writeOutputFile(*out, res.Config, 0o600); err != nil {
 		fmt.Fprintf(stderr, "circleci-smarter plan: cannot write the config: %v\n", err)
 		return planExitFatal
 	}

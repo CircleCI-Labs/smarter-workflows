@@ -1,6 +1,8 @@
 package impactmap
 
 import (
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -286,6 +288,56 @@ func TestReadTraceDir(t *testing.T) {
 	write("bad.0.tsv", "garbage\n")
 	if _, err := ReadTraceDir(dir); err == nil || !strings.Contains(err.Error(), "bad.0.tsv") {
 		t.Fatalf("error = %v, want it to name the bad file", err)
+	}
+}
+
+func TestParseRejectsOversizedMap(t *testing.T) {
+	jobs := make(map[string]*Job, MaxMapJobs+1)
+	for i := range MaxMapJobs + 1 {
+		jobs[fmt.Sprintf("j%d", i)] = &Job{Complete: true}
+	}
+	data, err := json.Marshal(&Map{Version: 1, Jobs: jobs})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Parse(data); err == nil || !strings.Contains(err.Error(), "over the limit") {
+		t.Fatalf("error = %v, want a limit error", err)
+	}
+}
+
+func TestParseRejectsTooManyPathsPerJob(t *testing.T) {
+	files := make([]string, MaxPathsPerJob+1)
+	for i := range files {
+		files[i] = fmt.Sprintf("f%d.go", i)
+	}
+	data, err := json.Marshal(&Map{Version: 1, Jobs: map[string]*Job{"lint": {Files: files, Complete: true}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Parse(data); err == nil || !strings.Contains(err.Error(), "over the limit") {
+		t.Fatalf("error = %v, want a limit error", err)
+	}
+}
+
+func TestLoadRejectsOversizedFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "huge.json")
+	if err := os.WriteFile(path, make([]byte, MaxMapFileBytes+1), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path); err == nil || !strings.Contains(err.Error(), "over the limit") {
+		t.Fatalf("error = %v, want a limit error", err)
+	}
+}
+
+func TestParseTraceRejectsTooManyPaths(t *testing.T) {
+	var b strings.Builder
+	b.WriteString(tsv("# smarter-trace v1", "job\tx", "supported\ttrue"))
+	for i := 0; i < MaxPathsPerTrace+1; i++ {
+		fmt.Fprintf(&b, "F\tf%d.go\n", i)
+	}
+	if _, err := ParseTrace(strings.NewReader(b.String())); err == nil || !strings.Contains(err.Error(), "more than") {
+		t.Fatalf("error = %v, want a path limit error", err)
 	}
 }
 

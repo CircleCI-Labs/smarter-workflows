@@ -70,10 +70,21 @@ func Load(bundleDir string, meta map[string]any) (*Bundle, error) {
 // readBundle reads the policy files the way `circleci policy push` does (every
 // .rego file under root), except for the test files.
 func readBundle(root string) (map[string]string, error) {
+	root, err := filepath.Abs(filepath.Clean(root))
+	if err != nil {
+		return nil, fmt.Errorf("read policy bundle: %w", err)
+	}
 	files := map[string]string{}
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
+		}
+		if d.Type()&fs.ModeSymlink != 0 {
+			return nil
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || rel == ".." {
+			return nil
 		}
 		if d.IsDir() || filepath.Ext(path) != ".rego" || strings.HasSuffix(path, "_test.rego") {
 			return nil

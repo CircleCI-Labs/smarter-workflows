@@ -234,11 +234,11 @@ func Write(dir string, p *Plan) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(dir, "plan.json"), data, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "plan.json"), data, 0o640); err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(dir, "plan.md"), []byte(p.Markdown()), 0o644)
+	return os.WriteFile(filepath.Join(dir, "plan.md"), []byte(p.Markdown()), 0o640)
 }

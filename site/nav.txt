@@ -18,6 +18,7 @@ examples/demo/README.md | Demo monorepo | A small polyglot monorepo that runs on
 ==
 docs/how-it-works.md | How it works
 docs/limitations.md | Limitations
+docs/threat-model.md | Threat model
 docs/validation.md | Validation
 
 == Benchmarks | Performance numbers and replay against real CI history. The full reports are filled in as the benchmark jobs land on main.
