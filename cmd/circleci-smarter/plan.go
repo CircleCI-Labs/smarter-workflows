@@ -56,20 +56,7 @@ func runPlan(args []string, stdout, stderr io.Writer) int {
 	extraInputs := fs.String("extra-inputs", "", "declared inputs, job=glob|glob,job2=glob")
 	ignorePaths := fs.String("ignore-paths", "", "comma-separated globs that never select a job")
 	forceFull := fs.Bool("force-full", false, "plan a full run")
-	trace := fs.String("trace", "auto", "add the trace steps: auto (full runs on the default branch), on or off")
-	traceOrb := fs.Bool("trace-orb-jobs", false, "also trace orb jobs (assumes their executor is Linux)")
-	traceJobs := fs.String("trace-jobs", "", "comma-separated job-name globs for Linux jobs whose executor cannot be read (for example self-hosted runners)")
-	traceReset := fs.String("trace-reset", "on", "reset file access times after checkout in traced jobs: on or off")
 	gateJob := fs.String("gate-job", planner.DefaultGateJob, "the name of the gate job (a no-op job: no executor, no credits)")
-	// The gate used to be a docker job that took its image from --gate-image,
-	// and that flag also set the image of the impact-map job. The gate has no
-	// image now, so the flag is an alias of --map-image: a setup config that
-	// still passes it keeps the image it chose for the map job.
-	var mapImage string
-	fs.StringVar(&mapImage, "map-image", planner.DefaultMapImage, "the docker image of the impact-map job")
-	fs.StringVar(&mapImage, "gate-image", planner.DefaultMapImage, "deprecated alias of --map-image: the gate is a no-op job and has no image")
-	mapKeyPrefix := fs.String("map-key-prefix", planner.DefaultMapKeyPrefix, "the cache key prefix of the saved impact map: <prefix>-<checksum of the commit>; the setup job restores it with the same prefix")
-	smarterBin := fs.String("smarter-bin", "", "where the map job finds this binary (default: the path it runs from)")
 	policyBundle := fs.String("policy-bundle", "", "a policy bundle directory: check the plan against it, repair, or fall back to a full run")
 	policyMeta := fs.String("policy-meta", "", "JSON (or the path of a JSON file) passed to the policies as data.meta (default: built from the CircleCI environment)")
 	out := fs.String("out", "/tmp/smarter/continue.yml", "where to write the continuation config")
@@ -91,18 +78,9 @@ func runPlan(args []string, stdout, stderr io.Writer) int {
 	if !flagWasGiven(fs, "tag") {
 		*tag = os.Getenv("CIRCLE_TAG")
 	}
-	if flagWasGiven(fs, "gate-image") {
-		fmt.Fprintln(stderr, "circleci-smarter plan: warning: --gate-image is deprecated: the gate is a no-op job and has no image. It sets the image of the impact-map job, as --map-image does")
-	}
-
 	usage := func(format string, a ...any) int {
 		fmt.Fprintf(stderr, "circleci-smarter plan: "+format+"\n", a...)
 		return planExitUsage
-	}
-	switch *traceReset {
-	case "on", "off":
-	default:
-		return usage("--trace-reset must be on or off, not %q", *traceReset)
 	}
 	extra, err := planner.ParseExtraInputs(*extraInputs)
 	if err != nil {
@@ -118,17 +96,7 @@ func runPlan(args []string, stdout, stderr io.Writer) int {
 	opts.FullRunPaths = planner.SplitList(*fullRunPaths)
 	opts.ExtraInputs = extra
 	opts.IgnorePaths = planner.SplitList(*ignorePaths)
-	opts.Trace = planner.TraceMode(*trace)
-	opts.TraceOrbJobs = *traceOrb
-	opts.TraceJobs = planner.SplitList(*traceJobs)
-	opts.TraceReset = *traceReset == "on"
-	opts.GateJob, opts.MapImage = *gateJob, mapImage
-	opts.MapKeyPrefix = *mapKeyPrefix
-	opts.Version = version
-	opts.BinPath = *smarterBin
-	if opts.BinPath == "" {
-		opts.BinPath = planRunningBinary()
-	}
+	opts.GateJob = *gateJob
 	if err := opts.Validate(); err != nil {
 		return usage("%v", err)
 	}
@@ -227,18 +195,6 @@ func runPlan(args []string, stdout, stderr io.Writer) int {
 	}
 	fmt.Fprintf(stdout, "circleci-smarter plan: %s\n  config: %s\n  report: %s\n", summary, *out, *reportDir)
 	return planExitOK
-}
-
-// planRunningBinary is the path this process runs from, with symlinks resolved.
-func planRunningBinary() string {
-	exe, err := os.Executable()
-	if err != nil {
-		return "circleci-smarter"
-	}
-	if real, err := filepath.EvalSymlinks(exe); err == nil {
-		return real
-	}
-	return exe
 }
 
 // planLoadMap reads the impact map. A map that is missing or unusable is not
