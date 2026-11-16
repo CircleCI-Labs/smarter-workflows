@@ -355,6 +355,18 @@ test_restricted_context_smarter_workflows_ci_allows_any_branch {
 	count(restricted_contexts) == 0 with input as fixture_workflow([{"orb-validate": object.union(fixture_ci_token, {"filters": {"branches": {"only": ["feature-x"]}}})}])
 }
 
+fixture_ai_token := {"context": ["smarter-workflows-ai"]}
+
+test_restricted_context_smarter_workflows_ai_allowed_jobs {
+	count(restricted_contexts) == 0 with input as fixture_workflow([{"benchmark": fixture_ai_token}, {"learn": fixture_ai_token}])
+}
+
+test_restricted_context_smarter_workflows_ai_rejects_other_jobs {
+	msgs := restricted_contexts with input as fixture_workflow([{"go-test": fixture_ai_token}])
+	count(msgs) == 1
+	has_message(msgs, "uses the restricted context \"smarter-workflows-ai\"")
+}
+
 # =============================================================================
 # 3. resource_classes
 # =============================================================================

@@ -66,6 +66,10 @@ context_restrictions := {
 	"smarter-workflows-ci": {
 		"jobs": {"go-test", "orb-validate"},
 	},
+	# API tokens for history fetch, learn, and benchmark (CIRCLECI_TOKEN, optional AI key).
+	"smarter-workflows-ai": {
+		"jobs": {"benchmark", "learn"},
+	},
 }
 
 # resource_classes: the resource_class values jobs and executors may use. A job
