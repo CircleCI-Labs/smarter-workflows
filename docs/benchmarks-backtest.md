@@ -47,6 +47,8 @@ Optional per-commit `parameters` overrides the `--parameters` file for that pipe
 
 Build a history file with `circleci-smarter history fetch` (or the [`fetch-history.sh`](../scripts/bench/fetch-history.sh) wrapper). Set `CIRCLE_TOKEN` or `CIRCLECI_TOKEN`; optional `CIRCLECI_HOST` for server installs. The command pages pipelines newest first, resolves job outcomes (including **flaky** when a job failed then passed on a workflow rerun), and fills `base` / `changed` from a local `--repo` clone. Commits missing from the clone are skipped. Fixture parsing is tested by [`scripts/bench/test-parse.sh`](../scripts/bench/test-parse.sh) and `go test ./internal/history/...`.
 
+**Diff base.** For each pipeline commit `C`, `base` is the newest commit on `origin/<default>`’s **first-parent** chain (cached once) such that `P ≠ C` and `P` is an ancestor of `C`. A commit on that chain uses its first parent; if none applies, `base` is empty (no `changed` paths). Changed paths come from `git diff --name-status -M -z` (renames are a delete plus an add). This avoids empty diffs for feature-branch SHAs that were later merged with a merge commit—older histories that used plain `merge-base` had that bug.
+
 ```sh
 circleci-smarter history fetch \
   --project-slug circleci/org/repo \

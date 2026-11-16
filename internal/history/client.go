@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -32,13 +33,13 @@ func NewClient(baseURL, token string) *Client {
 }
 
 func (c *Client) get(ctx context.Context, path string) ([]byte, error) {
-	url := c.BaseURL + "/" + strings.TrimPrefix(path, "/")
+	reqURL := c.BaseURL + "/" + strings.TrimPrefix(path, "/")
 	var backoff time.Duration
 	for attempt := 0; attempt < c.maxTries(); attempt++ {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -58,7 +59,7 @@ func (c *Client) get(ctx context.Context, path string) ([]byte, error) {
 		switch {
 		case resp.StatusCode == http.StatusOK:
 			return body, nil
-		case resp.StatusCode == http.StatusUnauthorized:
+		case resp.StatusCode == http.StatusUnauthorized, resp.StatusCode == http.StatusForbidden:
 			return nil, fmt.Errorf("API %s: unauthorized", path)
 		case resp.StatusCode == http.StatusTooManyRequests:
 			wait := retryAfter(resp.Header.Get("Retry-After"))
@@ -133,11 +134,15 @@ type pipelinesPage struct {
 	NextPageToken string            `json:"next_page_token"`
 }
 
-func (c *Client) Pipelines(ctx context.Context, projectSlug, pageToken string) (pipelinesPage, error) {
-	path := "api/v2/project/" + projectSlug + "/pipeline"
-	if pageToken != "" {
-		path += "?page-token=" + pageToken
+func pageURL(basePath, pageToken string) string {
+	if pageToken == "" {
+		return basePath
 	}
+	return basePath + "?page-token=" + url.QueryEscape(pageToken)
+}
+
+func (c *Client) Pipelines(ctx context.Context, projectSlug, pageToken string) (pipelinesPage, error) {
+	path := pageURL("api/v2/project/"+projectSlug+"/pipeline", pageToken)
 	data, err := c.get(ctx, path)
 	if err != nil {
 		return pipelinesPage{}, err
@@ -150,25 +155,45 @@ func (c *Client) Pipelines(ctx context.Context, projectSlug, pageToken string) (
 }
 
 func (c *Client) Workflows(ctx context.Context, pipelineID string) (workflowPage, error) {
-	data, err := c.get(ctx, "api/v2/pipeline/"+pipelineID+"/workflow")
-	if err != nil {
-		return workflowPage{}, err
+	var all []workflowItem
+	token := ""
+	for {
+		path := pageURL("api/v2/pipeline/"+pipelineID+"/workflow", token)
+		data, err := c.get(ctx, path)
+		if err != nil {
+			return workflowPage{}, err
+		}
+		var page workflowPage
+		if err := json.Unmarshal(data, &page); err != nil {
+			return workflowPage{}, fmt.Errorf("decode workflows: %w", err)
+		}
+		all = append(all, page.Items...)
+		token = page.NextPageToken
+		if token == "" {
+			break
+		}
 	}
-	var page workflowPage
-	if err := json.Unmarshal(data, &page); err != nil {
-		return workflowPage{}, fmt.Errorf("decode workflows: %w", err)
-	}
-	return page, nil
+	return workflowPage{Items: all}, nil
 }
 
 func (c *Client) Jobs(ctx context.Context, workflowID string) (jobPage, error) {
-	data, err := c.get(ctx, "api/v2/workflow/"+workflowID+"/job")
-	if err != nil {
-		return jobPage{}, err
+	var all []jobItem
+	token := ""
+	for {
+		path := pageURL("api/v2/workflow/"+workflowID+"/job", token)
+		data, err := c.get(ctx, path)
+		if err != nil {
+			return jobPage{}, err
+		}
+		var page jobPage
+		if err := json.Unmarshal(data, &page); err != nil {
+			return jobPage{}, fmt.Errorf("decode jobs: %w", err)
+		}
+		all = append(all, page.Items...)
+		token = page.NextPageToken
+		if token == "" {
+			break
+		}
 	}
-	var page jobPage
-	if err := json.Unmarshal(data, &page); err != nil {
-		return jobPage{}, fmt.Errorf("decode jobs: %w", err)
-	}
-	return page, nil
+	return jobPage{Items: all}, nil
 }

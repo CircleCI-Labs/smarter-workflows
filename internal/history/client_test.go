@@ -75,3 +75,15 @@ func TestClient401(t *testing.T) {
 		t.Fatal("expected error")
 	}
 }
+
+func TestClient403(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+	}))
+	defer srv.Close()
+	c := NewClient(srv.URL, "bad")
+	_, err := c.Pipelines(context.Background(), "slug", "")
+	if err == nil || err.Error() != "API api/v2/project/slug/pipeline: unauthorized" {
+		t.Fatalf("err = %v", err)
+	}
+}

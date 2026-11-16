@@ -15,24 +15,29 @@ func commitFromPipeline(raw json.RawMessage) string {
 	if err := json.Unmarshal(raw, &p); err != nil {
 		return ""
 	}
+	candidates := []string{}
 	if p.VCS != nil && p.VCS.Revision != "" {
-		return p.VCS.Revision
+		candidates = append(candidates, p.VCS.Revision)
 	}
 	tp := p.TriggerParameters
-	if tp == nil {
-		return ""
-	}
-	if v, ok := tp["git.checkout_sha"].(string); ok && v != "" {
-		return v
-	}
-	if git, ok := tp["git"].(map[string]any); ok {
-		if s, ok := git["checkout_sha"].(string); ok {
-			return s
+	if tp != nil {
+		if v, ok := tp["git.checkout_sha"].(string); ok && v != "" {
+			candidates = append(candidates, v)
+		}
+		if git, ok := tp["git"].(map[string]any); ok {
+			if s, ok := git["checkout_sha"].(string); ok {
+				candidates = append(candidates, s)
+			}
+		}
+		if gha, ok := tp["github_app"].(map[string]any); ok {
+			if s, ok := gha["checkout_sha"].(string); ok {
+				candidates = append(candidates, s)
+			}
 		}
 	}
-	if gha, ok := tp["github_app"].(map[string]any); ok {
-		if s, ok := gha["checkout_sha"].(string); ok {
-			return s
+	for _, c := range candidates {
+		if validCommitSHA(c) {
+			return c
 		}
 	}
 	return ""
@@ -79,7 +84,8 @@ type vcsInfo struct {
 }
 
 type workflowPage struct {
-	Items []workflowItem `json:"items"`
+	Items         []workflowItem `json:"items"`
+	NextPageToken string         `json:"next_page_token"`
 }
 
 type workflowItem struct {
@@ -89,7 +95,8 @@ type workflowItem struct {
 }
 
 type jobPage struct {
-	Items []jobItem `json:"items"`
+	Items         []jobItem `json:"items"`
+	NextPageToken string    `json:"next_page_token"`
 }
 
 type jobItem struct {

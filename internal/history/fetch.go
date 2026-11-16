@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
 
 	"github.com/CircleCI-Labs/smarter-workflows/internal/backtest"
+	"github.com/CircleCI-Labs/smarter-workflows/internal/diff"
 )
 
 // FetchOptions tune history mining.
@@ -29,17 +31,31 @@ type FetchStats struct {
 	SkippedPipeline int
 }
 
+type pipelineWork struct {
+	raw    json.RawMessage
+	sha    string
+	branch string
+	id     string
+}
+
 // Fetch downloads pipeline history and writes a JSON array to out.
 func Fetch(ctx context.Context, client *Client, opts FetchOptions, out io.Writer, log io.Writer) (FetchStats, error) {
 	if opts.Limit <= 0 {
 		return FetchStats{}, fmt.Errorf("limit must be positive")
 	}
-	repo := Repo{Dir: opts.RepoDir}
-	var list []backtest.CommitHistory
+	concurrency := opts.Concurrency
+	if concurrency <= 0 {
+		concurrency = 4
+	}
+	repo := &Repo{G: diff.Git{Dir: opts.RepoDir}}
+	if _, err := repo.firstParentChain(ctx); err != nil && log != nil {
+		fmt.Fprintf(log, "history fetch: warning: cannot read first-parent chain: %v\n", err)
+	}
 	var stats FetchStats
 
+	var work []pipelineWork
 	nextToken := ""
-	for stats.Written < opts.Limit {
+	for len(work) < opts.Limit {
 		page, err := client.Pipelines(ctx, opts.ProjectSlug, nextToken)
 		if err != nil {
 			if log != nil {
@@ -50,9 +66,8 @@ func Fetch(ctx context.Context, client *Client, opts FetchOptions, out io.Writer
 		if len(page.Items) == 0 {
 			break
 		}
-
 		for _, raw := range page.Items {
-			if stats.Written >= opts.Limit {
+			if len(work) >= opts.Limit {
 				break
 			}
 			sha := commitFromPipeline(raw)
@@ -77,25 +92,48 @@ func Fetch(ctx context.Context, client *Client, opts FetchOptions, out io.Writer
 				stats.SkippedPipeline++
 				continue
 			}
-
-			entry, ok, err := recordPipeline(ctx, client, opts.Workflow, repo, raw, sha, branch)
-			if err != nil || !ok {
-				stats.SkippedPipeline++
-				if log != nil {
-					fmt.Fprintf(log, "history fetch: warning: pipeline %s skipped\n", item.ID)
-				}
-				continue
-			}
-			list = append(list, entry)
-			stats.Written++
+			work = append(work, pipelineWork{raw: raw, sha: sha, branch: branch, id: item.ID})
 		}
-
-		if stats.Written >= opts.Limit {
+		if len(work) >= opts.Limit {
 			break
 		}
 		nextToken = page.NextPageToken
 		if nextToken == "" {
 			break
+		}
+	}
+
+	results := make([]*backtest.CommitHistory, len(work))
+	lim := make(chan struct{}, concurrency)
+	var wg sync.WaitGroup
+	var recMu sync.Mutex
+
+	for i, w := range work {
+		wg.Add(1)
+		lim <- struct{}{}
+		go func(i int, w pipelineWork) {
+			defer wg.Done()
+			defer func() { <-lim }()
+			entry, ok, err := recordPipeline(ctx, client, opts.Workflow, repo, w.raw, w.sha, w.branch)
+			if err != nil || !ok {
+				recMu.Lock()
+				stats.SkippedPipeline++
+				recMu.Unlock()
+				if log != nil {
+					fmt.Fprintf(log, "history fetch: warning: pipeline %s skipped\n", w.id)
+				}
+				return
+			}
+			results[i] = &entry
+		}(i, w)
+	}
+	wg.Wait()
+
+	var list []backtest.CommitHistory
+	for _, r := range results {
+		if r != nil {
+			list = append(list, *r)
+			stats.Written++
 		}
 	}
 
@@ -111,7 +149,7 @@ func Fetch(ctx context.Context, client *Client, opts FetchOptions, out io.Writer
 	return stats, nil
 }
 
-func recordPipeline(ctx context.Context, client *Client, workflow string, repo Repo, pipelineJSON json.RawMessage, sha, branch string) (backtest.CommitHistory, bool, error) {
+func recordPipeline(ctx context.Context, client *Client, workflow string, repo *Repo, pipelineJSON json.RawMessage, sha, branch string) (backtest.CommitHistory, bool, error) {
 	var item pipelineItem
 	if err := json.Unmarshal(pipelineJSON, &item); err != nil {
 		return backtest.CommitHistory{}, false, err
@@ -136,12 +174,12 @@ func recordPipeline(ctx context.Context, client *Client, workflow string, repo R
 		return backtest.CommitHistory{}, false, nil
 	}
 	jobs := mergeWorkflowReruns(bundles)
-	base := repo.mergeBase(ctx, sha)
+	base, err := repo.historicalBase(ctx, sha)
+	if err != nil {
+		return backtest.CommitHistory{}, false, err
+	}
 	changed, err := repo.changedFiles(ctx, base, sha)
 	if err != nil {
-		changed = nil
-	}
-	if changed == nil {
 		changed = []backtest.Change{}
 	}
 	return backtest.CommitHistory{
@@ -164,11 +202,4 @@ func WriteFile(path string, list []backtest.CommitHistory) error {
 	enc.SetEscapeHTML(false)
 	enc.SetIndent("", "  ")
 	return enc.Encode(list)
-}
-
-func shortSHA(sha string) string {
-	if len(sha) <= 12 {
-		return sha
-	}
-	return sha[:12]
 }

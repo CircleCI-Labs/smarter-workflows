@@ -184,6 +184,55 @@ func TestFetchGoldenParity(t *testing.T) {
 	}
 }
 
+func TestFetchConcurrencyParity(t *testing.T) {
+	repo := difftest.New(t)
+	sha1 := repo.Commit("one")
+	repo.Write("a.txt", "1")
+	sha2 := repo.Commit("two")
+	setupOriginMain(t, repo, sha2)
+
+	page := []byte(`{"items":[` +
+		`{"id":"p2","vcs":{"revision":"` + sha2 + `","branch":"main"}},` +
+		`{"id":"p1","vcs":{"revision":"` + sha1 + `","branch":"main"}}` +
+		`]}`)
+	jobs := []byte(`{"items":[{"name":"lint","type":"build","status":"success","duration":1000}]}`)
+	wf := []byte(`{"items":[{"id":"w1","name":"ci","created_at":"2026-01-01T00:00:00Z"}]}`)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/pipeline"):
+			w.Write(page)
+		case strings.HasSuffix(r.URL.Path, "/workflow"):
+			w.Write(wf)
+		case strings.HasSuffix(r.URL.Path, "/job"):
+			w.Write(jobs)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	fetch := func(conc int) []byte {
+		var buf bytes.Buffer
+		client := NewClient(srv.URL, "tok")
+		client.HTTP = srv.Client()
+		if _, err := Fetch(context.Background(), client, FetchOptions{
+			ProjectSlug: "org/repo",
+			Workflow:    "ci",
+			Limit:       2,
+			RepoDir:     repo.Dir,
+			Concurrency: conc,
+		}, &buf, nil); err != nil {
+			t.Fatal(err)
+		}
+		return bytes.TrimSpace(buf.Bytes())
+	}
+	one, four := fetch(1), fetch(4)
+	if string(one) != string(four) {
+		t.Fatalf("sequential vs concurrent mismatch:\n%s\n---\n%s", one, four)
+	}
+}
+
 func setupOriginMain(t *testing.T, repo *difftest.Repo, sha string) {
 	t.Helper()
 	difftest.RunGit(t, repo.Dir, nil, "update-ref", "refs/remotes/origin/main", sha)
