@@ -251,6 +251,9 @@ func (p *planner) directReasons(e *config.Entry, cs *changeSet, mandatory, force
 	if mandatory[e.Name] {
 		reasons = append(reasons, "mandatory job")
 	}
+	if why, ok := p.in.AIAdded[e.Name]; ok {
+		reasons = append(reasons, "added by AI review: "+why)
+	}
 	if forced[e.Name] {
 		reasons = append(reasons, fmt.Sprintf("required by the guardrails ([smarter:require-job=%s])", e.Name))
 	}

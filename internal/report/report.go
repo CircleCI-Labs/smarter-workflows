@@ -38,6 +38,21 @@ type Plan struct {
 	Gate       *Gate      `json:"gate,omitempty"`
 	Guardrails Guardrails `json:"guardrails"`
 	Warnings   []string   `json:"warnings"`
+	AIReview   *AIReview  `json:"ai_review,omitempty"`
+}
+
+// AIReview records plan-time AI review output.
+type AIReview struct {
+	Mode     string        `json:"mode"`
+	Added    []AIReviewJob `json:"added,omitempty"`
+	Shadow   []AIReviewJob `json:"shadow,omitempty"`
+	Warnings []string      `json:"warnings,omitempty"`
+}
+
+// AIReviewJob is one job the review added or would add.
+type AIReviewJob struct {
+	Name string `json:"name"`
+	Why  string `json:"why"`
 }
 
 // Change is one changed path: status A, M or D.
@@ -199,6 +214,23 @@ func (p *Plan) Markdown() string {
 		b.WriteString("\n**Warnings**\n\n")
 		for _, w := range p.Warnings {
 			fmt.Fprintf(&b, "- %s\n", line(w))
+		}
+	}
+
+	if p.AIReview != nil {
+		b.WriteString("\n**Added by AI review**\n\n")
+		list := p.AIReview.Added
+		prefix := ""
+		if p.AIReview.Mode == "shadow" {
+			list = p.AIReview.Shadow
+			prefix = "would add: "
+		}
+		if len(list) == 0 {
+			b.WriteString("_None._\n")
+		} else {
+			for _, j := range list {
+				fmt.Fprintf(&b, "- %s%s — %s\n", prefix, line(j.Name), line(j.Why))
+			}
 		}
 	}
 	return b.String()

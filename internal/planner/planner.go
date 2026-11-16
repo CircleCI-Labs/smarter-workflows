@@ -45,6 +45,10 @@ type Input struct {
 	// the plan is a full run and the problem is recorded.
 	Checker           guard.Checker
 	GuardrailsProblem string
+	// MapJobSummaries is optional per-job input totals from analyze (plan integration).
+	MapJobSummaries map[string]string
+	// AIAdded forces jobs into the selection with a reason (plan-time AI review).
+	AIAdded map[string]string
 }
 
 // Result is the outcome of planning.
@@ -446,6 +450,9 @@ func (p *planner) build(ctx context.Context, forced map[string]bool, fullReason 
 			job.Reasons = append(job.Reasons, sel.reasons[i]...)
 		default:
 			job.Reasons = []string{an.skipReason(i, p.o.Branch, p.o.Tag)}
+			if sum := p.in.MapJobSummaries[e.Name]; sum != "" && job.Reasons[0] == "inputs unchanged" {
+				job.Reasons = append(job.Reasons, sum+"; none touched")
+			}
 		}
 		rep.Jobs = append(rep.Jobs, job)
 		if kept[i] && an.will[i] == triUnknown && filterVerdict(e.Filters, p.o.Branch, p.o.Tag) == triUnknown {
