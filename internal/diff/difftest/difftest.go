@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -39,15 +40,44 @@ type Repo struct {
 	commits int
 }
 
-// New makes an empty repository whose default branch is main. It sets gitEnv
-// for the rest of the test, so the planner's own git calls are hermetic too.
-func New(t testing.TB) *Repo {
+// InstallGitEnv configures the test process so every git invocation is hermetic
+// (no global config, maintenance off). Call before git or planner work on a tree.
+func InstallGitEnv(t testing.TB) {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())
 	for _, kv := range gitEnv {
 		k, v, _ := strings.Cut(kv, "=")
 		t.Setenv(k, v)
 	}
+}
+
+// commitAuthorEnv is the author identity for deterministic test commits.
+var commitAuthorEnv = []string{
+	"GIT_AUTHOR_NAME=Test Author", "GIT_AUTHOR_EMAIL=author@example.com",
+	"GIT_COMMITTER_NAME=Test Author", "GIT_COMMITTER_EMAIL=author@example.com",
+}
+
+// CommitFileInDir stages one path and commits it with the test author identity.
+func CommitFileInDir(t testing.TB, dir, rel, message string) string {
+	t.Helper()
+	RunGit(t, dir, nil, "add", rel)
+	RunGit(t, dir, commitAuthorEnv, "commit", "-m", message)
+	return RunGit(t, dir, nil, "rev-parse", "HEAD")
+}
+
+// RunGitQuiet runs git in dir and ignores errors (test cleanup).
+func RunGitQuiet(dir string, args ...string) {
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	cmd.Env = append(append(os.Environ(), gitEnv...), "GIT_TERMINAL_PROMPT=0", "GIT_LITERAL_PATHSPECS=1")
+	_ = cmd.Run()
+}
+
+// New makes an empty repository whose default branch is main. It sets gitEnv
+// for the rest of the test, so the planner's own git calls are hermetic too.
+func New(t testing.TB) *Repo {
+	t.Helper()
+	InstallGitEnv(t)
 	r := &Repo{t: t, Dir: t.TempDir()}
 	r.Git("init", "-q", "-b", "main")
 	return r
@@ -99,10 +129,8 @@ func (r *Repo) Commit(message string) string {
 	r.t.Helper()
 	r.commits++
 	date := fmt.Sprintf("2026-01-01T00:%02d:%02d+00:00", (r.commits/60)%60, r.commits%60)
-	env := []string{
-		"GIT_AUTHOR_NAME=Test Author", "GIT_AUTHOR_EMAIL=author@example.com", "GIT_AUTHOR_DATE=" + date,
-		"GIT_COMMITTER_NAME=Test Author", "GIT_COMMITTER_EMAIL=author@example.com", "GIT_COMMITTER_DATE=" + date,
-	}
+	env := append(slices.Clone(commitAuthorEnv),
+		"GIT_AUTHOR_DATE="+date, "GIT_COMMITTER_DATE="+date)
 	RunGit(r.t, r.Dir, nil, "add", "-A")
 	RunGit(r.t, r.Dir, env, "commit", "-q", "--allow-empty", "-m", message)
 	return r.Git("rev-parse", "HEAD")

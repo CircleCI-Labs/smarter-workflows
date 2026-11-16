@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -39,26 +38,16 @@ func moduleRoot(t *testing.T) string {
 
 func planRegressionWorktree(t *testing.T, origin string) (dir, base string) {
 	t.Helper()
+	difftest.InstallGitEnv(t)
 	wt := filepath.Join(t.TempDir(), "wt")
 	branch := fmt.Sprintf("plan-reg-%d", os.Getpid())
 	difftest.RunGit(t, origin, nil, "worktree", "add", "-b", branch, wt, "HEAD")
 	t.Cleanup(func() {
-		_ = exec.Command("git", "-C", origin, "worktree", "remove", "--force", wt).Run()
-		_ = exec.Command("git", "-C", origin, "branch", "-D", branch).Run()
+		difftest.RunGitQuiet(origin, "worktree", "remove", "--force", wt)
+		difftest.RunGitQuiet(origin, "branch", "-D", branch)
 	})
-	base = strings.TrimSpace(gitOut(t, wt, "rev-parse", "HEAD"))
+	base = difftest.RunGit(t, wt, nil, "rev-parse", "HEAD")
 	return wt, base
-}
-
-func gitOut(t *testing.T, dir string, args ...string) string {
-	t.Helper()
-	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
-	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_LITERAL_PATHSPECS=1")
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("git %v: %v\n%s", args, err, out)
-	}
-	return strings.TrimSpace(string(out))
 }
 
 func patchFile(t *testing.T, dir, rel, content string) {
@@ -70,13 +59,6 @@ func patchFile(t *testing.T, dir, rel, content string) {
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
-}
-
-func commitFile(t *testing.T, dir, rel, msg string) string {
-	t.Helper()
-	gitOut(t, dir, "add", rel)
-	gitOut(t, dir, "commit", "-m", msg)
-	return strings.TrimSpace(gitOut(t, dir, "rev-parse", "HEAD"))
 }
 
 func runPlanSelect(t *testing.T, dir string, args ...string) map[string]bool {
@@ -194,7 +176,7 @@ func TestPlanRegressionDogfoodGoDiff(t *testing.T) {
 	root := moduleRoot(t)
 	wt, base := planRegressionWorktree(t, root)
 	patchFile(t, wt, "internal/diff/git.go", "// plan regression touch\n")
-	head := commitFile(t, wt, "internal/diff/git.go", "touch internal/diff/git.go")
+	head := difftest.CommitFileInDir(t, wt, "internal/diff/git.go", "touch internal/diff/git.go")
 	t.Chdir(wt)
 	runs := runPlanSelect(t, wt, "--base", base, "--head", head)
 	wantJobs(t, runs, []string{"go-test", "go-lint", "security-scan"}, nil)
@@ -208,7 +190,7 @@ func TestPlanRegressionDogfoodPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 	patchFile(t, wt, "policies/guardrails.rego", string(data)+"\n# plan regression touch\n")
-	head := commitFile(t, wt, "policies/guardrails.rego", "touch guardrails")
+	head := difftest.CommitFileInDir(t, wt, "policies/guardrails.rego", "touch guardrails")
 	runs := runPlanSelect(t, wt, "--base", base, "--head", head)
 	wantJobs(t, runs, []string{"go-test", "policy-test", "security-scan"}, nil)
 }
@@ -222,7 +204,7 @@ func TestPlanRegressionDogfoodDocsOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	patchFile(t, wt, rel, string(before)+"\n")
-	head := commitFile(t, wt, rel, "docs only")
+	head := difftest.CommitFileInDir(t, wt, rel, "docs only")
 	assertGoTestSkipsPath(t, wt, rel)
 	runs := runPlanSelect(t, wt, "--base", base, "--head", head)
 	wantJobs(t, runs, []string{"docs-site-build", "go-lint", "security-scan"}, []string{"go-test"})
@@ -232,7 +214,7 @@ func TestPlanRegressionDemoWeb(t *testing.T) {
 	root := moduleRoot(t)
 	wt, base := planRegressionWorktree(t, root)
 	patchFile(t, wt, "examples/demo/services/web/src/greeting.js", "export function greeting(){return 'hi';}\n")
-	head := commitFile(t, wt, "examples/demo/services/web/src/greeting.js", "demo web")
+	head := difftest.CommitFileInDir(t, wt, "examples/demo/services/web/src/greeting.js", "demo web")
 	runs := runPlanDemo(t, wt, base, head)
 	wantJobs(t, runs, []string{"web-test", "web-bundle"}, nil)
 }
@@ -242,7 +224,7 @@ func TestPlanRegressionDogfoodGoDeepNewFile(t *testing.T) {
 	wt, base := planRegressionWorktree(t, root)
 	rel := "internal/report/plan_regression_new.go"
 	patchFile(t, wt, rel, "package report\n")
-	head := commitFile(t, wt, rel, "new go file under input dir")
+	head := difftest.CommitFileInDir(t, wt, rel, "new go file under input dir")
 	runs := runPlanSelect(t, wt, "--base", base, "--head", head)
 	wantJobs(t, runs, []string{"go-test", "go-lint", "security-scan"}, nil)
 }
@@ -251,7 +233,7 @@ func TestPlanRegressionDogfoodRootPlusGoLint(t *testing.T) {
 	root := moduleRoot(t)
 	wt, base := planRegressionWorktree(t, root)
 	patchFile(t, wt, "orb/src/@orb.yml", "# plan regression touch\n")
-	head := commitFile(t, wt, "orb/src/@orb.yml", "touch orb metadata")
+	head := difftest.CommitFileInDir(t, wt, "orb/src/@orb.yml", "touch orb metadata")
 	runs := runPlanSelect(t, wt, "--base", base, "--head", head)
 	wantJobs(t, runs, []string{"go-lint", "security-scan"}, nil)
 }
@@ -260,7 +242,7 @@ func TestPlanRegressionDemoDocs(t *testing.T) {
 	root := moduleRoot(t)
 	wt, base := planRegressionWorktree(t, root)
 	patchFile(t, wt, "examples/demo/docs/plan-regression.md", "# scratch\n")
-	head := commitFile(t, wt, "examples/demo/docs/plan-regression.md", "demo docs")
+	head := difftest.CommitFileInDir(t, wt, "examples/demo/docs/plan-regression.md", "demo docs")
 	runs := runPlanDemo(t, wt, base, head)
 	wantJobs(t, runs, []string{"docs-check"}, nil)
 }
