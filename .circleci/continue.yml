@@ -323,7 +323,6 @@ jobs:
             PROJECT_SLUG: "<< pipeline.project.slug >>"
           command: |
             set -eu
-            command -v jq >/dev/null || { echo "benchmark: jq is required on this image" >&2; exit 1; }
             mkdir -p /tmp/smarter
             scripts/bench/fetch-history.sh "$PROJECT_SLUG" ci 200 /tmp/smarter/history.json .
       - run:

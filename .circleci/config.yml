@@ -2,8 +2,8 @@
 #
 # One setup job builds the planner from this checkout (the orb is not published
 # yet), plans .circleci/continue.yml and continues the pipeline with the result.
-# It does what the orb's plan job does, with source build, in shadow mode: the
-# plan and the report are made, and every job still runs.
+# A scheduled pipeline runs learn instead of plan and still continues so the
+# benchmark workflow in continue.yml can run.
 version: 2.1
 
 setup: true
@@ -20,7 +20,7 @@ jobs:
           name: "smarter: pick the version"
           command: |
             set -eu
-            mkdir -p /tmp/smarter/bin
+            mkdir -p /tmp/smarter/bin /tmp/smarter/plan
             printf 'dev-%s\n' "$CIRCLE_SHA1" > .smarter-version
       - restore_cache:
           keys:
@@ -38,6 +38,11 @@ jobs:
           key: smarter-bin-v1-{{ checksum ".smarter-version" }}-{{ arch }}
           paths:
             - /tmp/smarter/bin
+      - restore_cache:
+          keys:
+            - smarter-learned-v1-
+          paths:
+            - /tmp/smarter
       - run:
           name: "smarter: base"
           command: |
@@ -56,9 +61,13 @@ jobs:
               --default-branch main \
               --mode select \
               --mandatory security-scan \
-              --policy-bundle policies
+              --policy-bundle policies \
+              --analyze-report /tmp/smarter/plan/analyze-report.md
             if [ -n "$SMARTER_ARG_TRIGGER_TYPE" ]; then
               set -- "$@" --trigger-type "$SMARTER_ARG_TRIGGER_TYPE"
+            fi
+            if [ -s /tmp/smarter/learned.json ]; then
+              set -- "$@" --learned /tmp/smarter/learned.json
             fi
             /tmp/smarter/bin/circleci-smarter "$@"
       - store_artifacts:
@@ -70,11 +79,100 @@ jobs:
             set -eu
             /tmp/smarter/bin/circleci-smarter continue --config /tmp/smarter/continue.yml
 
+  learn:
+    docker:
+      - image: cimg/go:1.27.3
+    resource_class: medium
+    steps:
+      - checkout
+      - run:
+          name: "smarter: fetch full history"
+          command: |
+            set -eu
+            git fetch --unshallow 2>/dev/null || git fetch --depth=100000
+      - run:
+          name: "smarter: pick the version"
+          command: |
+            set -eu
+            mkdir -p /tmp/smarter/bin /tmp/smarter/learn
+            printf 'dev-%s\n' "$CIRCLE_SHA1" > .smarter-version
+      - restore_cache:
+          keys:
+            - smarter-bin-v1-{{ checksum ".smarter-version" }}-{{ arch }}
+      - run:
+          name: "smarter: build"
+          command: |
+            set -eu
+            if [ -x /tmp/smarter/bin/circleci-smarter ]; then
+              echo "smarter: using the cached binary"
+              exit 0
+            fi
+            CGO_ENABLED=0 go build -ldflags "-X main.version=dev-$CIRCLE_SHA1" -o /tmp/smarter/bin/circleci-smarter ./cmd/circleci-smarter
+      - restore_cache:
+          keys:
+            - smarter-learned-v1-
+          paths:
+            - /tmp/smarter
+      - run:
+          name: "smarter: learn"
+          environment:
+            PROJECT_SLUG: "<< pipeline.project.slug >>"
+          command: |
+            set -eu
+            set -- learn \
+              --project-slug "$PROJECT_SLUG" \
+              --workflow ci \
+              --limit 200 \
+              --config .circleci/continue.yml \
+              --learned-out /tmp/smarter/learned.json \
+              --report /tmp/smarter/learn/learn.md \
+              --report-json /tmp/smarter/learn/learn.json
+            if [ -s /tmp/smarter/learned.json ]; then
+              cp /tmp/smarter/learned.json /tmp/smarter/learned-prev.json
+              set -- "$@" --learned /tmp/smarter/learned-prev.json
+            fi
+            /tmp/smarter/bin/circleci-smarter "$@"
+      - save_cache:
+          key: smarter-learned-v1-{{ epoch }}
+          paths:
+            - /tmp/smarter/learned.json
+      - store_artifacts:
+          path: /tmp/smarter/learn
+          destination: smarter-learn
+      - run:
+          name: "smarter: learn summary"
+          command: |
+            set -eu
+            awk 'BEGIN{p=0} /^## Summary$/{p=1;print;next} p&&/^## /{exit} p' /tmp/smarter/learn/learn.md
+      - run:
+          name: "smarter: continue (scheduled full run)"
+          command: |
+            set -eu
+            /tmp/smarter/bin/circleci-smarter plan \
+              --config .circleci/continue.yml \
+              --workflow ci \
+              --default-branch main \
+              --mode select \
+              --mandatory security-scan \
+              --trigger-type schedule \
+              --policy-bundle policies \
+              --out /tmp/smarter/continue.yml
+            /tmp/smarter/bin/circleci-smarter continue --config /tmp/smarter/continue.yml
+
 workflows:
   plan:
+    when:
+      not:
+        equal: [schedule, << pipeline.trigger.type >>]
     jobs:
       - plan:
-          # Tag pipelines plan too: the release jobs of continue.yml run on tags.
           filters:
             tags:
               only: /.*/
+  refresh-learned:
+    when:
+      equal: [schedule, << pipeline.trigger.type >>]
+    jobs:
+      - learn:
+          context:
+            - smarter-workflows-ai
