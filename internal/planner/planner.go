@@ -49,6 +49,8 @@ type Input struct {
 	MapJobSummaries map[string]string
 	// AIAdded forces jobs into the selection with a reason (plan-time AI review).
 	AIAdded map[string]string
+	// MapFromAnalyze is set when the impact map was built in-process for this plan.
+	MapFromAnalyze bool
 }
 
 // Result is the outcome of planning.
@@ -421,7 +423,7 @@ func (p *planner) build(ctx context.Context, forced map[string]bool, fullReason 
 		}
 		sel = p.selectJobs(an, cs, forced)
 		rep.Warnings = append(rep.Warnings, p.planWarnings(an)...)
-		if m := p.in.Map; m != nil && m.Revision != p.o.Base {
+		if m := p.in.Map; m != nil && !p.in.MapFromAnalyze && m.Revision != p.o.Base {
 			rep.Warnings = append(rep.Warnings, fmt.Sprintf("the impact map was built at %s, and the diff base is %s", short(m.Revision), short(p.o.Base)))
 		}
 	}

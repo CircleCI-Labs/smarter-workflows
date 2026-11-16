@@ -287,11 +287,16 @@ func (p *planner) directReasons(e *config.Entry, cs *changeSet, mandatory, force
 
 	var reads, dirs []string
 	for _, c := range cs.effective {
-		if mj.ReadsFile(c.Path) {
-			reads = append(reads, c.Path)
-		}
-		if c.Status == "M" {
+		switch c.Status {
+		case "M":
+			if mj.CoversPath(c.Path) {
+				reads = append(reads, c.Path)
+			}
 			continue
+		default:
+			if mj.ReadsFile(c.Path) {
+				reads = append(reads, c.Path)
+			}
 		}
 		verb := "added"
 		if c.Status == "D" {

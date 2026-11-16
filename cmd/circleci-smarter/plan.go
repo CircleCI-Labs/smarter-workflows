@@ -169,6 +169,7 @@ func runPlan(args []string, stdout, stderr io.Writer) int {
 		}
 		ar := planRunAnalyze(ctx, *repoDir, absConfig(*repoDir, *cfgPath), wfName, headRev, *learned, *analyzeReport, stderr)
 		in.Map, in.MapProblem, in.MapJobSummaries = ar.Map, ar.MapProblem, ar.Summaries
+		in.MapFromAnalyze = ar.Map != nil
 		analyzeMs = ar.Elapsed.Seconds() * 1000
 		for _, w := range ar.Warnings {
 			fmt.Fprintf(stderr, "circleci-smarter plan: warning: %s\n", w)

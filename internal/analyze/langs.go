@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/CircleCI-Labs/smarter-workflows/internal/impactmap"
 )
 
 var (
@@ -76,7 +78,9 @@ func (e *Engine) addGoTarget(repoRoot, wd, target string, into *InputSet) {
 		} else if wd != "" && wd != "." {
 			base = resolveWD(repoRoot, wd, base)
 		}
-		into.addVerifiedDir(repoRoot, ".", base, InputNote{Signal: SignalGoImports, Detail: target})
+		if impactmap.NormalizeDir(base) != "." {
+			into.addVerifiedDir(repoRoot, ".", base, InputNote{Signal: SignalGoImports, Detail: target})
+		}
 		listArg := "./..."
 		if base != "" && base != "." {
 			listArg = base + "/..."
@@ -98,7 +102,9 @@ func (e *Engine) addGoTarget(repoRoot, wd, target string, into *InputSet) {
 				base = "."
 			}
 		}
-		into.addVerifiedDir(repoRoot, ".", base, InputNote{Signal: SignalGoImports, Detail: target})
+		if impactmap.NormalizeDir(base) != "." {
+			into.addVerifiedDir(repoRoot, ".", base, InputNote{Signal: SignalGoImports, Detail: target})
+		}
 		listArg := "./..."
 		if base != "." {
 			listArg = base + "/..."
@@ -106,7 +112,9 @@ func (e *Engine) addGoTarget(repoRoot, wd, target string, into *InputSet) {
 		e.addGoDeps(repoRoot, listArg, into)
 		return
 	}
-	into.addVerifiedDir(repoRoot, ".", pkgDir, InputNote{Signal: SignalGoImports, Detail: target})
+	if impactmap.NormalizeDir(pkgDir) != "." {
+		into.addVerifiedDir(repoRoot, ".", pkgDir, InputNote{Signal: SignalGoImports, Detail: target})
+	}
 	e.addGoDeps(repoRoot, pkgDir, into)
 }
 
@@ -127,6 +135,9 @@ func (e *Engine) addGoDeps(repoRoot, pkgDir string, into *InputSet) {
 	}
 	n := len(deps)
 	for _, d := range deps {
+		if impactmap.NormalizeDir(d) == "." {
+			continue
+		}
 		into.addVerifiedDir(repoRoot, ".", d, InputNote{Signal: SignalGoImports, Detail: "import"})
 	}
 	if len(deps) > 0 {

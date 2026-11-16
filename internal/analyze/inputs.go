@@ -140,11 +140,15 @@ func cleanFile(p string) string {
 }
 
 func cleanDir(p string) string {
+	p = impactmap.NormalizeDir(filepath.ToSlash(path.Clean(strings.TrimSpace(p))))
+	if p == "." {
+		return "."
+	}
 	c, err := impactmap.CleanPath(p, true)
 	if err != nil {
 		return ""
 	}
-	return c
+	return impactmap.NormalizeDir(c)
 }
 
 func resolveWD(repoRoot, wd, p string) string {

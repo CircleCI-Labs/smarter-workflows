@@ -90,6 +90,31 @@ type Job struct {
 	dirs  map[string]struct{}
 }
 
+// NormalizeDir canonicalises a repo-relative directory ("." is the repository root).
+func NormalizeDir(d string) string {
+	d = path.Clean(filepath.ToSlash(strings.TrimSpace(d)))
+	if d == "." || d == "" {
+		return "."
+	}
+	return strings.TrimPrefix(d, "./")
+}
+
+// listsRepoRoot reports whether the job listed the whole repository.
+func (j *Job) listsRepoRoot() bool {
+	j.ensureDirSet()
+	for d := range j.dirs {
+		if NormalizeDir(d) == "." {
+			return true
+		}
+	}
+	for _, d := range j.Dirs {
+		if NormalizeDir(d) == "." {
+			return true
+		}
+	}
+	return false
+}
+
 // ReadsFile reports whether the job read the repo-relative file p.
 func (j *Job) ReadsFile(p string) bool {
 	j.ensureFileSet()
@@ -97,12 +122,71 @@ func (j *Job) ReadsFile(p string) bool {
 	return ok
 }
 
+// rootCoversAllPaths reports whether the job listed only the repository root
+// (for example a repo-wide scan), so any path is in scope.
+func (j *Job) rootCoversAllPaths() bool {
+	if !j.listsRepoRoot() || j.FileCount() > 0 {
+		return false
+	}
+	j.ensureDirSet()
+	for d := range j.dirs {
+		if NormalizeDir(d) != "." {
+			return false
+		}
+	}
+	for _, d := range j.Dirs {
+		if NormalizeDir(d) != "." {
+			return false
+		}
+	}
+	return true
+}
+
+// CoversPath reports whether the job's inputs include the file or a directory
+// on the path to it. A root-only listing covers every path; listing root among
+// other directories does not.
+func (j *Job) CoversPath(p string) bool {
+	if j.ReadsFile(p) {
+		return true
+	}
+	if j.rootCoversAllPaths() {
+		return true
+	}
+	for _, d := range chainDirs(p) {
+		if d == "." {
+			continue
+		}
+		if j.ListsDir(d) {
+			return true
+		}
+	}
+	return false
+}
+
+func chainDirs(p string) []string {
+	var dirs []string
+	for d := path.Dir(p); d != "." && d != "/"; d = path.Dir(d) {
+		dirs = append(dirs, d)
+	}
+	dirs = append(dirs, ".")
+	return dirs
+}
+
 // ListsDir reports whether the job listed the repo-relative directory d ("."
 // is the repository root).
 func (j *Job) ListsDir(d string) bool {
 	j.ensureDirSet()
+	d = NormalizeDir(d)
 	_, ok := j.dirs[d]
-	return ok
+	if ok {
+		return true
+	}
+	for _, stored := range j.Dirs {
+		if NormalizeDir(stored) == d {
+			return true
+		}
+	}
+	return false
 }
 
 // FileCount is how many files the job read.
