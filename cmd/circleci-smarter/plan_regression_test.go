@@ -197,13 +197,17 @@ func TestPlanRegressionDogfoodPolicy(t *testing.T) {
 func TestPlanRegressionDogfoodDocsOnly(t *testing.T) {
 	root := moduleRoot(t)
 	wt, base := planRegressionWorktree(t, root)
-	rel := "skills/circleci-workflow-composer/SKILL.md"
-	before, err := os.ReadFile(filepath.Join(wt, rel))
+	doc := "docs/plan-regression-wp19.md"
+	nav := "site/nav.txt"
+	navBefore, err := os.ReadFile(filepath.Join(wt, nav))
 	if err != nil {
 		t.Fatal(err)
 	}
-	patchFile(t, wt, rel, string(before)+"\n")
-	head := commitFile(t, wt, rel, "docs only")
+	patchFile(t, wt, nav, string(navBefore)+"\n"+doc+" | Plan regression wp19\n")
+	patchFile(t, wt, doc, "# plan regression\n")
+	gitOut(t, wt, "add", nav, doc)
+	gitOut(t, wt, "commit", "-m", "docs only")
+	head := gitOut(t, wt, "rev-parse", "HEAD")
 	runs := runPlanSelect(t, wt, "--base", base, "--head", head)
 	wantJobs(t, runs, []string{"docs-site-build", "go-lint", "security-scan"}, []string{"go-test"})
 }
