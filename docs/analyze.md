@@ -40,3 +40,5 @@ circleci-smarter analyze --repo . --ai off --report analyze-report.md
 Map output defaults to `smarter-map.json` in the current working directory (where you run the command).
 
 Developers can add recall/precision against a reference map with `--truth FILE` (omitted from routine operator docs).
+
+The weekly [learn](learn.md) job runs analyze with AI and history, writes the learned layer, and backtests recall. `plan` merges that layer on every pipeline without calling the API.

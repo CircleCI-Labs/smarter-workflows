@@ -76,3 +76,9 @@ The words this project uses, and what each one means. There are no implementatio
 
 **Confidence**
 : The model's 0–1 self-rating for a job's inferred inputs. Analyze treats a job as complete from AI only when confidence meets `--min-confidence` and the job hash matches.
+
+**Learn**
+: The `circleci-smarter learn` command that fetches pipeline history, refreshes the learned layer with AI and corrections, and reports recall and projected savings.
+
+**AI review**
+: An optional plan-time model call that may add skipped jobs (never remove them) when a pipeline would skip work; failures leave the deterministic plan unchanged.

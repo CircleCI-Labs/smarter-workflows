@@ -17,6 +17,7 @@ examples/demo/README.md | Demo monorepo | A small polyglot monorepo that runs on
 
 ==
 docs/analyze.md | Analyze | Infer impact maps from config and source without trace injection. | analyze
+docs/learn.md | Learn | Refresh the learned layer and measure recall before select mode. | learn
 docs/how-it-works.md | How it works
 docs/limitations.md | Limitations
 docs/threat-model.md | Threat model
