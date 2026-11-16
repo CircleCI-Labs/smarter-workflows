@@ -95,3 +95,17 @@ The answers are in [`examples/compose-eval/answers/haiku-5-5/`](../examples/comp
 - Shadow mode on a busy real repository, for real hit and miss rates.
 - The approval and deploy path on the default branch beyond the hold.
 - Tampering with the cached map (see limitations).
+
+## v0.3 validation (in progress)
+
+Structure for post-integration results; numbers are **TBD** until orchestrator runs complete.
+
+| Layer | Metric | Target / method | Result |
+|---|---|---|---|
+| Static proof | Jobs with complete static analyze at HEAD | `analyze` report on main | TBD |
+| Truth coverage | Recall vs recorded history corrections | `learn` + backtest | TBD |
+| Learn trial | Projected recall and savings | `learn` report on schedule | TBD |
+| End to end | Job sets per scenario (analyze-based expectations) | `scripts/e2e/run-scenarios.sh` | TBD |
+| Backtests | Savings on N commits | `circleci-smarter backtest` / benchmark job | TBD |
+
+Expectations in `scripts/e2e/scenarios-*.tsv` are recomputed with [`scripts/e2e/expect.sh`](../scripts/e2e/expect.sh) against `origin/main` using inline analyze (no learned layer).

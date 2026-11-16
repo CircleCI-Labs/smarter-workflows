@@ -1,22 +1,28 @@
 ---
 page-title: Quickstart
 page-audience: admin
-page-description: Add Smarter Workflows to a CircleCI project in shadow mode, read the plan reports, and switch to select mode when they convince you.
+page-description: Adopt Smarter Workflows in shadow mode, refresh the learned layer on a schedule, and switch to select mode when reports agree.
 ---
 
 # Quickstart
 
 > [!NOTE]
-> CircleCI Labs project, `0.x`, not supported by CircleCI support. [What is tested](../README.md#what-is-tested) shows what CI checks, and [Limitations](limitations.md) lists what v0.1 does not do yet.
+> CircleCI Labs project, `0.x`, not supported by CircleCI support. [What is tested](../README.md#what-is-tested) and [Limitations](limitations.md) describe current coverage.
 
-The orb is not published yet. Once it is, adopt Smarter Workflows with one setup job from the `cci-labs/smarter-workflows` orb (see [orb examples](../orb/src/examples/) or the [README quickstart](../README.md#quickstart)). Until then, copy the inline setup job from this repository's [`.circleci/config.yml`](../.circleci/config.yml); it builds the planner from source and matches what the orb job does.
+## Adoption path
 
-1. **Move your pipeline** (jobs, workflows, orbs, executors) to `.circleci/continue.yml`. That file is the catalog the planner picks from. Nothing else in it changes.
-2. **Add a setup config** in `.circleci/config.yml` with `setup: true`, the orb, and one `smarter/plan` job (see below). Turn on setup workflows under Project Settings → Advanced, if they are not on.
-3. **Start in shadow mode** (`mode: shadow`). Use `source: build` with the `go` executor until releases exist; then use `source: release` (the default) so the job downloads a signed binary.
-4. **Push to the default branch.** The plan job runs `circleci-smarter analyze` and saves the impact map. On later pushes, open `smarter-plan/plan.md` in the plan job's artifacts.
-5. **Require the planned workflow's check** in branch protection (or `smarter-gate` if you use per-job statuses). `smarter-gate` is a no-op job and costs no credits.
-6. **Switch to select mode** (`mode: select`) when shadow reports look right.
+1. **Trial `learn` locally** with a read-only CircleCI token or a recorded history file (`circleci-smarter learn --history FILE --learned-out …`). Read the report’s recall and incomplete jobs.
+2. **Add the orb** with `plan` on every pipeline (shadow) and `learn` on a schedule. Attach a context with `CIRCLECI_TOKEN` and optional `ANTHROPIC_API_KEY`.
+3. **Switch to select** when shadow `plan.md` and the weekly learn report agree.
+
+### Schedule trigger
+
+- **GitHub App projects:** Project Settings → **Triggers** → **Schedule** → add a weekly trigger on the default branch.
+- **OAuth projects:** use [scheduled pipelines](https://circleci.com/docs/guides/orchestrate/schedule-triggers/) (pipeline parameter or trigger type `schedule`).
+
+The orb example wires `learn` to `pipeline.trigger.type == "schedule"` and keeps `plan` on other triggers ([`shadow-learn-schedule.yml`](../orb/src/examples/shadow-learn-schedule.yml)).
+
+## Setup config (orb)
 
 ```yaml
 version: 2.1
@@ -25,6 +31,9 @@ orbs:
   smarter: cci-labs/smarter-workflows@1.0.0
 workflows:
   plan:
+    when:
+      not:
+        equal: [schedule, << pipeline.trigger.type >>]
     jobs:
       - smarter/plan:
           config: .circleci/continue.yml
@@ -32,36 +41,45 @@ workflows:
           mode: shadow
           mandatory: security-scan
           policy-bundle: policies
+          ai-review: shadow
+          executor: smarter/go
+          source: build
+          resource_class: medium
+  refresh-learned:
+    when:
+      equal: [schedule, << pipeline.trigger.type >>]
+    jobs:
+      - smarter/learn:
+          config: .circleci/continue.yml
+          workflow: ci
+          limit: 200
+          context: [your-circleci-token-context]
           executor: smarter/go
           source: build
           resource_class: medium
 ```
 
+Until the orb is published, copy the inline jobs from this repository’s [`.circleci/config.yml`](../.circleci/config.yml) (they build the planner from source).
+
+## Catalog
+
+1. Move jobs, workflows, orbs and executors to `.circleci/continue.yml`. That file is the catalog; nothing Smarter-specific is required inside it.
+2. Turn on setup workflows under **Project Settings → Advanced**.
+
+## Artifacts and branch protection
+
+- Every `plan` run stores `smarter-plan/plan.md`, `plan.json`, and `analyze-report.md`.
+- Every `learn` run stores `smarter-learn/learn.md` and `learn.json`, and updates the learned layer cache (`learned-key-prefix`, default `smarter-learned-v1`).
+- Require the continued workflow’s GitHub check, or per-job `smarter-gate` if you use job checks.
+
 ## Pipeline parameters
 
-If the continuation config uses workflow `when`/`unless` on `pipeline.parameters.*`, pass a JSON file of the values the continuation will receive: set `parameters` on the `smarter/plan` job to that path (for example `.circleci/pipeline-parameters.json`). The planner uses them when selecting jobs and writes `/tmp/smarter/plan/parameters.json` for `continue`.
+If `continue.yml` uses workflow `when`/`unless` on `pipeline.parameters.*`, set the `parameters` job parameter to a JSON file of values. The planner writes `parameters.json` under the plan report for `continue`.
 
-## Pipeline parameters
+## Optional guardrails
 
-If the continuation config uses workflow `when`/`unless` on `pipeline.parameters.*`, pass a JSON file of the values the continuation will receive: set `parameters` on the `smarter/plan` job to that path (for example `.circleci/pipeline-parameters.json`). The planner uses them when selecting jobs and writes `/tmp/smarter/plan/parameters.json` for `continue`.
-
-## Optional: guardrails
-
-Copy [`policies/`](../policies/), edit the settings at the top of `guardrails.rego`, and pass `policy-bundle: policies` on the plan job (or `--policy-bundle policies` with an inline setup job). Every plan is then checked before it continues. On the Scale plan you can also push the same bundle as org policy:
-
-- limit it to the projects that opt in;
-- start with every rule in `soft_rules`;
-- leave the `_test.rego` file out of the pushed directory.
-
-Run the tests with `circleci policy test policies`.
+Copy [`policies/`](../policies/), edit settings at the top of `guardrails.rego`, and set `policy-bundle: policies` on `plan`. Run `circleci policy test policies`.
 
 ## Several pipelines in one project
 
-All pipelines of a project share its cache. Give each setup config its own `map-key-prefix` (default `smarter-impact-v1`) on the plan job. Restore keys match by prefix, so no prefix may start with another one followed by a dash: `smarter-impact-v1` would restore the maps of `smarter-impact-v1-demo`. `smarter-demo-impact-v1` is fine.
-
-## Requirements
-
-- The setup job must check out the repository so `circleci-smarter analyze` can read it. Analysis works on every executor type; jobs with no map entry always run.
-- **Shadow mode first.** Use `plan.md` and `plan.json` to see what select mode would skip before you turn select mode on.
-- **Refresh the learned layer.** A weekly job (or your own schedule) updates AI and history corrections; the static layer runs on every plan.
-- **The default branch builds regularly.** Maps live in the project cache, so they expire with its retention.
+Share one project cache but give each setup config its own `learned-key-prefix`. No prefix may be a prefix of another (use `smarter-demo-learned-v1` beside `smarter-learned-v1`, not `smarter-learned-v1-demo`).
