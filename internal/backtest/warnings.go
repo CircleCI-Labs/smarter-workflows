@@ -39,7 +39,6 @@ func CheckWarnings(ctx context.Context, configYAML []byte, history []CommitHisto
 	planOpts.DefaultBranch = o.DefaultBranch
 	planOpts.Branch = branch
 	planOpts.Parameters = o.Parameters
-	planOpts.Trace = planner.TraceOff
 	in := planner.Input{Config: configYAML, MapProblem: "backtest warning check"}
 	res, err := planner.Run(ctx, in, planOpts)
 	if err != nil {
