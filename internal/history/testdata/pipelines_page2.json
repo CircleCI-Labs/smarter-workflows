@@ -1,0 +1,13 @@
+{
+  "items": [
+    {
+      "id": "pipe-2",
+      "trigger_parameters": {
+        "github_app": {
+          "branch": "feature/x",
+          "checkout_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        }
+      }
+    }
+  ]
+}

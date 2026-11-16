@@ -1,0 +1,25 @@
+[
+  {
+    "commit": "51aa7f89ac4768b0ff99fa979b40f7a195dac1b0",
+    "base": "f1504c57679aa676b5cda3f96d93bb0976c7b1ae",
+    "branch": "main",
+    "changed": [
+      {
+        "path": "pkg/a.go",
+        "status": "A"
+      }
+    ],
+    "jobs": [
+      {
+        "name": "lint",
+        "status": "success",
+        "duration_s": 45
+      },
+      {
+        "name": "test",
+        "status": "failed",
+        "duration_s": 120
+      }
+    ]
+  }
+]

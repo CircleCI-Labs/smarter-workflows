@@ -35,6 +35,7 @@ func runBacktest(args []string, stdout, stderr io.Writer) int {
 	mandatory := fs.String("mandatory", "", "comma-separated mandatory jobs")
 	paramsPath := fs.String("parameters", "", "JSON file of pipeline parameter values for every commit")
 	format := fs.String("format", "md", "report format: md or json")
+	strict := fs.Bool("strict", false, "treat backtest warnings as errors")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0
@@ -93,10 +94,25 @@ func runBacktest(args []string, stdout, stderr io.Writer) int {
 		opts.Parameters = params
 	}
 
+	warns, err := backtest.CheckWarnings(context.Background(), cfg, history, opts)
+	if err != nil {
+		fmt.Fprintf(stderr, "circleci-smarter backtest: %v\n", err)
+		return 1
+	}
+	for _, w := range warns {
+		fmt.Fprintf(stderr, "circleci-smarter backtest: warning: %s\n", w.Message)
+	}
+	if *strict && len(warns) > 0 {
+		return 1
+	}
+
 	report, err := backtest.Run(context.Background(), cfg, m, history, opts)
 	if err != nil {
 		fmt.Fprintf(stderr, "circleci-smarter backtest: %v\n", err)
 		return 1
+	}
+	for _, w := range warns {
+		report.Warnings = append(report.Warnings, w.Message)
 	}
 
 	switch *format {

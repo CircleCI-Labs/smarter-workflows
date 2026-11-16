@@ -11,6 +11,7 @@ import (
 type Report struct {
 	Version           int            `json:"version"`
 	Commits           int            `json:"commits"`
+	Warnings          []string       `json:"warnings,omitempty"`
 	Summary           Summary        `json:"summary"`
 	PerJobMisses      []JobMiss      `json:"per_job_misses"`
 	PerJobUnmatched   []JobUnmatched `json:"per_job_unmatched"`
@@ -92,6 +93,9 @@ func (r *Report) Markdown() string {
 	r.normalise()
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Smarter Workflows backtest\n\n")
+	for _, w := range r.Warnings {
+		fmt.Fprintf(&b, "> **Warning:** %s\n\n", w)
+	}
 	fmt.Fprintf(&b, "Replayed **%d** commits in select mode.\n\n", r.Commits)
 	fmt.Fprintf(&b, "## Recall\n\n")
 	fmt.Fprintf(&b, "| Metric | Value |\n|---|---|\n")
