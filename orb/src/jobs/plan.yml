@@ -76,6 +76,10 @@ parameters:
       Path to a JSON file of pipeline parameter values for the continuation
       (plan --parameters). The planner uses them for workflow when/unless and
       writes parameters.json under the plan report directory for continue.
+  min-confidence:
+    type: number
+    default: 0.8
+    description: Minimum AI confidence when merging the learned layer (plan --min-confidence).
   resource_class:
     type: enum
     enum: [small, medium, medium+, large]
@@ -114,6 +118,7 @@ steps:
         SMARTER_ARG_POLICY_BUNDLE: "<< parameters.policy-bundle >>"
         SMARTER_ARG_POLICY_META: "<< parameters.policy-meta >>"
         SMARTER_ARG_PARAMETERS: "<< parameters.parameters >>"
+        SMARTER_ARG_MIN_CONFIDENCE: "<< parameters.min-confidence >>"
       command: |
         set -eu
         set -- plan \
@@ -121,7 +126,8 @@ steps:
           --default-branch "$SMARTER_ARG_DEFAULT_BRANCH" \
           --mode "$SMARTER_ARG_MODE" \
           --full-run-paths "$SMARTER_ARG_FULL_RUN_PATHS" \
-          --gate-job "$SMARTER_ARG_GATE_JOB"
+          --gate-job "$SMARTER_ARG_GATE_JOB" \
+          --min-confidence "$SMARTER_ARG_MIN_CONFIDENCE"
         [ -z "$SMARTER_ARG_WORKFLOW" ] || set -- "$@" --workflow "$SMARTER_ARG_WORKFLOW"
         [ -z "$SMARTER_ARG_TRIGGER_TYPE" ] || set -- "$@" --trigger-type "$SMARTER_ARG_TRIGGER_TYPE"
         [ -z "$SMARTER_ARG_MANDATORY" ] || set -- "$@" --mandatory "$SMARTER_ARG_MANDATORY"
