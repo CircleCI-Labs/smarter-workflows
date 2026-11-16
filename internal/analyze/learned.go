@@ -40,6 +40,29 @@ type LearnedCorrection struct {
 	LearnedAt string `json:"learned_at"`
 }
 
+// TryLoadLearned loads a learned layer. A missing or invalid file yields a
+// warning string and no error so plan can continue without it.
+func TryLoadLearned(path string) (*Learned, string, error) {
+	if path == "" {
+		return nil, "", nil
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, "learned layer not found at " + path, nil
+		}
+		return nil, "", err
+	}
+	var l Learned
+	if err := json.Unmarshal(data, &l); err != nil {
+		return nil, "learned layer at " + path + " is not valid JSON", nil
+	}
+	if l.Jobs == nil {
+		l.Jobs = map[string]*LearnedJob{}
+	}
+	return &l, "", nil
+}
+
 func loadLearned(path string) (*Learned, error) {
 	if path == "" {
 		return nil, nil
