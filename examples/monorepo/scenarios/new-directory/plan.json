@@ -21,14 +21,15 @@
       "name": "lint",
       "run": true,
       "reasons": [
-        "lists services, where directory services/billing is new"
+        "reads services/billing/main.go"
       ]
     },
     {
       "name": "security-scan",
       "run": true,
       "reasons": [
-        "mandatory job"
+        "mandatory job",
+        "reads services/billing/main.go"
       ]
     },
     {
@@ -49,7 +50,7 @@
       "name": "build",
       "run": true,
       "reasons": [
-        "lists services, where directory services/billing is new"
+        "reads services/billing/main.go"
       ]
     },
     {

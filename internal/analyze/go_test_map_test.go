@@ -37,9 +37,26 @@ func TestGoTestJobCoversPackagesAndNormalizedDirs(t *testing.T) {
 		if strings.HasPrefix(d, "./") {
 			t.Fatalf("go-test dir still uses ./ prefix: %q", d)
 		}
+		if impactmap.NormalizeDir(d) == "." {
+			t.Fatalf("go-test should not list repository root from go test ./...; dirs=%v", j.DirPaths())
+		}
 	}
 	if !j.CoversPath("internal/diff/git.go") {
 		t.Fatal("go-test should cover internal/diff/git.go via go packages")
+	}
+	if j.CoversPath("docs/plan-regression-only.md") {
+		t.Fatal("go-test should not cover arbitrary docs paths outside its package closure")
+	}
+	jl := m.Jobs["go-lint"]
+	if jl == nil || !jl.ListsDir(".") {
+		t.Fatal("go-lint should list repository root from gofmt -l .")
+	}
+	if !jl.CoversPath("docs/learn.md") {
+		t.Fatal("go-lint root input should cover docs-only paths")
+	}
+	jd := m.Jobs["docs-site-build"]
+	if jd == nil || !jd.CoversPath("docs/learn.md") {
+		t.Fatal("docs-site-build should cover nav-listed docs")
 	}
 }
 

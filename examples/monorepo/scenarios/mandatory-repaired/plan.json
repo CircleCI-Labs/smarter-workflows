@@ -28,7 +28,7 @@
       "name": "security-scan",
       "run": true,
       "reasons": [
-        "required by the guardrails ([smarter:require-job=security-scan])"
+        "reads docs/guide.md"
       ]
     },
     {
@@ -91,9 +91,7 @@
   },
   "guardrails": {
     "status": "PASS",
-    "repairs": [
-      "require-job=security-scan"
-    ],
+    "repairs": [],
     "violations": []
   },
   "warnings": []

@@ -1354,7 +1354,7 @@ func TestRobustness_PolicyBundleStillPasses(t *testing.T) {
 	}
 	change := rbEdit("services/api/main.go", "package api\n\n// changed\n")
 	reads := map[string]rbReads{
-		"security-scan": {files: []string{"go.mod"}, dirs: []string{"."}},
+		"security-scan": {files: []string{"go.mod"}},
 		"lint":          {files: []string{"services/api/main.go"}, dirs: []string{"services/api"}},
 		"build":         {files: []string{"app/x.go"}, dirs: []string{"app"}},
 		"deploy":        {files: []string{"deploy/run.sh"}, dirs: []string{"deploy"}},

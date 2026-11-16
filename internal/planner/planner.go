@@ -418,9 +418,6 @@ func (p *planner) build(ctx context.Context, forced map[string]bool, fullReason 
 			sel.selected[i], sel.reasons[i] = true, []string{"full run"}
 		}
 	} else {
-		if err := cs.loadDirs(ctx, p.in.Repo, p.o.Base, p.o.Head); err != nil {
-			return nil, err
-		}
 		sel = p.selectJobs(an, cs, forced)
 		rep.Warnings = append(rep.Warnings, p.planWarnings(an)...)
 		if m := p.in.Map; m != nil && !p.in.MapFromAnalyze && m.Revision != p.o.Base {

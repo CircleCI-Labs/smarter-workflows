@@ -58,7 +58,7 @@ func (s *InputSet) addFile(p string) {
 }
 
 func (s *InputSet) addDir(p string) {
-	if c := cleanDir(p); c != "" {
+	if c := cleanDir(p); c != "" && c != "." {
 		s.dirs[c] = struct{}{}
 		s.got = true
 	}

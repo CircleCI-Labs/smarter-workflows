@@ -18,6 +18,11 @@ var (
 )
 
 func (e *Engine) scanLangCommands(repoRoot, wd, script string, into *InputSet) {
+	for _, m := range gofmtListRe.FindAllStringSubmatch(script, -1) {
+		if len(m) > 1 {
+			into.addVerifiedPathOrDir(repoRoot, wd, m[1])
+		}
+	}
 	for _, m := range goCmdRe.FindAllStringSubmatch(script, -1) {
 		if len(m) < 2 {
 			continue
@@ -78,9 +83,6 @@ func (e *Engine) addGoTarget(repoRoot, wd, target string, into *InputSet) {
 		} else if wd != "" && wd != "." {
 			base = resolveWD(repoRoot, wd, base)
 		}
-		if impactmap.NormalizeDir(base) != "." {
-			into.addVerifiedDir(repoRoot, ".", base, InputNote{Signal: SignalGoImports, Detail: target})
-		}
 		listArg := "./..."
 		if base != "" && base != "." {
 			listArg = base + "/..."
@@ -101,9 +103,6 @@ func (e *Engine) addGoTarget(repoRoot, wd, target string, into *InputSet) {
 			if base == "" {
 				base = "."
 			}
-		}
-		if impactmap.NormalizeDir(base) != "." {
-			into.addVerifiedDir(repoRoot, ".", base, InputNote{Signal: SignalGoImports, Detail: target})
 		}
 		listArg := "./..."
 		if base != "." {
@@ -134,14 +133,16 @@ func (e *Engine) addGoDeps(repoRoot, pkgDir string, into *InputSet) {
 		e.goCache[key] = deps
 	}
 	n := len(deps)
+	var pkgDirs []string
 	for _, d := range deps {
 		if impactmap.NormalizeDir(d) == "." {
 			continue
 		}
 		into.addVerifiedDir(repoRoot, ".", d, InputNote{Signal: SignalGoImports, Detail: "import"})
+		pkgDirs = append(pkgDirs, d)
 	}
-	if len(deps) > 0 {
-		e.scanGoPathLiteralsInDirs(repoRoot, deps, into)
+	if len(pkgDirs) > 0 {
+		e.scanGoPathLiteralsInDirs(repoRoot, pkgDirs, into)
 	}
 	if n > 0 {
 		into.noteGoImports(n)

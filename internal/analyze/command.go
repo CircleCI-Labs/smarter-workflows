@@ -27,7 +27,9 @@ func (e *Engine) analyzeRunCommand(repoRoot, wd, cmd string, into *InputSet, pro
 	if strings.TrimSpace(cmd) == "" {
 		return ""
 	}
-	return e.walkShellScript(repoRoot, wd, cmd, 0, into, proof)
+	op := e.walkShellScript(repoRoot, wd, cmd, 0, into, proof)
+	e.scanLangCommands(repoRoot, wd, cmd, into)
+	return op
 }
 
 func (into *InputSet) hasInputs() bool {

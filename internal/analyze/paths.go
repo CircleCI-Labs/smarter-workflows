@@ -33,6 +33,9 @@ func normalizePathToken(tok string) string {
 func (s *InputSet) addVerifiedPath(repoRoot, rel string, note InputNote) bool {
 	rel = impactmap.NormalizeDir(filepath.ToSlash(path.Clean(rel)))
 	if rel == "." {
+		if note.Signal != SignalRunCommand {
+			return false
+		}
 		if st, err := statRepo(repoRoot, "."); err == nil && st.IsDir() {
 			s.dirs["."] = struct{}{}
 			s.got = true
@@ -93,14 +96,7 @@ func (s *InputSet) addVerifiedDir(repoRoot, wd, token string, note InputNote) {
 		return
 	}
 	rel := resolveWD(repoRoot, wd, tok)
-	rel = filepath.ToSlash(filepath.Clean(rel))
-	if st, err := statRepo(repoRoot, rel); err == nil && st.IsDir() {
-		s.addDirVerified(rel, note)
-		return
-	}
-	if st, err := statRepo(repoRoot, rel); err == nil && !st.IsDir() {
-		return
-	}
+	s.addVerifiedPath(repoRoot, rel, note)
 }
 
 func looksLikeFlag(tok string) bool {

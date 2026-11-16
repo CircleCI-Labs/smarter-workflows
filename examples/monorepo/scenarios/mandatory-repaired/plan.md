@@ -3,7 +3,7 @@
 | Job | Run | Reason |
 |---|---|---|
 | lint | run | reads docs/guide.md |
-| security-scan | run | required by the guardrails ([smarter:require-job=security-scan]) |
+| security-scan | run | reads docs/guide.md |
 | api-test | skip | inputs unchanged |
 | web-test | skip | inputs unchanged |
 | build | skip | inputs unchanged |
@@ -15,7 +15,3 @@
 **Changed files (1)**
 
 - M docs/guide.md
-
-**Guardrails: PASS**
-
-- repaired: require-job=security-scan

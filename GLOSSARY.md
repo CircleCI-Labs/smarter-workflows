@@ -18,7 +18,10 @@ The words this project uses, and what each one means. There are no implementatio
 : For each job, the repo files and directories the planner treats as its inputs. `circleci-smarter analyze` builds it from the continuation config and the repository. Branches use the map to see which jobs a change can affect.
 
 **Inputs (of a job)**
-: The files and directories listed for a job in the impact map. A job whose inputs a change does not touch is a candidate to skip.
+: The files and directories listed for a job in the impact map. Exact `files` match only that path; each `input dir` covers every path under it recursively; `.` is the repository root and covers the whole tree. Any change status uses the same rule. A job whose inputs a change does not touch is a candidate to skip.
+
+**Input dir**
+: A directory entry in a job's impact map. It includes every file and subdirectory under that path, not only direct children.
 
 **Shadow mode**
 : The planner makes and reports a plan, but every job still runs. Shadow mode measures what select mode would save, and what it would miss.

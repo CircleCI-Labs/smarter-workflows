@@ -25,7 +25,7 @@ push ──► setup: plan ──► analyze at HEAD (static + learned layer) �
    2. builds or loads the impact map;
    3. compares the changed files with what each job lists as inputs;
    4. optionally asks the AI to add skipped jobs (never remove) when `--ai-review` is `on` or `shadow`.
-4. **A job runs** when the change touches one of its inputs, or a directory it listed gains or loses a file. Mandatory jobs always run. So do:
+4. **A job runs** when the change touches one of its map inputs (exact files, recursive input dirs, or repository root `.`). Added, modified, deleted, and renamed paths use the same rule. Mandatory jobs always run. So do:
    - the ancestors (`requires`) of every job that runs;
    - jobs that consume a workspace produced by a job that runs;
    - jobs with no map entry or inputs that do not meet the skip proof (ADR 8): static analysis understood every step (each command is a recognized tool, a benign builtin or a script it followed, and each input resolved to an existing path at the revision; an unknown binary, make, or an orb command outside the known table makes the job unknown), and any AI-only coverage needs confidence ≥ the threshold, a matching job hash, and at least one valid input;

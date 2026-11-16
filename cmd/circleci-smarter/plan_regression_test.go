@@ -197,7 +197,7 @@ func TestPlanRegressionDogfoodPolicy(t *testing.T) {
 func TestPlanRegressionDogfoodDocsOnly(t *testing.T) {
 	root := moduleRoot(t)
 	wt, base := planRegressionWorktree(t, root)
-	rel := "docs/threat-model.md"
+	rel := "docs/learn.md"
 	before, err := os.ReadFile(filepath.Join(wt, rel))
 	if err != nil {
 		t.Fatal(err)
@@ -205,7 +205,7 @@ func TestPlanRegressionDogfoodDocsOnly(t *testing.T) {
 	patchFile(t, wt, rel, string(before)+"\n")
 	head := commitFile(t, wt, rel, "docs only")
 	runs := runPlanSelect(t, wt, "--base", base, "--head", head)
-	wantJobs(t, runs, []string{"docs-site-build", "security-scan"}, []string{"go-test"})
+	wantJobs(t, runs, []string{"docs-site-build", "go-lint", "security-scan"}, []string{"go-test"})
 }
 
 func TestPlanRegressionDemoWeb(t *testing.T) {
@@ -215,6 +215,25 @@ func TestPlanRegressionDemoWeb(t *testing.T) {
 	head := commitFile(t, wt, "examples/demo/services/web/src/greeting.js", "demo web")
 	runs := runPlanDemo(t, wt, base, head)
 	wantJobs(t, runs, []string{"web-test", "web-bundle"}, nil)
+}
+
+func TestPlanRegressionDogfoodGoDeepNewFile(t *testing.T) {
+	root := moduleRoot(t)
+	wt, base := planRegressionWorktree(t, root)
+	rel := "internal/report/plan_regression_new.go"
+	patchFile(t, wt, rel, "package report\n")
+	head := commitFile(t, wt, rel, "new go file under input dir")
+	runs := runPlanSelect(t, wt, "--base", base, "--head", head)
+	wantJobs(t, runs, []string{"go-test", "go-lint", "security-scan"}, nil)
+}
+
+func TestPlanRegressionDogfoodRootPlusGoLint(t *testing.T) {
+	root := moduleRoot(t)
+	wt, base := planRegressionWorktree(t, root)
+	patchFile(t, wt, "orb/src/@orb.yml", "# plan regression touch\n")
+	head := commitFile(t, wt, "orb/src/@orb.yml", "touch orb metadata")
+	runs := runPlanSelect(t, wt, "--base", base, "--head", head)
+	wantJobs(t, runs, []string{"go-lint", "security-scan"}, nil)
 }
 
 func TestPlanRegressionDemoDocs(t *testing.T) {

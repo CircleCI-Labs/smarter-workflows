@@ -122,54 +122,36 @@ func (j *Job) ReadsFile(p string) bool {
 	return ok
 }
 
-// rootCoversAllPaths reports whether the job listed only the repository root
-// (for example a repo-wide scan), so any path is in scope.
-func (j *Job) rootCoversAllPaths() bool {
-	if !j.listsRepoRoot() || j.FileCount() > 0 {
-		return false
-	}
-	j.ensureDirSet()
-	for d := range j.dirs {
-		if NormalizeDir(d) != "." {
-			return false
-		}
-	}
-	for _, d := range j.Dirs {
-		if NormalizeDir(d) != "." {
-			return false
-		}
-	}
-	return true
-}
-
-// CoversPath reports whether the job's inputs include the file or a directory
-// on the path to it. A root-only listing covers every path; listing root among
-// other directories does not.
+// CoversPath reports whether the job's map inputs include p: exact files, dirs
+// that recursively contain the path, or repository root (.).
 func (j *Job) CoversPath(p string) bool {
 	if j.ReadsFile(p) {
 		return true
 	}
-	if j.rootCoversAllPaths() {
+	if j.listsRepoRoot() {
 		return true
 	}
-	for _, d := range chainDirs(p) {
-		if d == "." {
-			continue
+	p = path.Clean(filepath.ToSlash(p))
+	j.ensureDirSet()
+	for d := range j.dirs {
+		if dirContains(d, p) {
+			return true
 		}
-		if j.ListsDir(d) {
+	}
+	for _, d := range j.Dirs {
+		if dirContains(d, p) {
 			return true
 		}
 	}
 	return false
 }
 
-func chainDirs(p string) []string {
-	var dirs []string
-	for d := path.Dir(p); d != "." && d != "/"; d = path.Dir(d) {
-		dirs = append(dirs, d)
+func dirContains(dir, p string) bool {
+	dir = NormalizeDir(dir)
+	if dir == "." {
+		return true
 	}
-	dirs = append(dirs, ".")
-	return dirs
+	return p == dir || strings.HasPrefix(p, dir+"/")
 }
 
 // ListsDir reports whether the job listed the repo-relative directory d ("."
