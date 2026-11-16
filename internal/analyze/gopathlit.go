@@ -170,12 +170,14 @@ func (e *Engine) tryAddResolvedGoPath(repoRoot, fileDir, modRel, p string, into 
 		if rel == "" || strings.HasPrefix(rel, "..") {
 			continue
 		}
+		if strings.HasPrefix(rel, "docs/") || strings.HasPrefix(rel, "site/") || strings.HasPrefix(rel, "skills/") {
+			continue
+		}
 		if st, err := statRepo(repoRoot, rel); err == nil {
 			if st.IsDir() {
-				into.addVerifiedPath(repoRoot, rel, InputNote{Signal: SignalGoImports, Detail: "literal"})
-			} else {
-				into.addVerifiedPath(repoRoot, rel, InputNote{Signal: SignalGoImports, Detail: "literal"})
+				continue
 			}
+			into.addVerifiedPath(repoRoot, rel, InputNote{Signal: SignalGoImports, Detail: "literal"})
 			return
 		}
 	}

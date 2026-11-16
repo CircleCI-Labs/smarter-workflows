@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/CircleCI-Labs/smarter-workflows/internal/analyze"
 	"github.com/CircleCI-Labs/smarter-workflows/internal/diff/difftest"
 	"github.com/CircleCI-Labs/smarter-workflows/internal/report"
 )
@@ -146,6 +148,23 @@ func readReportAt(t *testing.T, dir string) *report.Plan {
 	return &p
 }
 
+func assertGoTestSkipsPath(t *testing.T, repo, path string) {
+	t.Helper()
+	m, _, _, err := analyze.Run(context.Background(), analyze.RunOptions{
+		RepoRoot:   repo,
+		ConfigPath: filepath.Join(repo, ".circleci", "continue.yml"),
+		Workflows:  []string{"ci"},
+		AIMode:     analyze.AIModeOff,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	j := m.Jobs["go-test"]
+	if j != nil && j.CoversPath(path) {
+		t.Fatalf("go-test map covers %q; dirs=%v", path, j.DirPaths())
+	}
+}
+
 func wantJobs(t *testing.T, runs map[string]bool, must []string, mustNot []string) {
 	t.Helper()
 	for _, name := range must {
@@ -197,17 +216,14 @@ func TestPlanRegressionDogfoodPolicy(t *testing.T) {
 func TestPlanRegressionDogfoodDocsOnly(t *testing.T) {
 	root := moduleRoot(t)
 	wt, base := planRegressionWorktree(t, root)
-	doc := "docs/plan-regression-wp19.md"
-	nav := "site/nav.txt"
-	navBefore, err := os.ReadFile(filepath.Join(wt, nav))
+	rel := "docs/learn.md"
+	before, err := os.ReadFile(filepath.Join(wt, rel))
 	if err != nil {
 		t.Fatal(err)
 	}
-	patchFile(t, wt, nav, string(navBefore)+"\n"+doc+" | Plan regression wp19\n")
-	patchFile(t, wt, doc, "# plan regression\n")
-	gitOut(t, wt, "add", nav, doc)
-	gitOut(t, wt, "commit", "-m", "docs only")
-	head := gitOut(t, wt, "rev-parse", "HEAD")
+	patchFile(t, wt, rel, string(before)+"\n")
+	head := commitFile(t, wt, rel, "docs only")
+	assertGoTestSkipsPath(t, wt, rel)
 	runs := runPlanSelect(t, wt, "--base", base, "--head", head)
 	wantJobs(t, runs, []string{"docs-site-build", "go-lint", "security-scan"}, []string{"go-test"})
 }
