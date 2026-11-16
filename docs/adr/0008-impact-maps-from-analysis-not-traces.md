@@ -15,8 +15,8 @@ Tracing needs a step injected into every job. It only works where file access ti
 2. The static part is computed fresh in the setup job. A *learned layer* (the AI inputs and the corrections) is refreshed by a weekly `learn` job.
 3. No existing job is edited.
 4. A job is skipped only when proven:
-   - every inferred path exists;
-   - coverage that comes only from the AI needs a confidence of at least the threshold (0.8 by default) and a job hash that matches the current job definition;
+   - static analysis understood every step of the job: each command is a recognized tool, a benign builtin or a script it followed, and each input resolved to a path that exists at the revision. A step it does not understand (an unknown binary, make, an orb command outside the known table) makes the job unknown;
+   - coverage that comes only from the AI needs a confidence of at least the threshold (0.8 by default), a job hash that matches the current job definition, and at least one valid input;
    - otherwise the job is unknown and runs.
 5. Shadow mode first, and a backtest on real history before select mode.
 

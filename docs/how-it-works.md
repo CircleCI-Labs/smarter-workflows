@@ -27,7 +27,7 @@ branch push ──► setup: plan job ◄── impact map for the merge-base (o
 3. **A job runs** when the change touches one of its inputs, or a directory it listed gains or loses a file. Mandatory jobs always run. So do:
    - the ancestors (`requires`) of every job that runs;
    - jobs that consume a workspace produced by a job that runs;
-   - jobs with no map entry or inputs that do not meet the skip proof (ADR 8);
+   - jobs with no map entry or inputs that do not meet the skip proof (ADR 8): static analysis understood every step (each command is a recognized tool, a benign builtin or a script it followed, and each input resolved to an existing path at the revision; an unknown binary, make, or an orb command outside the known table makes the job unknown), and any AI-only coverage needs confidence ≥ the threshold, a matching job hash, and at least one valid input;
    - job groups: an entry that names a group under `job-groups` runs as one unit, since v0.1 does not look inside it.
 
    Some entries run no steps: an approval (`type: approval`, on the entry or in the job's definition), a no-op job (`type: no-op`) and a release job (`type: release`). They have no inputs of their own, so the jobs around them decide. An approval or a no-op job stays when a job that runs requires it. A release job stays when a job it requires runs: it tracks that job's release. A no-op job that nothing requires, such as an `all-tests-passed` that you use as your required status check, always stays: it waits only for the jobs that stay, or for `smarter-gate` when none of the jobs it waited for does, so it never passes before the selected jobs have.
