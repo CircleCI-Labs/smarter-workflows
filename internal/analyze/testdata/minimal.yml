@@ -1,0 +1,14 @@
+version: 2.1
+jobs:
+  unit:
+    docker:
+      - image: cimg/go:1.27.3
+    steps:
+      - checkout
+      - run:
+          name: test pkg
+          command: go test ./internal/sample/...
+workflows:
+  ci:
+    jobs:
+      - unit

@@ -64,3 +64,18 @@ The words this project uses, and what each one means. There are no implementatio
 
 **Catalog**
 : The jobs, commands, executors and orbs the planner may pick from. In select mode, the catalog is the project's own pipeline config.
+
+**Analyze**
+: The `circleci-smarter analyze` command that infers per-job repo inputs from CircleCI config and checkout sources, optionally aided by history and an AI classifier.
+
+**Job hash**
+: A stable SHA-256 of a job's resolved config (body, commands, executors, pinned orbs, and workflow entry parameters). Used to reuse AI output safely in the learned layer.
+
+**Learned layer**
+: A versioned cache of costly analyze output: AI mappings and history corrections keyed by job name and job hash.
+
+**AI classifier**
+: The optional Anthropic call that suggests extra paths per job, constrained by structured JSON output and confidence.
+
+**Confidence**
+: The model's 0–1 self-rating for a job's inferred inputs. Analyze treats a job as complete from AI only when confidence meets `--min-confidence` and the job hash matches.

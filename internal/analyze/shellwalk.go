@@ -1,0 +1,410 @@
+package analyze
+
+import (
+	"fmt"
+	"path/filepath"
+	"strings"
+
+	"mvdan.cc/sh/v3/syntax"
+)
+
+type wdSet map[string]struct{}
+
+func (s wdSet) copy() wdSet {
+	out := make(wdSet, len(s))
+	for k := range s {
+		out[k] = struct{}{}
+	}
+	return out
+}
+
+func (s wdSet) merge(other wdSet) {
+	for k := range other {
+		s[k] = struct{}{}
+	}
+}
+
+type shellWalk struct {
+	e           *Engine
+	repoRoot    string
+	into        *InputSet
+	proof       *JobProof
+	depth       int
+	needsInputs bool
+	opaque      string
+	funcs       map[string]struct{}
+}
+
+func (e *Engine) walkShellScript(repoRoot, wd, script string, depth int, into *InputSet, proof *JobProof) string {
+	script = strings.TrimSpace(script)
+	if script == "" {
+		return ""
+	}
+	file, err := syntax.NewParser().Parse(strings.NewReader(script), "")
+	if err != nil {
+		return truncateOpaque(script)
+	}
+	sw := &shellWalk{e: e, repoRoot: repoRoot, into: into, proof: proof, depth: depth, funcs: map[string]struct{}{}}
+	sw.collectFuncs(file.Stmts)
+	start := wdSet{wd: {}}
+	for _, st := range file.Stmts {
+		start = sw.stmt(st, start)
+	}
+	if proof != nil && sw.needsInputs {
+		proof.requiresRepoInputs = true
+	}
+	return sw.opaque
+}
+
+func (sw *shellWalk) collectFuncs(stmts []*syntax.Stmt) {
+	for _, st := range stmts {
+		if st == nil || st.Cmd == nil {
+			continue
+		}
+		if fd, ok := st.Cmd.(*syntax.FuncDecl); ok && fd.Name != nil {
+			sw.funcs[fd.Name.Value] = struct{}{}
+		}
+	}
+}
+
+func (sw *shellWalk) fail(op string) {
+	if sw.opaque == "" {
+		sw.opaque = op
+	}
+}
+
+func (sw *shellWalk) stmts(stmts []*syntax.Stmt, wds wdSet) wdSet {
+	cur := wds.copy()
+	for _, st := range stmts {
+		cur = sw.stmt(st, cur)
+	}
+	return cur
+}
+
+func (sw *shellWalk) stmt(st *syntax.Stmt, wds wdSet) wdSet {
+	if st == nil || st.Cmd == nil {
+		return wds
+	}
+	return sw.command(st.Cmd, wds)
+}
+
+func (sw *shellWalk) command(cmd syntax.Command, wds wdSet) wdSet {
+	if sw.opaque != "" {
+		return wds
+	}
+	switch c := cmd.(type) {
+	case *syntax.CallExpr:
+		return sw.callExpr(c, wds, false)
+	case *syntax.IfClause:
+		cond := sw.stmts(c.Cond, wds.copy())
+		then := sw.stmts(c.Then, wds.copy())
+		out := cond.copy()
+		out.merge(then)
+		if c.Else != nil {
+			elseW := sw.ifClause(c.Else, wds.copy())
+			out.merge(elseW)
+		}
+		return out
+	case *syntax.WhileClause:
+		out := wds.copy()
+		out.merge(sw.stmts(c.Cond, wds.copy()))
+		out.merge(sw.stmts(c.Do, wds.copy()))
+		return out
+	case *syntax.ForClause:
+		sw.forLoopGlobs(c, wds)
+		return sw.stmts(c.Do, wds.copy())
+	case *syntax.BinaryCmd:
+		if c.Op == syntax.Pipe || c.Op == syntax.PipeAll {
+			if sw.pipeIntoInterpreter(c.Y) {
+				sw.fail(truncateOpaque("pipe into interpreter"))
+				return wds
+			}
+		}
+		left := sw.stmt(c.X, wds)
+		return sw.stmt(c.Y, left)
+	case *syntax.Subshell:
+		_ = sw.stmts(c.Stmts, wds.copy())
+		return wds
+	case *syntax.Block:
+		return sw.stmts(c.Stmts, wds.copy())
+	case *syntax.CaseClause:
+		out := wds.copy()
+		for _, item := range c.Items {
+			out.merge(sw.stmts(item.Stmts, wds.copy()))
+		}
+		return out
+	case *syntax.TestClause:
+		sw.walkTestExpr(c.X, wds)
+		return wds
+	case *syntax.ArithmCmd:
+		return wds
+	case *syntax.DeclClause:
+		return wds
+	case *syntax.TimeClause:
+		if c.Stmt != nil {
+			return sw.stmt(c.Stmt, wds)
+		}
+		return wds
+	case *syntax.FuncDecl:
+		return wds
+	default:
+		sw.fail(truncateOpaque(fmt.Sprintf("unsupported %T", cmd)))
+		return wds
+	}
+}
+
+func (sw *shellWalk) ifClause(c *syntax.IfClause, wds wdSet) wdSet {
+	out := wds.copy()
+	out.merge(sw.stmts(c.Cond, wds.copy()))
+	out.merge(sw.stmts(c.Then, wds.copy()))
+	if c.Else != nil {
+		out.merge(sw.ifClause(c.Else, wds.copy()))
+	}
+	return out
+}
+
+func (sw *shellWalk) pipeIntoInterpreter(st *syntax.Stmt) bool {
+	for st != nil {
+		switch c := st.Cmd.(type) {
+		case *syntax.BinaryCmd:
+			if c.Op == syntax.Pipe || c.Op == syntax.PipeAll {
+				if sw.callName(c.Y) {
+					return true
+				}
+				st = c.Y
+				continue
+			}
+			st = c.Y
+		case *syntax.CallExpr:
+			return sw.callName(st)
+		default:
+			return false
+		}
+	}
+	return false
+}
+
+func (sw *shellWalk) callName(st *syntax.Stmt) bool {
+	ce, ok := st.Cmd.(*syntax.CallExpr)
+	if !ok || len(ce.Args) == 0 {
+		return false
+	}
+	name := strings.ToLower(litWord(ce.Args[0]))
+	return name == "sh" || name == "bash" || name == "python" || name == "python3" || name == "node"
+}
+
+func (sw *shellWalk) walkTestExpr(te syntax.TestExpr, wds wdSet) {
+	if te == nil {
+		return
+	}
+	switch x := te.(type) {
+	case *syntax.BinaryTest:
+		sw.walkTestExpr(x.X, wds)
+		sw.walkTestExpr(x.Y, wds)
+	case *syntax.UnaryTest:
+		sw.walkTestExpr(x.X, wds)
+	case *syntax.ParenTest:
+		sw.walkTestExpr(x.X, wds)
+	case *syntax.Word:
+		sw.walkWordParts(x, wds)
+	}
+}
+
+func (sw *shellWalk) walkWordParts(w *syntax.Word, wds wdSet) {
+	if w == nil {
+		return
+	}
+	for _, p := range w.Parts {
+		switch sub := p.(type) {
+		case *syntax.CmdSubst:
+			_ = sw.stmts(sub.Stmts, wds.copy())
+		case *syntax.DblQuoted:
+			for _, dp := range sub.Parts {
+				if cs, ok := dp.(*syntax.CmdSubst); ok {
+					_ = sw.stmts(cs.Stmts, wds.copy())
+				}
+			}
+		}
+	}
+}
+
+func (sw *shellWalk) callExpr(c *syntax.CallExpr, wds wdSet, nested bool) wdSet {
+	for _, a := range c.Args {
+		sw.walkWordParts(a, wds)
+	}
+	for _, a := range c.Assigns {
+		if a.Value != nil {
+			sw.walkWordParts(a.Value, wds)
+		}
+	}
+	if len(c.Args) == 0 && len(c.Assigns) > 0 {
+		return wds
+	}
+	argv := parseCallArgv(c)
+	if len(argv) == 0 {
+		return sw.callExprPartial(c, wds)
+	}
+	name, nameErr := resolveCommandName(argv)
+	if nameErr != "" {
+		sw.fail(nameErr)
+		return wds
+	}
+	if name == "" {
+		return sw.callExprPartial(c, wds)
+	}
+	if len(c.Args) > 0 {
+		if lit := litWord(c.Args[0]); lit != "" {
+			if _, ok := sw.funcs[lit]; ok {
+				return wds
+			}
+		}
+	}
+	sub := ""
+	if len(argv) > 1 && !argv[1].Dynamic {
+		sub = strings.ToLower(argv[1].Lit)
+	}
+	if name == "git" && sub == "grep" {
+		sw.needsInputs = true
+		for w := range wds {
+			for _, a := range c.Args[2:] {
+				if lit := litWord(a); lit != "" {
+					lit = normalizePathToken(lit)
+					if lit != "" && !strings.HasPrefix(lit, "-") && !strings.HasPrefix(lit, ":") && lit != "--" && looksLikePath(lit) {
+						sw.into.addVerifiedPathOrDir(sw.repoRoot, w, lit)
+					}
+				}
+			}
+		}
+		return wds
+	}
+	if _, ok := sw.funcs[name]; ok {
+		return wds
+	}
+	if name == "find" {
+		sw.needsInputs = true
+		for w := range wds {
+			for i := 1; i < len(c.Args); i++ {
+				lit := litWord(c.Args[i])
+				if lit == "" || strings.HasPrefix(lit, "-") || lit == "(" || lit == ")" || strings.HasPrefix(lit, `\`) {
+					continue
+				}
+				sw.into.addVerifiedPathOrDir(sw.repoRoot, w, lit)
+			}
+		}
+		return wds
+	}
+	if name == "cd" && len(argv) >= 2 {
+		if argv[1].Dynamic {
+			if !outsideRepoLiteralPrefix(argv[1].Word) {
+				sw.fail(truncateOpaque("dynamic argument to cd"))
+				return wds
+			}
+			return wds
+		}
+		out := wdSet{}
+		for wd := range wds {
+			out[resolveWD(sw.repoRoot, wd, argv[1].Lit)] = struct{}{}
+		}
+		return out
+	}
+	if name == "eval" {
+		sw.fail(truncateOpaque("eval"))
+		return wds
+	}
+	if name == "source" || name == "." {
+		if len(argv) < 2 {
+			return wds
+		}
+		if argv[1].Dynamic {
+			if outsideRepoLiteralPrefix(argv[1].Word) {
+				return wds
+			}
+			sw.fail(truncateOpaque("dynamic argument to source"))
+			return wds
+		}
+		sw.needsInputs = true
+		rel := resolveWD(sw.repoRoot, pickWD(wds), argv[1].Lit)
+		if !fileExists(sw.repoRoot, rel) {
+			sw.fail(fmt.Sprintf("source %q not in repo", argv[1].Lit))
+			return wds
+		}
+		sw.e.followScript(sw.repoRoot, pickWD(wds), argv[1].Lit, sw.depth, sw.into)
+		return wds
+	}
+	if op := sw.e.analyzeSimpleCommand(sw.repoRoot, wds, argv, c.Args, sw.into, &sw.needsInputs, sw.depth); op != "" {
+		sw.fail(op)
+	}
+	return wds
+}
+
+func pickWD(wds wdSet) string {
+	for w := range wds {
+		return w
+	}
+	return "."
+}
+
+func litWord(w *syntax.Word) string {
+	if w == nil {
+		return ""
+	}
+	if s := w.Lit(); s != "" {
+		return s
+	}
+	if len(w.Parts) != 1 {
+		return ""
+	}
+	switch p := w.Parts[0].(type) {
+	case *syntax.Lit:
+		return p.Value
+	case *syntax.SglQuoted:
+		return p.Value
+	case *syntax.DblQuoted:
+		return w.Lit()
+	default:
+		return ""
+	}
+}
+
+func (sw *shellWalk) forLoopGlobs(c *syntax.ForClause, wds wdSet) {
+	wi, ok := c.Loop.(*syntax.WordIter)
+	if !ok {
+		return
+	}
+	for _, item := range wi.Items {
+		lit := litWord(item)
+		if lit == "" {
+			continue
+		}
+		for wd := range wds {
+			if strings.Contains(lit, "*") {
+				sw.e.expandShellGlob(sw.repoRoot, wd, lit, sw.into)
+			} else {
+				sw.into.addVerifiedPathOrDir(sw.repoRoot, wd, lit)
+			}
+		}
+	}
+}
+
+func (e *Engine) expandShellGlob(repoRoot, wd, pattern string, into *InputSet) {
+	pat := resolveWD(repoRoot, wd, pattern)
+	matches, err := filepath.Glob(filepath.Join(repoRoot, filepath.FromSlash(pat)))
+	if err != nil {
+		return
+	}
+	for _, abs := range matches {
+		rel, err := filepath.Rel(repoRoot, abs)
+		if err != nil {
+			continue
+		}
+		into.addVerifiedPath(repoRoot, filepath.ToSlash(rel), InputNote{Signal: SignalRunCommand, Detail: "glob"})
+	}
+}
+
+func (sw *shellWalk) callExprPartial(c *syntax.CallExpr, wds wdSet) wdSet {
+	argv := parseCallArgv(c)
+	if op := sw.e.analyzeSimpleCommand(sw.repoRoot, wds, argv, c.Args, sw.into, &sw.needsInputs, sw.depth); op != "" {
+		sw.fail(op)
+	}
+	return wds
+}

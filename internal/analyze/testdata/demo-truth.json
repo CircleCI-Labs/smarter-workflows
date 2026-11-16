@@ -1,0 +1,165 @@
+{
+  "version": 1,
+  "revision": "edd0d6409fff94d78e1e8a57e46815a34275b798",
+  "created_at": "2026-11-15T15:15:18Z",
+  "method": "atime",
+  "jobs": {
+    "api-test": {
+      "files": [
+        "examples/demo/libs/proto/schema.json",
+        "examples/demo/services/api/go.mod",
+        "examples/demo/services/api/handler.go",
+        "examples/demo/services/api/handler_test.go",
+        "examples/demo/services/api/main.go"
+      ],
+      "dirs": [
+        "examples/demo/services/api"
+      ],
+      "complete": true,
+      "nodes": 1
+    },
+    "build": {
+      "files": [
+        "examples/demo/services/api/go.mod",
+        "examples/demo/services/api/handler.go",
+        "examples/demo/services/api/handler_test.go",
+        "examples/demo/services/api/main.go"
+      ],
+      "dirs": [
+        "examples/demo/services/api"
+      ],
+      "complete": true,
+      "nodes": 1
+    },
+    "docs-check": {
+      "files": [
+        "examples/demo/docs/architecture.md",
+        "examples/demo/docs/index.md",
+        "examples/demo/docs/runbook.md",
+        "examples/demo/scripts/check-docs.sh"
+      ],
+      "dirs": [
+        "examples/demo/docs"
+      ],
+      "complete": true,
+      "nodes": 1
+    },
+    "e2e": {
+      "files": [
+        "examples/demo/scripts/e2e.sh"
+      ],
+      "dirs": [],
+      "complete": true,
+      "nodes": 1
+    },
+    "infra-validate": {
+      "files": [
+        "examples/demo/infra/main.tf",
+        "examples/demo/infra/variables.tf",
+        "examples/demo/scripts/check-infra.sh"
+      ],
+      "dirs": [
+        "examples/demo/infra"
+      ],
+      "complete": true,
+      "nodes": 1
+    },
+    "lint": {
+      "files": [
+        "examples/demo/libs/proto/schema.json",
+        "examples/demo/scripts/lint.sh",
+        "examples/demo/services/api/go.mod",
+        "examples/demo/services/api/handler.go",
+        "examples/demo/services/api/handler_test.go",
+        "examples/demo/services/api/main.go",
+        "examples/demo/services/web/package-lock.json",
+        "examples/demo/services/web/package.json",
+        "examples/demo/services/web/scripts/bundle.js",
+        "examples/demo/services/web/src/greeting.js",
+        "examples/demo/services/web/test/greeting.test.js",
+        "examples/demo/services/worker/tests/test_tasks.py",
+        "examples/demo/services/worker/worker/__init__.py",
+        "examples/demo/services/worker/worker/tasks.py"
+      ],
+      "dirs": [
+        "examples/demo/libs",
+        "examples/demo/libs/proto",
+        "examples/demo/services",
+        "examples/demo/services/api",
+        "examples/demo/services/web",
+        "examples/demo/services/web/scripts",
+        "examples/demo/services/web/src",
+        "examples/demo/services/web/test",
+        "examples/demo/services/worker",
+        "examples/demo/services/worker/tests",
+        "examples/demo/services/worker/worker"
+      ],
+      "complete": true,
+      "nodes": 1
+    },
+    "security-scan": {
+      "files": [
+        "examples/demo/.circleci/config.yml",
+        "examples/demo/.circleci/continue.yml",
+        "examples/demo/.gitignore",
+        "examples/demo/README.md",
+        "examples/demo/docs/architecture.md",
+        "examples/demo/docs/index.md",
+        "examples/demo/docs/runbook.md",
+        "examples/demo/infra/main.tf",
+        "examples/demo/infra/variables.tf",
+        "examples/demo/libs/proto/schema.json",
+        "examples/demo/scripts/check-docs.sh",
+        "examples/demo/scripts/check-infra.sh",
+        "examples/demo/scripts/e2e.sh",
+        "examples/demo/scripts/lint.sh",
+        "examples/demo/scripts/security-scan.sh",
+        "examples/demo/services/api/go.mod",
+        "examples/demo/services/api/handler.go",
+        "examples/demo/services/api/handler_test.go",
+        "examples/demo/services/api/main.go",
+        "examples/demo/services/web/package-lock.json",
+        "examples/demo/services/web/package.json",
+        "examples/demo/services/web/scripts/bundle.js",
+        "examples/demo/services/web/src/greeting.js",
+        "examples/demo/services/web/test/greeting.test.js",
+        "examples/demo/services/worker/tests/test_tasks.py",
+        "examples/demo/services/worker/worker/__init__.py",
+        "examples/demo/services/worker/worker/tasks.py"
+      ],
+      "dirs": [],
+      "complete": true,
+      "nodes": 1
+    },
+    "web-bundle": {
+      "files": [
+        "examples/demo/services/web/package-lock.json",
+        "examples/demo/services/web/package.json",
+        "examples/demo/services/web/scripts/bundle.js",
+        "examples/demo/services/web/src/greeting.js"
+      ],
+      "dirs": [
+        ".",
+        "examples/demo/services/web/src"
+      ],
+      "complete": true,
+      "nodes": 1
+    },
+    "web-test": {
+      "files": [
+        "examples/demo/libs/proto/schema.json",
+        "examples/demo/services/web/package.json",
+        "examples/demo/services/web/src/greeting.js",
+        "examples/demo/services/web/test/greeting.test.js"
+      ],
+      "dirs": [
+        "examples/demo/services/web",
+        "examples/demo/services/web/scripts",
+        "examples/demo/services/web/src",
+        "examples/demo/services/web/test"
+      ],
+      "complete": true,
+      "nodes": 1
+    }
+  }
+}
