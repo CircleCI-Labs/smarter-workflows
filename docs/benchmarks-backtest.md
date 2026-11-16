@@ -45,7 +45,16 @@ A JSON array of commits:
 
 Optional per-commit `parameters` overrides the `--parameters` file for that pipeline (same semantics as `plan --parameters`).
 
-Build a history file with [`scripts/bench/fetch-history.sh`](../scripts/bench/fetch-history.sh) (needs a CircleCI API token and a git clone). Fixture parsing is tested by [`scripts/bench/test-parse.sh`](../scripts/bench/test-parse.sh).
+Build a history file with `circleci-smarter history fetch` (or the [`fetch-history.sh`](../scripts/bench/fetch-history.sh) wrapper). Set `CIRCLE_TOKEN` or `CIRCLECI_TOKEN`; optional `CIRCLECI_HOST` for server installs. The command pages pipelines newest first, resolves job outcomes (including **flaky** when a job failed then passed on a workflow rerun), and fills `base` / `changed` from a local `--repo` clone. Commits missing from the clone are skipped. Fixture parsing is tested by [`scripts/bench/test-parse.sh`](../scripts/bench/test-parse.sh) and `go test ./internal/history/...`.
+
+```sh
+circleci-smarter history fetch \
+  --project-slug circleci/org/repo \
+  --workflow ci \
+  --limit 200 \
+  --repo . \
+  --out history.json
+```
 
 ## Command
 
@@ -63,6 +72,11 @@ circleci-smarter backtest \
 `--parameters` is a JSON object of pipeline parameter values, applied to every commit unless a history record carries its own `parameters` object. Use the same file you would pass to `plan --parameters` when the continuation config gates workflows or jobs on `<< pipeline.parameters.* >>`.
 
 `--format json` writes the machine-readable report (used for golden tests).
+
+`--strict` makes backtest warnings fatal (exit 1). Warnings print on stderr and at the top of the report:
+
+- **Workflow disabled:** when `--parameters` turn off the workflow (`when`/`unless` false), recall is meaningless — every commit is treated as if the workflow did not run.
+- **Job name drift:** when more than half of recorded job outcomes do not match any job in today's workflow (renamed jobs or wrong `--workflow`).
 
 ## Scheduled benchmark on main
 
