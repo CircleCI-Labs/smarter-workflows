@@ -197,7 +197,7 @@ func TestPlanRegressionDogfoodPolicy(t *testing.T) {
 func TestPlanRegressionDogfoodDocsOnly(t *testing.T) {
 	root := moduleRoot(t)
 	wt, base := planRegressionWorktree(t, root)
-	rel := "docs/learn.md"
+	rel := "skills/circleci-workflow-composer/SKILL.md"
 	before, err := os.ReadFile(filepath.Join(wt, rel))
 	if err != nil {
 		t.Fatal(err)
