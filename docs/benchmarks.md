@@ -1,12 +1,12 @@
 ---
 page-title: Benchmarks
 page-audience: admin
-page-description: Overview of end-to-end CI savings, historical backtest recall, and local performance targets for the planner and trace scripts.
+page-description: Overview of end-to-end CI savings, historical backtest recall, and local performance targets for the planner.
 ---
 
 # Benchmarks
 
-Measured results for v0.1: real CircleCI pipelines for job selection, a replay of this repository's history against today's map, and synthetic workloads for planner and trace timing.
+Measured results for v0.1: real CircleCI pipelines for job selection, a replay of this repository's history against today's map, and synthetic workloads for planner timing.
 
 ## Method
 
@@ -71,7 +71,6 @@ Synthetic workloads on one machine (2026-11-15). All documented targets passed:
 | Target | Result |
 | --- | --- |
 | Plan p95 &lt; 2 s at 2000 jobs, 10k-file map | **0.166 s** |
-| `collect-trace` &lt; 10 s at 100k tracked files | **0.355 s** |
 | v2 map &lt; 20 MiB and decode &lt; 0.5 s at 2000×10k | **233 KiB**, **0.25 s** decode |
 
 Full tables and how to rerun: [Performance benchmarks](benchmarks-perf.md).

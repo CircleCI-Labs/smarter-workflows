@@ -9,10 +9,10 @@ A skipped job that would have failed (a miss) costs more than an extra job that 
 ## Decision
 
 1. Every job runs unless the planner can show that the change touches none of its inputs:
-   - no changed file is among the files the job read in the last traced full run;
-   - no added or deleted file sits in a directory the job listed.
+   - no changed file is among the files the impact map lists for the job;
+   - no added or deleted file sits in a directory the job lists.
 2. These always run:
-   - jobs with no trace, or an incomplete trace;
+   - jobs with no map entry, an incomplete entry, or inputs that fail the skip proof in ADR 8;
    - mandatory jobs;
    - every ancestor (`requires`) of a selected job, approvals included.
 3. A full run happens:

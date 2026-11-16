@@ -1,7 +1,7 @@
 ---
 page-title: How it works
 page-audience: admin
-page-description: How the planner learns an impact map on the default branch, plans a branch from it, checks the plan against the guardrails, and ends with a gate.
+page-description: How the planner builds an impact map, plans a branch from it, checks the plan against the guardrails, and ends with a gate.
 ---
 
 # How Smarter Workflows works
@@ -9,9 +9,9 @@ page-description: How the planner learns an impact map on the default branch, pl
 ## The loop
 
 ```
-push to main ──► setup: plan job ──► full run, every job traced ──► smarter-impact-map ──► project cache
+push to main or a branch ──► setup: plan job ──► analyze (static + learned layer) ──► impact map ──► project cache
                                                                                                 │
-push to a branch ──► setup: plan job ◄── impact map for the merge-base (or the newest) ◄────────┘
+branch push ──► setup: plan job ◄── impact map for the merge-base (or the newest) ◄────────────┘
                        │
                        ├─ changed files (merge-base..HEAD) × impact map → which jobs the change can reach
                        ├─ + mandatory jobs, + ancestors, + workspace consumers
@@ -19,21 +19,18 @@ push to a branch ──► setup: plan job ◄── impact map for the merge-ba
                        └─ continue: pruned workflow + smarter-gate
 ```
 
-1. **The default branch always gets a full run.** The planner adds two steps to each job:
-   - a step right after `checkout` that resets file access times;
-   - a post-step that records which tracked files the job read and which directories it listed.
-   A last job, `smarter-impact-map`, merges these traces into the impact map and saves it to the project cache under the commit's SHA.
+1. **The setup job builds the impact map.** `circleci-smarter analyze` reads the continuation config and the repository checkout. Static analysis infers repo paths each job may read (commands, imports, manifests, Dockerfiles, workspaces, and the like). An optional AI layer and corrections from past runs extend that list on a schedule. The map is written to the project cache when the pipeline is configured to save it.
 2. **A branch gets a plan.** The plan job:
    1. finds the merge-base with the default branch;
    2. restores the impact map for that commit, or the newest map;
-   3. compares the changed files with what each job read.
+   3. compares the changed files with what each job lists as inputs.
 3. **A job runs** when the change touches one of its inputs, or a directory it listed gains or loses a file. Mandatory jobs always run. So do:
    - the ancestors (`requires`) of every job that runs;
    - jobs that consume a workspace produced by a job that runs;
-   - jobs with no trace;
+   - jobs with no map entry or inputs that do not meet the skip proof (ADR 8);
    - job groups: an entry that names a group under `job-groups` runs as one unit, since v0.1 does not look inside it.
 
-   Some entries run no steps: an approval (`type: approval`, on the entry or in the job's definition), a no-op job (`type: no-op`) and a release job (`type: release`). They are never traced and have no inputs, so the jobs around them decide. An approval or a no-op job stays when a job that runs requires it. A release job stays when a job it requires runs: it tracks that job's release. A no-op job that nothing requires, such as an `all-tests-passed` that you use as your required status check, always stays: it waits only for the jobs that stay, or for `smarter-gate` when none of the jobs it waited for does, so it never passes before the selected jobs have.
+   Some entries run no steps: an approval (`type: approval`, on the entry or in the job's definition), a no-op job (`type: no-op`) and a release job (`type: release`). They have no inputs of their own, so the jobs around them decide. An approval or a no-op job stays when a job that runs requires it. A release job stays when a job it requires runs: it tracks that job's release. A no-op job that nothing requires, such as an `all-tests-passed` that you use as your required status check, always stays: it waits only for the jobs that stay, or for `smarter-gate` when none of the jobs it waited for does, so it never passes before the selected jobs have.
 
    A job that your own `filters` keep off the branch, or whose required jobs they all keep off it, does not run there whatever the change is, even when it is mandatory. The plan leaves it out and says so in a warning. A requirement on a job that does not run is ignored, as in CircleCI, and the plan drops it.
 4. **Guardrails.** The planner checks the config it generated against the Rego bundle in `policies/`, using CircleCI's own policy engine (`circle-policy-agent`).

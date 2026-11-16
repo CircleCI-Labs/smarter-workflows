@@ -12,7 +12,7 @@ A planner for CircleCI setup workflows. For each change it runs only the jobs th
 
 ## Why use it
 
-- **Learns from your default branch.** Every full run there traces the repo files each job reads, and builds an *impact map*. A branch uses the map: a job whose inputs the change does not touch is skipped.
+- **Learns from your repository.** The planner builds an *impact map* with `circleci-smarter analyze` (static analysis of the config and the repo, with optional AI and history corrections). A branch uses the map: a job whose inputs the change does not touch is skipped.
 - **Skips a job only when proven.** A job runs unless the map shows that the change cannot reach it. Mandatory jobs always run, and anything unusual means a full run.
 - **A gate that always reports.** Every planned workflow ends in a `smarter-gate` job, a no-op job that costs no credits. Even when everything else is skipped, the workflow still runs and its GitHub check still reports, so a skipped job never leaves a pull request waiting.
 - **Guardrails first.** Every plan is checked locally against the same Rego bundle that you can enforce org-wide. The planner repairs what it can (a missing security scan, for example) and falls back to a full run otherwise.
@@ -21,7 +21,7 @@ A planner for CircleCI setup workflows. For each change it runs only the jobs th
 
 ## How it works
 
-1. **The default branch teaches.** Every push there gets a full run. The planner adds two steps to each job: one that resets file access times after `checkout`, and one that records which tracked files the job read and which directories it listed. A last job, `smarter-impact-map`, merges the traces into the impact map and saves it to the project cache.
+1. **The setup job builds the map.** In the plan job, `circleci-smarter analyze` infers which repo paths each job can read from the continuation config and the checkout. The static layer runs every time; a learned layer (AI inputs and history corrections) refreshes on a schedule. The map is saved to the project cache when configured.
 2. **A branch gets a plan.** The plan job restores the map of the merge-base (or the newest one), and compares the changed files with what each job read. It keeps the jobs the change can reach, the mandatory jobs, and the jobs they need.
 3. **The guardrails check the plan.** The planner evaluates the Rego bundle in `policies/` on the config it generated. It repairs a violation it can fix, such as a missing mandatory job, and otherwise runs everything.
 4. **The pipeline continues** with the pruned workflow and the `smarter-gate` job.
@@ -35,7 +35,7 @@ Teams with a CircleCI pipeline of many jobs, such as a monorepo with several ser
 Use something else when:
 
 - You want to pick the tests inside a job: use Smarter Testing or the tool your job already uses. Smarter Workflows skips whole jobs, and the two compose ([decision 1](docs/adr/0001-select-jobs-not-tests.md)).
-- Your jobs do not run on Linux docker or machine executors: the planner cannot trace them, so they always run.
+- You cannot run the analyze step in the setup job: without a map, the planner runs every job.
 - You need rules learned from history, or a model that decides: neither is in v0.1 ([Limitations](docs/limitations.md)).
 
 ## Quickstart
@@ -61,7 +61,7 @@ You need a CircleCI project with setup workflows turned on (Project Settings, Ad
    ```
 
    `workflow` is the workflow of `continue.yml` to plan, and `mandatory` lists the jobs that run on every change.
-1. Push to the default branch. The first full run traces every job and saves the first impact map.
+1. Push to the default branch. The plan job analyzes the repo and saves the first impact map.
 1. Push a branch, and read `smarter-plan/plan.md` in the artifacts of the plan job. Shadow mode still runs everything.
 1. Change `mode` to `select` when the reports convince you.
 
@@ -96,7 +96,6 @@ The project is pre-release (0.x). [Validation](docs/validation.md) lists every l
 | Planner, config, diff, impact map and report | Tested | Unit and golden tests: 12 example scenarios with golden plans and configs, and a fuzz target |
 | 27 unusual config shapes (approvals mid-graph, two workflows, matrices, orb jobs, anchors, renames and more) | Tested | Every emitted config must keep the job graph intact, pass the guardrails, and pass `circleci config validate`. Nine bugs were found and fixed first |
 | Guardrail bundle | Tested | 53 Rego tests, and Go fixture tests through CircleCI's policy engine |
-| Trace scripts | Tested | 43 checks on ext4, tmpfs and the `cimg/base` image, and the access time reset on CircleCI's docker and machine executors |
 | End to end: the demo monorepo (13 jobs) and this repository (8 jobs) | Tested | **21** scenarios, **3** runs each on real pipelines; **57/63** job-set checks passed on the first batch; two scenario definitions were fixed and verified on a rerun ([Validation](docs/validation.md)) |
 | Composing a workflow with an agent | One run | Three cases, graded by a script with no model involved. One model run passed all three |
 | Shadow mode on a busy real repository | Not validated | No real hit and miss rates yet |
@@ -106,7 +105,7 @@ The project is pre-release (0.x). [Validation](docs/validation.md) lists every l
 Known limits:
 
 - One workflow is planned. The other workflows of `continue.yml` pass through.
-- Matrix jobs, job groups, and jobs that are not traced always run.
+- Matrix jobs, job groups, and jobs with no map entry always run.
 - The impact map lives in the project cache, and any branch can write a cache entry.
 
 [Limitations](docs/limitations.md) lists every limit, and says why each one is safe.

@@ -14,7 +14,7 @@ The orb is not published yet. Once it is, adopt Smarter Workflows with one setup
 1. **Move your pipeline** (jobs, workflows, orbs, executors) to `.circleci/continue.yml`. That file is the catalog the planner picks from. Nothing else in it changes.
 2. **Add a setup config** in `.circleci/config.yml` with `setup: true`, the orb, and one `smarter/plan` job (see below). Turn on setup workflows under Project Settings → Advanced, if they are not on.
 3. **Start in shadow mode** (`mode: shadow`). Use `source: build` with the `go` executor until releases exist; then use `source: release` (the default) so the job downloads a signed binary.
-4. **Push to the default branch.** The first full run traces every job and saves the impact map. On later pushes, open `smarter-plan/plan.md` in the plan job's artifacts.
+4. **Push to the default branch.** The plan job runs `circleci-smarter analyze` and saves the impact map. On later pushes, open `smarter-plan/plan.md` in the plan job's artifacts.
 5. **Require the planned workflow's check** in branch protection (or `smarter-gate` if you use per-job statuses). `smarter-gate` is a no-op job and costs no credits.
 6. **Switch to select mode** (`mode: select`) when shadow reports look right.
 
@@ -61,13 +61,7 @@ All pipelines of a project share its cache. Give each setup config its own `map-
 
 ## Requirements
 
-- **Linux jobs** (docker or machine with a known Linux image) for tracing. Other jobs always run unless you declare them with `plan --trace-jobs` (comma-separated name globs), for example self-hosted runner jobs. The plan report lists traced and untraced jobs.
-
-### Getting the most out of tracing
-
-- Put `checkout` in the job steps when you can. When it lives in a **local command** instead, the planner still inserts the reset right after that command runs.
-- Prefer **GNU-friendly** images (`cimg/*`, Ubuntu machine images). **Busybox/Alpine** tool images work too: the reset and collect scripts fall back to `stat` and busybox `touch` forms.
-- List **runner or custom-executor** jobs with `--trace-jobs` when the config does not pin a Linux image the planner can read.
-- Read **`trace_coverage`** in `plan.json` (or the table in `plan.md`) after a shadow run on main to see which jobs are untraced and why.
+- The setup job must check out the repository so `circleci-smarter analyze` can read it. Analysis works on every executor type; jobs with no map entry always run.
+- **Shadow mode first.** Use `plan.md` and `plan.json` to see what select mode would skip before you turn select mode on.
+- **Refresh the learned layer.** A weekly job (or your own schedule) updates AI and history corrections; the static layer runs on every plan.
 - **The default branch builds regularly.** Maps live in the project cache, so they expire with its retention.
-- **Approved images, if your org enforces them.** Some orgs' config policies allow only exact image tags, so an image pinned by digest can be rejected.

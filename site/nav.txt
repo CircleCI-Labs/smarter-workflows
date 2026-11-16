@@ -23,7 +23,7 @@ docs/validation.md | Validation
 
 == Benchmarks | End-to-end CI savings, historical replay, and local performance numbers for v0.1.
 docs/benchmarks.md | Benchmarks | Overview of measured savings, backtest recall, and performance targets. | benchmarks
-docs/benchmarks-perf.md | Performance benchmarks | Planner and trace-script timing on synthetic workloads, and how to rerun the harness. | benchmarks-perf
+docs/benchmarks-perf.md | Performance benchmarks | Planner timing on synthetic workloads, and how to rerun the harness. | benchmarks-perf
 docs/benchmarks-backtest.md | Backtest | Recall and job-time savings when the planner is replayed against historical pipelines. | benchmarks-backtest
 
 == Agents | Let an agent compose a workflow from the jobs of a pipeline, and check that the result is sound.
@@ -37,7 +37,8 @@ GLOSSARY.md | Glossary | The words this project uses, and what each one means.
 == Decisions | The architecture decision records: what was decided, why, and what follows from it. | docs/adr
 docs/adr/0001-select-jobs-not-tests.md | 1. Select jobs, not tests | Decide at the level of jobs and workflows, and leave the choice of tests to the tools that make it.
 docs/adr/0002-skip-only-when-proven.md | 2. Skip only when proven | Skip a job only when the impact map proves that the change cannot reach it.
-docs/adr/0003-impact-map-from-traces-on-main.md | 3. Impact map from traces | Build the impact map from the file-access traces of full runs on the default branch.
+docs/adr/0003-impact-map-from-traces-on-main.md | 3. Impact map from traces | Build the impact map from the file-access traces of full runs on the default branch (superseded by ADR 8).
+docs/adr/0008-impact-maps-from-analysis-not-traces.md | 8. Impact maps from analysis | Build the impact map with static analysis, optional AI, and history corrections; no runtime tracing.
 docs/adr/0007-impact-map-v2.md | 7. Impact map v2 | Shared path tables, delta-varint indices and gzip for large monorepos.
 docs/adr/0004-catalog-is-native-circleci-config.md | 4. Native catalog | The catalog is the project's own CircleCI config, not a new format.
 docs/adr/0005-go-cli-extension.md | 5. Go CLI extension | One static Go binary that also works as a circleci CLI extension.

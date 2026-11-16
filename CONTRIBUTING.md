@@ -55,10 +55,9 @@ gofmt -l .
 go vet ./...
 go test ./...
 circleci policy test policies
-scripts/test-trace.sh
 ```
 
-The commands check formatting (the output must be empty), vet, the Go tests, the Rego tests of the guardrail bundle, and the trace scripts. The trace tests need git, GNU find and GNU touch, and `REQUIRE_ATIME=1` makes a filesystem without access times fail them instead of skipping them. CI also runs `shellcheck -s sh internal/tracescript/*.sh scripts/*.sh`. The golden files of the example monorepo change with `go test ./examples/monorepo -update`: read the diff before you commit it.
+The commands check formatting (the output must be empty), vet, the Go tests, and the Rego tests of the guardrail bundle. CI also runs `shellcheck -s sh scripts/*.sh`. The golden files of the example monorepo change with `go test ./examples/monorepo -update`: read the diff before you commit it.
 
 [Validation](docs/validation.md) lists every test layer, and `.circleci/continue.yml` is the pipeline that runs them.
 
