@@ -6,7 +6,7 @@
 #
 #   pick  writes .smarter-version: the planner version and a newline. Its
 #         checksum is part of the cache key of the binary, and the generated
-#         smarter-impact-map job writes the same file to find the same binary.
+#         a later plan run can restore the same binary from cache.
 #   get   installs the binary: for source build, go build of this checkout; for
 #         source release, the binary of a GitHub release, checked as below.
 #
