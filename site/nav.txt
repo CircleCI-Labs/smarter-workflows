@@ -16,6 +16,7 @@ docs/quickstart.md | Quickstart
 examples/demo/README.md | Demo monorepo | A small polyglot monorepo that runs on Smarter Workflows, so that you can watch the planner pick jobs from a change. | demo
 
 ==
+docs/analyze.md | Analyze | Infer impact maps from config and source without trace injection. | analyze
 docs/how-it-works.md | How it works
 docs/limitations.md | Limitations
 docs/threat-model.md | Threat model

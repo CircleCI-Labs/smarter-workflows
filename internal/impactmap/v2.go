@@ -12,6 +12,7 @@ type jobWireV2 struct {
 	DirIdx   string `json:"dir_idx,omitempty"`
 	Complete bool   `json:"complete"`
 	Nodes    int    `json:"nodes"`
+	JobHash  string `json:"job_hash,omitempty"`
 }
 
 type wireV2 struct {
@@ -58,6 +59,7 @@ func parseV2(raw []byte) (*Map, error) {
 		if jw != nil {
 			j.Complete = jw.Complete
 			j.Nodes = jw.Nodes
+			j.JobHash = jw.JobHash
 			var err error
 			j.fileIdx, err = decodeIndexDeltas(jw.FileIdx, len(w.Files), MaxIndicesPerJob)
 			if err != nil {
@@ -159,6 +161,7 @@ func marshalV2JSON(m *Map) ([]byte, error) {
 			DirIdx:   denc,
 			Complete: j.Complete,
 			Nodes:    j.Nodes,
+			JobHash:  j.JobHash,
 		}
 	}
 	var buf bytes.Buffer

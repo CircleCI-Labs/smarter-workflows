@@ -79,6 +79,8 @@ type Job struct {
 	Dirs     []string `json:"dirs"`
 	Complete bool     `json:"complete"`
 	Nodes    int      `json:"nodes"`
+	// JobHash is sha256 of the job's resolved definition (analyze only).
+	JobHash string `json:"job_hash,omitempty"`
 
 	fileIdx []int
 	dirIdx  []int
