@@ -22,6 +22,7 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
+	"github.com/CircleCI-Labs/smarter-workflows/internal/circlecitest"
 	"github.com/CircleCI-Labs/smarter-workflows/internal/config"
 	"github.com/CircleCI-Labs/smarter-workflows/internal/diff"
 	"github.com/CircleCI-Labs/smarter-workflows/internal/diff/difftest"
@@ -573,19 +574,13 @@ func rbMatches(patterns []string, name string) bool {
 	return false
 }
 
-// rbValidate runs `circleci config validate` on cfg when REQUIRE_CIRCLECI_CLI=1.
-// Under that setting a missing CLI, or an API that cannot be reached, fails the
-// test. Without it the check is logged and skipped.
+// rbValidate runs `circleci config validate` on cfg when the CLI and token are available.
 func rbValidate(t *testing.T, cfg []byte) {
 	t.Helper()
-	if os.Getenv("REQUIRE_CIRCLECI_CLI") != "1" {
-		t.Log("circleci config validate not run: set REQUIRE_CIRCLECI_CLI=1 to run it")
+	if !circlecitest.ShouldRunValidate(t) {
 		return
 	}
-	bin, err := exec.LookPath("circleci")
-	if err != nil {
-		t.Fatalf("REQUIRE_CIRCLECI_CLI=1, but the circleci CLI is not on the PATH: %v", err)
-	}
+	bin := circlecitest.FindCLI(t)
 	file := filepath.Join(t.TempDir(), "continue.yml")
 	if err := os.WriteFile(file, cfg, 0o644); err != nil {
 		t.Fatal(err)
@@ -598,10 +593,11 @@ func rbValidate(t *testing.T, cfg []byte) {
 	if err == nil {
 		return
 	}
-	for _, s := range []string{"dial tcp", "no such host", "connection refused", "i/o timeout", "network is unreachable", "TLS handshake", "context deadline exceeded"} {
-		if strings.Contains(string(out), s) {
+	if circlecitest.TransportFailure(string(out)) {
+		if circlecitest.RequireEnabled() {
 			t.Fatalf("REQUIRE_CIRCLECI_CLI=1, but the CircleCI API cannot be reached: %s", out)
 		}
+		t.Skip("the CircleCI API is not reachable: " + strings.TrimSpace(string(out)))
 	}
 	t.Errorf("not valid CircleCI config (circleci config validate): %v\n%s", err, out)
 }

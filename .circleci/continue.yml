@@ -7,8 +7,8 @@ version: 2.1
 
 commands:
   # The CircleCI CLI, pinned: the release is checked against its sha256 (the
-  # digest GitHub publishes for the asset). The jobs use it to validate config
-  # and orbs and to run policy tests; no token is set in them.
+  # digest GitHub publishes for the asset). Jobs that run `circleci config validate`
+  # use the smarter-workflows-ci context (CIRCLE_TOKEN).
   install-circleci-cli:
     steps:
       - run:
@@ -153,8 +153,8 @@ jobs:
       - install-circleci-cli
       - run:
           name: Validate the orb
-          # `circleci orb validate` needs an API token, and CI has none. The
-          # script validates the orb inlined in a config, which needs none.
+          # Inlines the packed orb and validates with circleci config validate
+          # (needs CIRCLE_TOKEN from smarter-workflows-ci).
           command: scripts/validate-orb.sh orb/src
       - run:
           name: Orb integration (inline pack, monorepo plan)
@@ -375,13 +375,15 @@ workflows:
 
   ci:
     jobs:
-      - go-test
+      - go-test:
+          context: [smarter-workflows-ci]
       - go-lint
       - policy-test
       - script-test
       - release-dry-run
       - docs-site-build
-      - orb-validate
+      - orb-validate:
+          context: [smarter-workflows-ci]
       - security-scan
       - build
       - e2e-plan:

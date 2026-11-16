@@ -339,6 +339,22 @@ test_restricted_context_malformed_entries_are_ignored {
 	count(restricted_contexts) == 0 with input as fixture_workflow(jobs)
 }
 
+fixture_ci_token := {"context": ["smarter-workflows-ci"]}
+
+test_restricted_context_smarter_workflows_ci_allowed_job {
+	count(restricted_contexts) == 0 with input as fixture_workflow([{"go-test": fixture_ci_token}])
+}
+
+test_restricted_context_smarter_workflows_ci_rejects_other_jobs {
+	msgs := restricted_contexts with input as fixture_workflow([{"go-lint": fixture_ci_token}])
+	count(msgs) == 1
+	has_message(msgs, "uses the restricted context \"smarter-workflows-ci\"")
+}
+
+test_restricted_context_smarter_workflows_ci_allows_any_branch {
+	count(restricted_contexts) == 0 with input as fixture_workflow([{"orb-validate": object.union(fixture_ci_token, {"filters": {"branches": {"only": ["feature-x"]}}})}])
+}
+
 # =============================================================================
 # 3. resource_classes
 # =============================================================================
