@@ -1,7 +1,6 @@
-// Package impactmap holds the impact map: for each job, the repo files it read
-// and the directories it listed during the last traced full run (ADR 3). It
-// parses the trace TSV files the collector writes, merges them into one map,
-// and loads the map for the planner.
+// Package impactmap holds the impact map: for each job, the repo paths the
+// planner treats as its inputs. It reads and writes v1 JSON and v2 gzip maps;
+// it does not parse trace TSV.
 package impactmap
 
 import (
@@ -44,14 +43,14 @@ const (
 	MaxUniqueFiles   = 200_000
 	MaxUniqueDirs    = 50_000
 	MaxIndicesPerJob = 100_000
-	MaxPathsPerJob   = MaxIndicesPerJob // v1 field name; traces reuse it
+	MaxPathsPerJob   = MaxIndicesPerJob
 	MaxJobNameLen    = 256
 )
 
 var gzipEpoch = time.Time{}
 
-// MethodATime is the only trace method v0.1 knows: file access times.
-const MethodATime = "atime"
+// DefaultMapMethod is the method label written into synthetic and benchmark maps.
+const DefaultMapMethod = "static"
 
 // Map is the impact map in memory (spec, "File formats").
 type Map struct {

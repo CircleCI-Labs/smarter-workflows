@@ -1,6 +1,6 @@
 # 3. Build the impact map from file-access traces of full runs on the default branch
 
-Date: 2026-11-13. Status: accepted.
+Date: 2026-11-13. Status: Superseded by ADR 8.
 
 ## Context
 

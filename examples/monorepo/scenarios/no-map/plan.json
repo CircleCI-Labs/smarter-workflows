@@ -1,8 +1,8 @@
 {
   "version": 1,
   "mode": "select",
-  "full": true,
-  "full_reason": "no usable impact map: there is no impact map at /tmp/smarter/impact-map.json.gz",
+  "full": false,
+  "full_reason": "",
   "workflow_runs": true,
   "workflow": "ci",
   "base": "<base>",
@@ -21,65 +21,64 @@
       "name": "lint",
       "run": true,
       "reasons": [
-        "full run"
+        "no impact map"
       ]
     },
     {
       "name": "security-scan",
       "run": true,
       "reasons": [
-        "full run"
+        "mandatory job",
+        "no impact map"
       ]
     },
     {
       "name": "api-test",
       "run": true,
       "reasons": [
-        "full run"
+        "no impact map"
       ]
     },
     {
       "name": "web-test",
       "run": true,
       "reasons": [
-        "full run"
+        "no impact map"
       ]
     },
     {
       "name": "build",
       "run": true,
       "reasons": [
-        "full run"
+        "no impact map"
       ]
     },
     {
       "name": "e2e",
       "run": true,
       "reasons": [
-        "full run"
+        "no impact map"
       ]
     },
     {
       "name": "docs",
       "run": true,
       "reasons": [
-        "full run"
+        "no impact map"
       ]
     },
     {
       "name": "hold-deploy",
       "run": false,
       "reasons": [
-        "does not run: its filters leave out branch feature",
-        "full run"
+        "does not run: its filters leave out branch feature"
       ]
     },
     {
       "name": "deploy",
       "run": false,
       "reasons": [
-        "does not run: its filters leave out branch feature",
-        "full run"
+        "does not run: its filters leave out branch feature"
       ]
     }
   ],

@@ -8,7 +8,7 @@ description: >
   pipeline) and needs Go. Both write .smarter-version (the planner version and a
   newline) and cache the binary under the key
   smarter-bin-v1-CHECKSUM-ARCH, where CHECKSUM is the checksum of
-  .smarter-version; the generated smarter-impact-map job restores it.
+  .smarter-version; later plan runs restore the same binary when needed.
 parameters:
   source:
     type: enum

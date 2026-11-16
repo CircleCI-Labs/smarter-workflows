@@ -176,21 +176,3 @@ func TestWillRunCascade(t *testing.T) {
 		})
 	}
 }
-
-func TestShellQuote(t *testing.T) {
-	for in, want := range map[string]string{
-		"dev-abc1234":      "dev-abc1234",
-		"v0.1.0":           "v0.1.0",
-		"/usr/local/bin/x": "/usr/local/bin/x",
-		"has space":        "'has space'",
-		"it's":             `'it'\''s'`,
-		"":                 "''",
-		"$(rm -rf /)":      "'$(rm -rf /)'",
-		"semi;colon":       "'semi;colon'",
-		"line\nbreak":      "'line\nbreak'",
-	} {
-		if got := shellQuote(in); got != want {
-			t.Errorf("shellQuote(%q) = %q, want %q", in, got, want)
-		}
-	}
-}

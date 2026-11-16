@@ -13,7 +13,7 @@ Impact map v1 stores every repo path verbatim in each job's `files` and `dirs` a
    - Per job, `file_idx` and `dir_idx` are standard base64 blobs of **sorted delta varints** over table indices (first index absolute, later indices encode the gap from the previous one).
    - Metadata unchanged: `revision`, `created_at`, `method`, and per-job `complete` and `nodes`.
 2. **Why delta varints instead of bitsets:** Indices are dense when jobs read many files but sparse when they read few; delta varints are small in the common case, need no third-party format, and decode in one pass with strict bounds. Roaring or raw bitsets win when sets are extremely sparse across a huge table; this workload is usually "many indices per job out of a shared table", where varints are simpler and fast enough.
-3. **Writers** (`map build`, the trace map job) emit v2 gzip only. **Readers** accept v1 JSON (legacy cache) and v2 gzip; `plan` tries `impact-map.json.gz` then `impact-map.json`.
+3. **Writers** (`circleci-smarter analyze` and `map build`) emit v2 gzip only. **Readers** accept v1 JSON (legacy cache) and v2 gzip; `plan` tries `impact-map.json.gz` then `impact-map.json`.
 4. **Caps** (oversize or malformed → full run): compressed file ≤ 64 MiB; decompressed JSON ≤ 256 MiB; when compressed size &lt; 64 KiB, decompressed must be ≤ 32× compressed (zip-bomb guard); ≤ 4096 jobs; ≤ 200_000 file table entries; ≤ 50_000 dir table entries; ≤ 100_000 indices per job per table; job names ≤ 256 chars. v1 maps keep the former 16 MiB uncompressed cap.
 
 ## Consequences

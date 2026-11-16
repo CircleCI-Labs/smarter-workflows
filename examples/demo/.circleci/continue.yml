@@ -146,8 +146,7 @@ workflows:
       - lint
       - api-test
       - web-test
-      # A job from an orb: it checks out the repository itself, which is what
-      # lets the planner trace it.
+      # A job from an orb: it checks out the repository itself so steps can read the tree.
       - node/run:
           name: web-bundle
           executor:

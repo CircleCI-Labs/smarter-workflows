@@ -254,6 +254,9 @@ func (p *planner) directReasons(e *config.Entry, cs *changeSet, mandatory, force
 	if forced[e.Name] {
 		reasons = append(reasons, fmt.Sprintf("required by the guardrails ([smarter:require-job=%s])", e.Name))
 	}
+	if p.in.Map == nil {
+		return append(reasons, "no impact map")
+	}
 	if e.Kind == config.KindJobGroup {
 		// A group is one unit in v0.1: it has no trace, so nothing says which of
 		// its jobs a change reaches, and it runs whatever the change is.
@@ -338,6 +341,14 @@ func (p *planner) selectJobs(an *analysis, cs *changeSet, forced map[string]bool
 	sel := &selection{selected: make([]bool, n), reasons: make([][]string, n), gatekeeper: make([]bool, n)}
 	mandatory := toSet(p.o.Mandatory)
 	eligible := func(i int) bool { return an.will[i] != triNo }
+	if p.in.Map == nil {
+		for i, e := range an.entries {
+			if eligible(i) && e.Kind.HasSteps() {
+				sel.selected[i] = true
+				sel.reasons[i] = append(sel.reasons[i], "no impact map")
+			}
+		}
+	}
 	pick := func(i int, why string) bool {
 		if sel.selected[i] || !eligible(i) {
 			return false

@@ -34,7 +34,6 @@ func TestFullRunReasons(t *testing.T) {
 		{"no map", func(_ *planner.Options, in *planner.Input, _ *fakeRepo) {
 			in.Map, in.MapProblem = nil, "no impact map at /x"
 		}, "no usable impact map: no impact map at /x"},
-		{"no map and no reason", func(_ *planner.Options, in *planner.Input, _ *fakeRepo) { in.Map = nil }, "no usable impact map"},
 		{"diff fails", func(_ *planner.Options, _ *planner.Input, r *fakeRepo) { r.changesErr = errBoom }, "the changed files could not be listed: boom"},
 		{"no head commit", func(o *planner.Options, _ *planner.Input, _ *fakeRepo) { o.Head = "" }, "the changed files could not be listed: there is no head commit"},
 		{"pipeline definition changed", func(_ *planner.Options, _ *planner.Input, r *fakeRepo) {
@@ -68,9 +67,6 @@ func TestFullRunReasons(t *testing.T) {
 			// Every entry stays, plus the gate.
 			got := emittedJobs(t, res, "ci")
 			want := []string{"lint", "security-scan", "api-test", "web-test", "build", "e2e", "docs", "hold", "deploy", "smarter-gate"}
-			if res.Report.Trace != nil { // a full run on the default branch is traced
-				want = slices.Insert(want, len(want)-1, "smarter-impact-map")
-			}
 			if !slices.Equal(got, want) {
 				t.Errorf("emitted jobs = %v, want %v", got, want)
 			}
@@ -227,12 +223,10 @@ func TestRunErrors(t *testing.T) {
 		{"an unknown workflow", in, func(o *planner.Options) { o.Workflow = "nope" }, `no workflow "nope" (it has: ci, nightly)`, true},
 		{"no workflows", planner.Input{Config: []byte("version: 2.1\n")}, nil, "no workflow", true},
 		{"a bad mode", in, func(o *planner.Options) { o.Mode = "fast" }, "mode must be", true},
-		{"a bad trace mode", in, func(o *planner.Options) { o.Trace = "maybe" }, "trace must be", true},
 		{"a bad glob", in, func(o *planner.Options) { o.FullRunPaths = []string{"["} }, `bad glob "["`, true},
 		{"a bad ignore glob", in, func(o *planner.Options) { o.IgnorePaths = []string{"a/{b"} }, "ignore paths", true},
 		{"a bad extra input glob", in, func(o *planner.Options) { o.ExtraInputs = map[string][]string{"x": {"["}} }, "extra inputs", true},
 		{"a bad gate name", in, func(o *planner.Options) { o.GateJob = "has space" }, "gate job name", true},
-		{"a bad map image", in, func(o *planner.Options) { o.MapImage = "" }, "map image", true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

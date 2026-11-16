@@ -250,20 +250,17 @@ func convert(vs []guard.Violation) []report.Violation {
 func oneLine(s string) string { return strings.Join(strings.Fields(s), " ") }
 
 // plan builds a plan. If building fails, it plans a full run instead and
-// records why: first with everything, then without the trace steps, and last
-// by passing the config through untouched.
+// records why, or last passes the config through untouched.
 func (p *planner) plan(ctx context.Context, forced map[string]bool, fullReason string) *attempt {
-	a, err := p.build(ctx, forced, fullReason, true)
+	a, err := p.build(ctx, forced, fullReason)
 	if err == nil {
 		return a
 	}
 	reason := "internal error: " + oneLine(err.Error())
 	note := "internal error, planned a full run: " + oneLine(err.Error())
-	for _, withTrace := range []bool{true, false} {
-		if a, err2 := p.build(ctx, nil, reason, withTrace); err2 == nil {
-			a.rep.Warnings = append(a.rep.Warnings, note)
-			return a
-		}
+	if a, err2 := p.build(ctx, nil, reason); err2 == nil {
+		a.rep.Warnings = append(a.rep.Warnings, note)
+		return a
 	}
 	return p.verbatim(reason, note)
 }
@@ -344,11 +341,8 @@ func (p *planner) fullRunReason(wf *config.Workflow, cs *changeSet, changesErr e
 			return "no diff base: " + o.NoBaseReason
 		}
 		return "no diff base"
-	case p.in.Map == nil:
-		if p.in.MapProblem != "" {
-			return "no usable impact map: " + p.in.MapProblem
-		}
-		return "no usable impact map"
+	case p.in.Map == nil && p.in.MapProblem != "" && !strings.HasPrefix(p.in.MapProblem, "there is no impact map"):
+		return "no usable impact map: " + p.in.MapProblem
 	case changesErr != nil:
 		return "the changed files could not be listed: " + oneLine(changesErr.Error())
 	}
@@ -367,7 +361,7 @@ func (p *planner) fullRunReason(wf *config.Workflow, cs *changeSet, changesErr e
 
 // build is steps 1 to 8: one plan, from a fresh parse of the config. A
 // non-empty fullReason forces a full run.
-func (p *planner) build(ctx context.Context, forced map[string]bool, fullReason string, allowTrace bool) (a *attempt, err error) {
+func (p *planner) build(ctx context.Context, forced map[string]bool, fullReason string) (a *attempt, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			a, err = nil, fmt.Errorf("planner panic: %v", r)
@@ -510,20 +504,6 @@ func (p *planner) build(ctx context.Context, forced map[string]bool, fullReason 
 		}
 	}
 
-	if allowTrace && p.traceOn(rep.Full) {
-		tr, notes, cov, err := p.injectTrace(cfg, wf, an)
-		if err != nil {
-			return nil, err
-		}
-		rep.Warnings = append(rep.Warnings, notes...)
-		if len(cov) > 0 {
-			rep.TraceCoverage = cov
-		}
-		if tr != nil {
-			rep.Trace = tr
-			keptNames = append(keptNames, ImpactMapJob)
-		}
-	}
 	if err := p.addGate(cfg, wf, gateRequires); err != nil {
 		return nil, err
 	}

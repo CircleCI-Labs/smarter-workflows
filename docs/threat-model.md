@@ -7,19 +7,18 @@ Smarter Workflows runs inside a customer’s CircleCI project: a setup workflow 
 - **Repository source** — integrity and confidentiality as for any CI job.
 - **Continuation config** — defines the jobs that run after setup; may reference contexts and images.
 - **Continuation key** — secret that authorizes continuing the pipeline (environment variable).
-- **Impact map** — gzip JSON (v2) or legacy JSON (v1) in the project cache describing which files each job read on a past full run.
+- **Impact map** — gzip JSON (v2) or legacy JSON (v1) in the project cache describing which files each job may read.
 - **Plan report** — `plan.json` / `plan.md` with job decisions and diffs.
-- **Trace scripts** — shell embedded in customer job configs (`reset-atime.sh`, `collect-trace.sh`).
 - **Policy bundle** — Rego guardrails evaluated before continuation.
 
 ## Trust boundaries
 
 | Actor | Trust | Reaches |
 | --- | --- | --- |
-| Default-branch full run | Semi-trusted | Writes traces and impact map to cache |
+| Default-branch setup job | Semi-trusted | Writes the impact map to cache |
 | Feature branch / fork PR | Untrusted for map | May restore a cache entry from any branch |
 | Planner binary (setup job) | Trusted by operator | Reads map, config, git; writes continuation config |
-| Trace collector (per job) | Trusted code, hostile repo data | Reads git checkout only; no network |
+| Optional AI classifier | Third party when enabled | Receives job definitions and source contents the operator allows |
 | CircleCI continuation API | Trusted endpoint | Receives key + config over HTTPS |
 | Policy bundle on disk | Trusted by operator | Evaluated locally; no upload in v0.1 |
 
@@ -37,17 +36,17 @@ Smarter Workflows runs inside a customer’s CircleCI project: a setup workflow 
 
 **Threat:** Job names, paths, or parameters break out of generated YAML or inlined shell.
 
-**Mitigations:** Gate and map key prefixes match a safe identifier regex. Map job steps quote version and binary path for `/bin/sh`. Trace scripts are static literals (no customer interpolation). Embedded scripts avoid tabs and CircleCI template syntax. Job names with expressions trigger a full run.
+**Mitigations:** Gate and map key prefixes match a safe identifier regex. Map job steps quote version and binary path for `/bin/sh`. Job names with expressions trigger a full run.
 
 **Residual risk:** Customer-authored job definitions in the catalog are unchanged; only added smarter steps are constrained.
 
-### Trace scripts in customer jobs
+### Optional AI data flow
 
-**Threat:** Malicious repo layout or environment breaks quoting, leaks secrets, fails the job, or exhausts resources.
+**Threat:** Source contents or job definitions sent to an AI provider leak secrets or expand the attack surface.
 
-**Mitigations:** `set +e`; always `exit 0`. No network. No printing environment variables. `CIRCLE_JOB` hashed for filenames; job text sanitized to one line in the TSV. Temp dirs under `.git`. GNU tool probes fail closed to “unsupported trace”. Hostile path tests in `scripts/test-trace.sh`.
+**Mitigations and operator choices:** AI is optional. Paths-only modes limit what is sent. Confidence and job-hash checks gate skips that rely on AI-only coverage (ADR 8). The analyze command documents what leaves the runner when AI is on.
 
-**Residual risk:** Very large repos cost time during find/git traversal; tracing is only on the default branch by default.
+**Residual risk:** Operators who enable full-source classification must treat the provider like any other subprocess with repo access. Details of the AI data flow are described alongside `circleci-smarter analyze`.
 
 ### Continuation client
 

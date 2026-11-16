@@ -103,24 +103,6 @@ workflows:
           requires:
             - build
       - docs
-      # Deploys wait for a person, and only happen on main.
-      - hold-deploy:
-          type: approval
-          requires:
-            - e2e
-            - api-test
-            - web-test
-            - security-scan
-          filters:
-            branches:
-              only: main
-      - deploy:
-          requires:
-            - hold-deploy
-          context: deploy
-          filters:
-            branches:
-              only: main
       - smarter-gate:
           requires:
             - lint

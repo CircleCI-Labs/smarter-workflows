@@ -32,7 +32,7 @@
       "serial_group": "",
       "matrix": null,
       "inputs": {
-        "traced": true,
+        "mapped": true,
         "complete": true,
         "files": 8,
         "dirs": 2,
@@ -78,7 +78,7 @@
       "serial_group": "",
       "matrix": null,
       "inputs": {
-        "traced": true,
+        "mapped": true,
         "complete": true,
         "files": 11,
         "dirs": 5,
@@ -130,7 +130,7 @@
       "serial_group": "",
       "matrix": null,
       "inputs": {
-        "traced": false,
+        "mapped": false,
         "complete": false,
         "files": 0,
         "dirs": 0,
@@ -162,7 +162,7 @@
       "serial_group": "",
       "matrix": null,
       "inputs": {
-        "traced": true,
+        "mapped": true,
         "complete": true,
         "files": 3,
         "dirs": 1,
@@ -205,7 +205,7 @@
       "serial_group": "",
       "matrix": null,
       "inputs": {
-        "traced": true,
+        "mapped": true,
         "complete": true,
         "files": 3,
         "dirs": 1,
@@ -273,7 +273,7 @@
       "serial_group": "",
       "matrix": null,
       "inputs": {
-        "traced": false,
+        "mapped": false,
         "complete": false,
         "files": 0,
         "dirs": 0,
@@ -305,7 +305,7 @@
       "serial_group": "",
       "matrix": null,
       "inputs": {
-        "traced": true,
+        "mapped": true,
         "complete": true,
         "files": 14,
         "dirs": 9,
@@ -345,7 +345,7 @@
       "serial_group": "",
       "matrix": null,
       "inputs": {
-        "traced": true,
+        "mapped": true,
         "complete": true,
         "files": 3,
         "dirs": 1,
@@ -387,7 +387,7 @@
       "serial_group": "",
       "matrix": null,
       "inputs": {
-        "traced": true,
+        "mapped": true,
         "complete": true,
         "files": 6,
         "dirs": 3,

@@ -1,5 +1,5 @@
 #!/bin/sh
-# perf.sh: planner config benchmarks and trace-script timings; prints Markdown.
+# perf.sh: planner config benchmarks; prints Markdown.
 set -u
 
 here=$(cd "$(dirname "$0")" && pwd) || exit 2
@@ -20,8 +20,7 @@ echo "| Go | $goversion |"
 echo
 
 bench_tmp=$(mktemp)
-trace_tmp=$(mktemp)
-trap 'rm -f "$bench_tmp" "$trace_tmp"' EXIT
+trap 'rm -f "$bench_tmp"' EXIT
 
 echo "Running Go benchmarks (this may take several minutes)..."
 if ! go test -run='^$' \
@@ -43,12 +42,6 @@ fi
 plan_p95=$(echo "$p95_out" | awk '{for (i = 1; i <= NF; i++) if ($i == "p95_sec") print $(i - 1)}')
 plan_p95=${plan_p95:-unknown}
 rm -f "$p95_tmp" "$p95_tmp.err"
-
-echo
-echo "Running trace script benchmark..."
-sh "$here/trace-bench.sh" | tee "$trace_tmp" | grep -v '^trace_bench' || true
-
-collect_100k=$(awk -F'\t' '$2==100000 {print $4}' "$trace_tmp" | tail -1)
 
 echo
 echo "### Planner (ns/op, selected)"
@@ -77,22 +70,9 @@ grep -E '^BenchmarkConfig' "$bench_tmp" | while read -r line; do
 done
 
 echo
-echo "### Trace scripts (seconds)"
-echo
-echo "| Tracked files | reset-atime | collect-trace |"
-echo "|---:|---:|---:|"
-awk -F'\t' '$1=="trace_bench" && $2!="files" {print}' "$trace_tmp" | while IFS= read -r line; do
-  files=$(echo "$line" | awk -F'\t' '{print $2}')
-  reset_sec=$(echo "$line" | awk -F'\t' '{print $3}')
-  collect_sec=$(echo "$line" | awk -F'\t' '{print $4}')
-  echo "| $files | $reset_sec | $collect_sec |"
-done
-
-echo
 echo "### Targets"
 echo
 plan_ok=no
-collect_ok=no
 case $plan_p95 in
   '' | unknown) plan_note="could not parse p95 ($p95_out)" ;;
   *)
@@ -104,19 +84,7 @@ case $plan_p95 in
     fi
     ;;
 esac
-case $collect_100k in
-  '' | unknown) collect_note="could not parse collect time at 100k" ;;
-  *)
-    if awk -v c="$collect_100k" 'BEGIN { exit !(c < 10.0) }'; then
-      collect_ok=yes
-      collect_note="collect-trace ${collect_100k}s < 10s at 100k files"
-    else
-      collect_note="**MISS**: collect-trace ${collect_100k}s at 100k files (target < 10s)"
-    fi
-    ;;
-esac
 echo "- $plan_note"
-echo "- $collect_note"
 
 if [ "$plan_ok" = no ] && [ "$plan_p95" != unknown ] && [ -n "$plan_p95" ]; then
   prof=$(mktemp -d "${TMPDIR:-/tmp}/smarter-plan-prof.XXXXXX")
@@ -132,11 +100,6 @@ if [ "$plan_ok" = no ] && [ "$plan_p95" != unknown ] && [ -n "$plan_p95" ]; then
     echo "Proposed fix (do not apply in this worktree): review top frames in impact-map file matching and config pruning for large maps."
   fi
   rm -rf "$prof"
-fi
-
-if [ "$collect_ok" = no ] && [ -n "$collect_100k" ]; then
-  echo
-  echo "Proposed fix for collect-trace: the hotspot is usually the single \`find -printf\` traversal over all tracked paths; consider indexing tracked paths in a single awk pass or skipping atime checks on paths with atime 0."
 fi
 
 echo

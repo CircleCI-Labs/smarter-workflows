@@ -18,7 +18,7 @@ import (
 //	go test ./internal/planner -run xxx -fuzz FuzzPlanner -fuzztime 30s
 func FuzzPlanner(f *testing.F) {
 	for _, seed := range []string{
-		monorepo, traceConfig,
+		monorepo,
 		"version: 2.1\nworkflows:\n  w:\n    jobs: [a, b]\n",
 		"version: 2.1\nworkflows:\n  w:\n    jobs:\n      - a: &x\n          requires: [b]\n      - b: *x\n",
 		"version: 2.1\nx: &a [*a]\nworkflows:\n  w:\n    jobs: *a\n",
@@ -32,7 +32,7 @@ func FuzzPlanner(f *testing.F) {
 		for _, branch := range []string{"feature", "main"} {
 			for _, mode := range []planner.Mode{planner.ModeSelect, planner.ModeShadow} {
 				o := opts()
-				o.Workflow, o.Branch, o.Mode, o.Trace, o.TraceOrbJobs = "", branch, mode, planner.TraceOn, true
+				o.Workflow, o.Branch, o.Mode = "", branch, mode
 				repo := &fakeRepo{changes: changes("M docs/index.md", "A services/api/new.go", "D e2e/smoke.test.ts"),
 					dirs: map[string]map[string]bool{"base1": sourceDirs(), "head1": sourceDirs()}}
 				res, err := planner.Run(context.Background(), planner.Input{Config: []byte(cfg), Map: m, Repo: repo}, o)
@@ -54,7 +54,7 @@ func FuzzPlanner(f *testing.F) {
 //	go test ./internal/planner -run xxx -fuzz FuzzLayoutAndCatalog -fuzztime 30s
 func FuzzLayoutAndCatalog(f *testing.F) {
 	for _, seed := range []string{
-		monorepo, traceConfig, layoutOf("      - lint\n      - smarter-gate:\n          requires: [lint]\n"),
+		monorepo, layoutOf("      - lint\n      - smarter-gate:\n          requires: [lint]\n"),
 		"version: 2.1\nworkflows:\n  w:\n    jobs: [a, b]\n",
 		"version: 2.1\nworkflows:\n  w:\n    jobs:\n      - a:\n          requires: [b]\n      - b:\n          requires: [a]\n",
 		"version: 2.1\njob-groups:\n  g:\n    jobs: [x, {y: {requires: [x], name: z}}]\nworkflows:\n  w:\n    jobs:\n      - g:\n          serial-group: s\n      - a:\n          requires: [y]\n",

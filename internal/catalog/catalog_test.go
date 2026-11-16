@@ -310,7 +310,7 @@ func TestMatrixEntry(t *testing.T) {
 }
 
 func TestInputsComeFromTheImpactMap(t *testing.T) {
-	m := &impactmap.Map{Version: 1, Revision: "abc123", Method: "atime", Jobs: map[string]*impactmap.Job{
+	m := &impactmap.Map{Version: 1, Revision: "abc123", Method: "static", Jobs: map[string]*impactmap.Job{
 		"test": {Files: []string{"go.mod", "services/api/main.go", "services/api/x/y.go", "libs/shared/a.json", "README.md"}, Dirs: []string{".", "services", "services/api"}, Complete: true, Nodes: 1},
 		"ship": {Files: []string{"ship.sh"}, Dirs: nil, Complete: false, Nodes: 1},
 	}}
@@ -319,11 +319,11 @@ func TestInputsComeFromTheImpactMap(t *testing.T) {
 		t.Errorf("map_revision = %q", cat.MapRevision)
 	}
 	jobs := jobsByName(cat)
-	want := catalog.Inputs{Traced: true, Complete: true, Files: 5, Dirs: 3, TopDirs: []string{".", "libs/shared", "services/api"}}
+	want := catalog.Inputs{Mapped: true, Complete: true, Files: 5, Dirs: 3, TopDirs: []string{".", "libs/shared", "services/api"}}
 	if got := jobs["test"].Inputs; !reflect.DeepEqual(got, want) {
 		t.Errorf("test inputs = %+v, want %+v", got, want)
 	}
-	if got, want := jobs["ship"].Inputs, (catalog.Inputs{Traced: true, Complete: false, Files: 1, TopDirs: []string{"."}}); !reflect.DeepEqual(got, want) {
+	if got, want := jobs["ship"].Inputs, (catalog.Inputs{Mapped: true, Complete: false, Files: 1, TopDirs: []string{"."}}); !reflect.DeepEqual(got, want) {
 		t.Errorf("ship inputs = %+v, want %+v", got, want)
 	}
 	// A job with no entry in the map, and an entry that runs nothing.
@@ -344,7 +344,7 @@ func TestTopDirsAreCappedAtTheFinestDepthThatFits(t *testing.T) {
 	for i := 0; i < 8; i++ {
 		deep = append(deep, fmt.Sprintf("tools/t%d/x/y.go", i), fmt.Sprintf("tools/t%d/z.go", i))
 	}
-	m := &impactmap.Map{Version: 1, Revision: "r", Method: "atime", Jobs: map[string]*impactmap.Job{
+	m := &impactmap.Map{Version: 1, Revision: "r", Method: "static", Jobs: map[string]*impactmap.Job{
 		"test": {Files: files, Complete: true, Nodes: 1},
 		"ship": {Files: deep[15:], Complete: true, Nodes: 1}, // 8 directories at depth 2 under tools/
 	}}

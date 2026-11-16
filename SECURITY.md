@@ -23,6 +23,6 @@ Smarter Workflows is a CircleCI Labs project. CircleCI support does not cover it
 [Limitations](docs/limitations.md) lists the known gaps in detail.
 
 - The continuation key (`CIRCLE_CONTINUATION_KEY`) is read only by `circleci-smarter continue`. It never prints the key or the request body, only the status code.
-- A trace records the paths of the tracked files that a job read and the directories it listed, not their contents. The impact map is built from those paths.
+- The impact map lists repo paths each job may read. It is built by `circleci-smarter analyze`, not by extra steps in customer jobs. Optional AI classification may send source contents to the provider; see the threat model.
 - The impact map lives in the project cache, and any branch can write a cache entry. A forged map could make the planner skip jobs. Mandatory jobs and the guardrails do not depend on the map, and every default branch run is a full run. Signing the map on the default branch is planned.
 - The guardrail bundle runs locally in the setup job, against the config that the planner generated. The same bundle can be enforced org-wide as a config policy.

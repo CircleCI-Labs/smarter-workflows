@@ -1,7 +1,6 @@
 package planner_test
 
 import (
-	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -102,17 +101,6 @@ func TestGateRequiresTheJobsThatWillRun(t *testing.T) {
 		}
 	})
 
-	t.Run("the map image is for the impact-map job only", func(t *testing.T) {
-		o := opts()
-		o.Branch, o.MapImage = "main", "cimg/base:2026.10" // a full run on the default branch traces
-		res := plan(t, input(repo), o)
-		if got := rawJob(t, res.Config, planner.ImpactMapJob)["docker"]; !reflect.DeepEqual(got, []any{map[string]any{"image": "cimg/base:2026.10"}}) {
-			t.Fatalf("the map job's docker = %v, want the map image", got)
-		}
-		if strings.Count(string(res.Config), "cimg/base:2026.10") != 1 {
-			t.Fatalf("the map image appears outside the map job:\n%s", res.Config)
-		}
-	})
 }
 
 func TestInertJobsAreRemovedWithTheirChain(t *testing.T) {

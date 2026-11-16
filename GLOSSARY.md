@@ -15,13 +15,10 @@ The words this project uses, and what each one means. There are no implementatio
 : A pipeline that runs every job. The default branch, scheduled pipelines, changes to the pipeline definition, and any case the planner is unsure about all get a full run.
 
 **Impact map**
-: For each job, the files it read and the directories it listed during the last full run on the default branch. It is rebuilt after every green full run, and branches use it to see which jobs a change can affect.
-
-**Trace**
-: The record of the files one job read, taken at the end of the job. The impact map is built from traces.
+: For each job, the repo files and directories the planner treats as its inputs. `circleci-smarter analyze` builds it from the continuation config and the repository. Branches use the map to see which jobs a change can affect.
 
 **Inputs (of a job)**
-: The files and directories in a job's trace. A job whose inputs a change does not touch is a candidate to skip.
+: The files and directories listed for a job in the impact map. A job whose inputs a change does not touch is a candidate to skip.
 
 **Shadow mode**
 : The planner makes and reports a plan, but every job still runs. Shadow mode measures what select mode would save, and what it would miss.
