@@ -35,7 +35,6 @@ config=$work/config.yml
   printf '          workflow: ci\n'
   printf '          mode: shadow\n'
   printf '          force-full: true\n'
-  printf '          trace: "on"\n'
 } > "$config"
 
 circleci config validate "$config"
@@ -57,7 +56,6 @@ if [ -n "$bin" ] && [ -x "$bin" ]; then
     --workflow ci \
     --mode shadow \
     --force-full \
-    --trace on \
     --out /tmp/smarter/continue.yml \
     --report-dir /tmp/smarter/plan > /dev/null
   test -s /tmp/smarter/continue.yml
