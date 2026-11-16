@@ -60,6 +60,22 @@ parameters:
     type: string
     default: smarter-learned-v1
     description: Cache key prefix for the learned layer JSON.
+  mandatory:
+    type: string
+    default: ""
+    description: Jobs that always run when continuing after learn (plan --mandatory).
+  policy-bundle:
+    type: string
+    default: ""
+    description: Guardrail bundle for the continuation plan (plan --policy-bundle).
+  full-run-paths:
+    type: string
+    default: .circleci/**
+    description: Globs that force a full continuation plan (plan --full-run-paths).
+  default-branch:
+    type: string
+    default: main
+    description: Default branch for the continuation plan.
   resource_class:
     type: enum
     enum: [small, medium, medium+, large]
@@ -130,6 +146,34 @@ steps:
       destination: smarter-learn
   - run:
       name: "smarter: learn summary"
+      when: always
+      command: |
+        if [ ! -f /tmp/smarter/learn/learn.md ]; then
+          echo "smarter: no learn report (learn step failed or was skipped)"
+          exit 0
+        fi
+        awk 'BEGIN{p=0} /^## Summary$/{p=1;print;next} p&&/^## /{exit} p' /tmp/smarter/learn/learn.md
+  - run:
+      name: "smarter: continue (scheduled full run)"
+      when: always
+      environment:
+        SMARTER_ARG_CONFIG: "<< parameters.config >>"
+        SMARTER_ARG_WORKFLOW: "<< parameters.workflow >>"
+        SMARTER_ARG_DEFAULT_BRANCH: "<< parameters.default-branch >>"
+        SMARTER_ARG_MANDATORY: "<< parameters.mandatory >>"
+        SMARTER_ARG_POLICY_BUNDLE: "<< parameters.policy-bundle >>"
+        SMARTER_ARG_FULL_RUN_PATHS: "<< parameters.full-run-paths >>"
       command: |
         set -eu
-        awk 'BEGIN{p=0} /^## Summary$/{p=1;print;next} p&&/^## /{exit} p' /tmp/smarter/learn/learn.md
+        set -- plan \
+          --config "$SMARTER_ARG_CONFIG" \
+          --default-branch "$SMARTER_ARG_DEFAULT_BRANCH" \
+          --mode select \
+          --trigger-type schedule \
+          --full-run-paths "$SMARTER_ARG_FULL_RUN_PATHS" \
+          --out /tmp/smarter/continue.yml
+        [ -z "$SMARTER_ARG_WORKFLOW" ] || set -- "$@" --workflow "$SMARTER_ARG_WORKFLOW"
+        [ -z "$SMARTER_ARG_MANDATORY" ] || set -- "$@" --mandatory "$SMARTER_ARG_MANDATORY"
+        [ -z "$SMARTER_ARG_POLICY_BUNDLE" ] || set -- "$@" --policy-bundle "$SMARTER_ARG_POLICY_BUNDLE"
+        /tmp/smarter/bin/circleci-smarter "$@"
+        /tmp/smarter/bin/circleci-smarter continue --config /tmp/smarter/continue.yml

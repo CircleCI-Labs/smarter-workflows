@@ -27,7 +27,7 @@ A planner for CircleCI setup workflows. For each change it runs only the jobs th
 
 ## How it decides
 
-Each step in a job must resolve to paths the planner understands at `HEAD`. The learned layer adds AI inputs and history corrections but never removes static proof. Optional plan-time AI review (`--ai-review`) may **add** jobs only. [How it works](docs/how-it-works.md) diagrams the loop; [Learn](docs/learn.md) and [Analyze](docs/analyze.md) cover the layers.
+Each step must resolve to paths the planner understands at `HEAD`. A mapped directory covers everything under it; `.` covers the whole repository (so `gofmt -l .` makes `go-lint` run on every change). Opaque or unknown steps make the job run. The learned layer adds AI inputs and history corrections but never removes static proof. Plan-time `--ai-review` may **add** jobs only. See [How it works](docs/how-it-works.md), [Learn](docs/learn.md), and [Analyze](docs/analyze.md).
 
 ## Who it is for
 

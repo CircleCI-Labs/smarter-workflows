@@ -66,6 +66,8 @@ Until the orb is published, copy the inline jobs from this repository’s [`.cir
 1. Move jobs, workflows, orbs and executors to `.circleci/continue.yml`. That file is the catalog; nothing Smarter-specific is required inside it.
 2. Turn on setup workflows under **Project Settings → Advanced**.
 
+Analyze treats mapped inputs as directory prefixes (`.` is the whole repo). Jobs with opaque steps always run until `learn` improves the map.
+
 ## Artifacts and branch protection
 
 - Every `plan` run stores `smarter-plan/plan.md`, `plan.json`, and `analyze-report.md`.

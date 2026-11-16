@@ -10,7 +10,7 @@ Where the planner cannot decide, the job runs.
 
 ## Static analysis and dynamic inputs
 
-Paths built from environment variables, runtime downloads, or opaque shell are invisible unless the learned layer or history adds them. **Make**, unknown binaries, and orb commands outside the known table mark a job **unknown** (it runs).
+Mapped paths are directory prefixes: `internal/foo` matches any file under it, and `.` means the repository root (every change). Paths built from environment variables, runtime downloads, or opaque shell are invisible unless the learned layer or history adds them. **Make**, unknown binaries, and orb commands outside the known table mark a job **unknown** (it always runs).
 
 ## Opaque or unfamiliar jobs
 

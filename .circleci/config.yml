@@ -141,11 +141,16 @@ jobs:
           destination: smarter-learn
       - run:
           name: "smarter: learn summary"
+          when: always
           command: |
-            set -eu
+            if [ ! -f /tmp/smarter/learn/learn.md ]; then
+              echo "smarter: no learn report (learn step failed or was skipped)"
+              exit 0
+            fi
             awk 'BEGIN{p=0} /^## Summary$/{p=1;print;next} p&&/^## /{exit} p' /tmp/smarter/learn/learn.md
       - run:
           name: "smarter: continue (scheduled full run)"
+          when: always
           command: |
             set -eu
             /tmp/smarter/bin/circleci-smarter plan \

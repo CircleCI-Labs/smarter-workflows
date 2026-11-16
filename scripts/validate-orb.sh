@@ -63,6 +63,8 @@ config="$work/config.yml"
   printf '          limit: 10\n'
   printf '          project-slug: gh/CircleCI-Labs/smarter-workflows\n'
   printf '          ai: "off"\n'
+  printf '          mandatory: security-scan\n'
+  printf '          policy-bundle: policies\n'
 } > "$config"
 
 circleci config validate "$config"

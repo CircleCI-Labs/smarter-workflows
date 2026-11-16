@@ -96,9 +96,7 @@ parameters:
   min-confidence:
     type: string
     default: "0.8"
-    description: >
-      Minimum AI confidence for learned-layer inputs (reserved; plan uses 0.8
-      until the CLI wires this flag).
+    description: Minimum AI confidence for learned-layer inputs (plan --min-confidence).
   resource_class:
     type: enum
     enum: [small, medium, medium+, large]

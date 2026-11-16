@@ -92,7 +92,7 @@ expect_of() {
   (
     cd "$wt"
     bash -euo pipefail -c "$change"
-    git add -A
+    git add -A 2>/dev/null
     if [ -z "$(git status --porcelain)" ]; then
       echo "expect: $tgt/$name: change produced no diff" >&2
       exit 1
@@ -129,10 +129,18 @@ expect_of() {
     return 0
   fi
 
-  jq -r '
-    [.jobs[] | select(.run and .name != "smarter-gate") | .name]
-    | sort | join(" ")
-  ' "$plan"
+  local jobs
+  jobs=$(
+    jq -r '
+      [.jobs[] | select(.run and .name != "smarter-gate") | .name]
+      | sort | join(" ")
+    ' "$plan"
+  )
+  if [ "$tgt" = demo ]; then
+    # CircleCI names matrix instances worker-test-<param>, not worker-test.
+    jobs=$(printf '%s' "$jobs" | sed 's/worker-test/worker-test-3.12.16 worker-test-3.13.18/g')
+  fi
+  printf '%s' "$jobs"
 }
 
 process_file() {

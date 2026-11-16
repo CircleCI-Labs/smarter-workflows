@@ -33,6 +33,8 @@ usage:
             workflow: ci
             limit: 200
             project-slug: << pipeline.project.slug >>
+            mandatory: security-scan
+            policy-bundle: policies
             context:
               - smarter-ci-tokens
             resource_class: medium
