@@ -1,0 +1,10 @@
+{
+  "items": [
+    {
+      "name": "lint",
+      "type": "build",
+      "status": "success",
+      "duration": 30000
+    }
+  ]
+}

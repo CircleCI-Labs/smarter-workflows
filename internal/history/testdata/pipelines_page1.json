@@ -1,0 +1,16 @@
+{
+  "next_page_token": "page-2-token",
+  "items": [
+    {
+      "id": "pipe-1",
+      "vcs": {
+        "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "branch": "main"
+      },
+      "trigger_parameters": {
+        "git.branch": "main",
+        "git.checkout_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    }
+  ]
+}
