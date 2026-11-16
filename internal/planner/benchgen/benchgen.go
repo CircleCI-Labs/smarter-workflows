@@ -161,7 +161,7 @@ func ImpactMap(jobs []string, filesPerJob int) *impactmap.Map {
 		Version:   impactmap.Version,
 		Revision:  "bench-base",
 		CreatedAt: "2026-11-15T12:00:00Z",
-		Method:    impactmap.MethodATime,
+		Method:    impactmap.DefaultMapMethod,
 		Jobs:      make(map[string]*impactmap.Job, len(jobs)),
 	}
 	for _, name := range jobs {
