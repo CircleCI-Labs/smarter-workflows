@@ -25,7 +25,7 @@ type planAnalyzeResult struct {
 	Elapsed    time.Duration
 }
 
-func planRunAnalyze(ctx context.Context, repo, cfgPath, workflow, head, learned, reportPath string, stderr io.Writer) planAnalyzeResult {
+func planRunAnalyze(ctx context.Context, repo, cfgPath, workflow, head, learned string, minConf float64, reportPath string, stderr io.Writer) planAnalyzeResult {
 	var warns []string
 	learnedPath := ""
 	if learned != "" {
@@ -44,13 +44,14 @@ func planRunAnalyze(ctx context.Context, repo, cfgPath, workflow, head, learned,
 		workflows = []string{workflow}
 	}
 	m, rep, _, err := analyze.Run(ctx, analyze.RunOptions{
-		RepoRoot:    repo,
-		ConfigPath:  cfgPath,
-		Workflows:   workflows,
-		Revision:    head,
-		LearnedPath: learnedPath,
-		AIMode:      analyze.AIModeOff,
-		ReportMD:    reportPath,
+		RepoRoot:      repo,
+		ConfigPath:    cfgPath,
+		Workflows:     workflows,
+		Revision:      head,
+		LearnedPath:   learnedPath,
+		MinConfidence: minConf,
+		AIMode:        analyze.AIModeOff,
+		ReportMD:      reportPath,
 	})
 	elapsed := time.Since(start)
 	if err != nil {

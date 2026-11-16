@@ -134,6 +134,7 @@ func Run(ctx context.Context, opts RunOptions) (*impactmap.Map, *Report, *Learne
 			BatchSize:      opts.AIBatchSize,
 			Timeout:        opts.AITimeout,
 			RepoRoot:       opts.RepoRoot,
+			BaseURL:        os.Getenv("ANTHROPIC_BASE_URL"),
 			DryRunDir:      dryRunDir(opts),
 			JobNames:       jobNameSet(jobInputs),
 			BuildBatch:     aiBatchBuilder(cfg, opts, aiWf),
@@ -146,7 +147,7 @@ func Run(ctx context.Context, opts RunOptions) (*impactmap.Map, *Report, *Learne
 			if opts.AIMode == AIModeOn {
 				return nil, nil, nil, err
 			}
-			report.IncompleteJobs++ // placeholder; fixed below
+			report.Warnings = append(report.Warnings, "AI classifier: "+err.Error())
 			_ = err
 		}
 	} else if opts.AIMode == AIModeDryRun {

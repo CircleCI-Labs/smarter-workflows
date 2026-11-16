@@ -13,18 +13,18 @@ import (
 
 // Report is the combined learn output.
 type Report struct {
-	Version        int       `json:"version"`
-	ProjectSlug    string    `json:"project_slug,omitempty"`
-	Workflows      []string  `json:"workflows"`
-	Commits        int       `json:"commits"`
-	Warnings       []string  `json:"warnings,omitempty"`
-	Summary        Summary   `json:"summary"`
-	MissesBefore   []JobMiss `json:"misses_before"`
-	MissesAfter    []JobMiss `json:"misses_after"`
-	Corrections    int       `json:"corrections_added"`
-	FlakyJobs      []string  `json:"flaky_jobs"`
-	IncompleteJobs []string  `json:"incomplete_jobs"`
-	AI             AISection `json:"ai"`
+	Version        int        `json:"version"`
+	ProjectSlug    string     `json:"project_slug,omitempty"`
+	Workflows      []string   `json:"workflows"`
+	Commits        int        `json:"commits"`
+	Warnings       []string   `json:"warnings,omitempty"`
+	Summary        Summary    `json:"summary"`
+	MissesBefore   []JobMiss  `json:"misses_before"`
+	MissesAfter    []JobMiss  `json:"misses_after"`
+	Corrections    int        `json:"corrections_added"`
+	FlakyJobs      []FlakyJob `json:"flaky_jobs"`
+	IncompleteJobs []string   `json:"incomplete_jobs"`
+	AI             AISection  `json:"ai"`
 }
 
 // Summary holds top-level savings metrics (after corrections).
@@ -33,6 +33,12 @@ type Summary struct {
 	SavedDurationS  float64 `json:"saved_duration_s"`
 	SavingsPercent  float64 `json:"savings_percent"`
 	CommitsReplayed int     `json:"commits_replayed"`
+}
+
+// FlakyJob counts flaky reruns for one job name in history.
+type FlakyJob struct {
+	Name  string `json:"name"`
+	Count int    `json:"count"`
 }
 
 // JobMiss counts skipped failures for one job.
@@ -59,6 +65,7 @@ type BuildInput struct {
 	AnalyzeBefore *analyze.Report
 	Corrections   int
 	Warnings      []string
+	History       []backtest.CommitHistory
 }
 
 // BuildReport creates the learn report from run results.
@@ -97,7 +104,25 @@ func BuildReport(in BuildInput) *Report {
 		}
 		sort.Strings(r.IncompleteJobs)
 	}
+	r.FlakyJobs = flakyJobs(in.History)
 	return r
+}
+
+func flakyJobs(history []backtest.CommitHistory) []FlakyJob {
+	counts := map[string]int{}
+	for _, h := range history {
+		for _, j := range h.Jobs {
+			if j.Flaky {
+				counts[j.Name]++
+			}
+		}
+	}
+	out := make([]FlakyJob, 0, len(counts))
+	for name, n := range counts {
+		out = append(out, FlakyJob{Name: name, Count: n})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
 }
 
 func misses(bt *backtest.Report) []JobMiss {
@@ -170,7 +195,7 @@ func (r *Report) Markdown() string {
 	if len(r.FlakyJobs) > 0 {
 		b.WriteString("\n## Flaky jobs\n\n")
 		for _, j := range r.FlakyJobs {
-			fmt.Fprintf(&b, "- %s\n", j)
+			fmt.Fprintf(&b, "- %s (%d)\n", j.Name, j.Count)
 		}
 	}
 

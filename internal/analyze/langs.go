@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/CircleCI-Labs/smarter-workflows/internal/impactmap"
 )
 
 var (
@@ -16,6 +18,11 @@ var (
 )
 
 func (e *Engine) scanLangCommands(repoRoot, wd, script string, into *InputSet) {
+	for _, m := range gofmtListRe.FindAllStringSubmatch(script, -1) {
+		if len(m) > 1 {
+			into.addVerifiedPathOrDir(repoRoot, wd, m[1])
+		}
+	}
 	for _, m := range goCmdRe.FindAllStringSubmatch(script, -1) {
 		if len(m) < 2 {
 			continue
@@ -76,7 +83,6 @@ func (e *Engine) addGoTarget(repoRoot, wd, target string, into *InputSet) {
 		} else if wd != "" && wd != "." {
 			base = resolveWD(repoRoot, wd, base)
 		}
-		into.addVerifiedDir(repoRoot, ".", base, InputNote{Signal: SignalGoImports, Detail: target})
 		listArg := "./..."
 		if base != "" && base != "." {
 			listArg = base + "/..."
@@ -98,7 +104,6 @@ func (e *Engine) addGoTarget(repoRoot, wd, target string, into *InputSet) {
 				base = "."
 			}
 		}
-		into.addVerifiedDir(repoRoot, ".", base, InputNote{Signal: SignalGoImports, Detail: target})
 		listArg := "./..."
 		if base != "." {
 			listArg = base + "/..."
@@ -106,7 +111,9 @@ func (e *Engine) addGoTarget(repoRoot, wd, target string, into *InputSet) {
 		e.addGoDeps(repoRoot, listArg, into)
 		return
 	}
-	into.addVerifiedDir(repoRoot, ".", pkgDir, InputNote{Signal: SignalGoImports, Detail: target})
+	if impactmap.NormalizeDir(pkgDir) != "." {
+		into.addVerifiedDir(repoRoot, ".", pkgDir, InputNote{Signal: SignalGoImports, Detail: target})
+	}
 	e.addGoDeps(repoRoot, pkgDir, into)
 }
 
@@ -126,11 +133,16 @@ func (e *Engine) addGoDeps(repoRoot, pkgDir string, into *InputSet) {
 		e.goCache[key] = deps
 	}
 	n := len(deps)
+	var pkgDirs []string
 	for _, d := range deps {
+		if impactmap.NormalizeDir(d) == "." {
+			continue
+		}
 		into.addVerifiedDir(repoRoot, ".", d, InputNote{Signal: SignalGoImports, Detail: "import"})
+		pkgDirs = append(pkgDirs, d)
 	}
-	if len(deps) > 0 {
-		e.scanGoPathLiteralsInDirs(repoRoot, deps, into)
+	if len(pkgDirs) > 0 {
+		e.scanGoPathLiteralsInDirs(repoRoot, pkgDirs, into)
 	}
 	if n > 0 {
 		into.noteGoImports(n)

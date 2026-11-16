@@ -18,6 +18,7 @@ Impact map v1 stores every repo path verbatim in each job's `files` and `dirs` a
 
 ## Consequences
 
+- From v0.3, planner input dirs are recursive: a dir input covers the whole subtree (repository root `.` covers every path).
 - Monorepo-sized maps fit in cache and decode in sub-second time on developer hardware (see `docs/benchmarks-perf.md`).
 - Path tables must stay sorted and deduplicated; corrupt index blobs fail closed at parse time.
 - Cache artifacts change extension; operators with only v1 files still work until the next default-branch map build.

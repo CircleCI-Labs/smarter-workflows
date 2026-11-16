@@ -2,11 +2,11 @@
 
 | Job | Run | Reason |
 |---|---|---|
-| lint | run | lists services/web/src, where services/web/src/footer.ts was added |
+| lint | run | reads services/web/src/footer.ts |
 | security-scan | run | mandatory job |
 | api-test | skip | inputs unchanged |
-| web-test | run | lists services/web/src, where services/web/src/footer.ts was added |
-| build | run | lists services/web/src, where services/web/src/footer.ts was added |
+| web-test | run | reads services/web/src/footer.ts |
+| build | run | reads services/web/src/footer.ts |
 | e2e | run | consumes the workspace of build |
 | docs | skip | inputs unchanged |
 | hold-deploy | skip | does not run: its filters leave out branch feature |

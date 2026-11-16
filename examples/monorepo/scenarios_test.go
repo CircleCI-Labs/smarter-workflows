@@ -294,8 +294,14 @@ func TestScenarios(t *testing.T) {
 			if rep.Guardrails.Status != "SKIPPED" && rep.Guardrails.Status != "PASS" {
 				t.Errorf("guardrails = %+v", rep.Guardrails)
 			}
-			if sc.checker != nil && !slices.Equal(rep.Guardrails.Repairs, []string{"require-job=security-scan"}) {
-				t.Errorf("repairs = %v", rep.Guardrails.Repairs)
+			if sc.checker != nil {
+				if sc.name == "mandatory-repaired" {
+					if !slices.Contains(running(rep), "security-scan") {
+						t.Errorf("running = %v, want security-scan from the map or a repair", running(rep))
+					}
+				} else if !slices.Equal(rep.Guardrails.Repairs, []string{"require-job=security-scan"}) {
+					t.Errorf("repairs = %v", rep.Guardrails.Repairs)
+				}
 			}
 			// The planner adds no pipeline parameters and no expressions.
 			if strings.Contains(string(out.config), "<<") && !strings.Contains(exampleConfig(), "<<") {

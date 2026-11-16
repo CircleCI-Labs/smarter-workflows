@@ -58,7 +58,7 @@ func (s *InputSet) addFile(p string) {
 }
 
 func (s *InputSet) addDir(p string) {
-	if c := cleanDir(p); c != "" {
+	if c := cleanDir(p); c != "" && c != "." {
 		s.dirs[c] = struct{}{}
 		s.got = true
 	}
@@ -140,11 +140,15 @@ func cleanFile(p string) string {
 }
 
 func cleanDir(p string) string {
+	p = impactmap.NormalizeDir(filepath.ToSlash(path.Clean(strings.TrimSpace(p))))
+	if p == "." {
+		return "."
+	}
 	c, err := impactmap.CleanPath(p, true)
 	if err != nil {
 		return ""
 	}
-	return c
+	return impactmap.NormalizeDir(c)
 }
 
 func resolveWD(repoRoot, wd, p string) string {

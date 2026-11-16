@@ -40,7 +40,6 @@ func TestInternalErrorsGiveAFullPlan(t *testing.T) {
 		repo *fakeRepo
 		want string
 	}{
-		{"the directory check fails", &fakeRepo{changes: changes("A services/web/src/new.ts"), dirs: dirs, dirsErr: errBoom}, "internal error: checking directories at the base: boom"},
 		{"the repo panics", &fakeRepo{panicMsg: "kaboom", dirs: dirs}, "internal error: planner panic: kaboom"},
 	}
 	for _, tc := range tests {

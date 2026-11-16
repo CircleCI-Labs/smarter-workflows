@@ -8,6 +8,10 @@ import (
 )
 
 func (into *InputSet) addVerifiedPathOrDir(repoRoot, wd, lit string) {
+	lit = normalizePathToken(lit)
+	if strings.Contains(lit, "...") {
+		return
+	}
 	rel := resolveWD(repoRoot, wd, lit)
 	if st, err := statRepo(repoRoot, rel); err != nil {
 		return

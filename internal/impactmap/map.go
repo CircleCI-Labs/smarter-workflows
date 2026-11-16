@@ -90,6 +90,31 @@ type Job struct {
 	dirs  map[string]struct{}
 }
 
+// NormalizeDir canonicalises a repo-relative directory ("." is the repository root).
+func NormalizeDir(d string) string {
+	d = path.Clean(filepath.ToSlash(strings.TrimSpace(d)))
+	if d == "." || d == "" {
+		return "."
+	}
+	return strings.TrimPrefix(d, "./")
+}
+
+// listsRepoRoot reports whether the job listed the whole repository.
+func (j *Job) listsRepoRoot() bool {
+	j.ensureDirSet()
+	for d := range j.dirs {
+		if NormalizeDir(d) == "." {
+			return true
+		}
+	}
+	for _, d := range j.Dirs {
+		if NormalizeDir(d) == "." {
+			return true
+		}
+	}
+	return false
+}
+
 // ReadsFile reports whether the job read the repo-relative file p.
 func (j *Job) ReadsFile(p string) bool {
 	j.ensureFileSet()
@@ -97,12 +122,53 @@ func (j *Job) ReadsFile(p string) bool {
 	return ok
 }
 
+// CoversPath reports whether the job's map inputs include p: exact files, dirs
+// that recursively contain the path, or repository root (.).
+func (j *Job) CoversPath(p string) bool {
+	if j.ReadsFile(p) {
+		return true
+	}
+	if j.listsRepoRoot() {
+		return true
+	}
+	p = path.Clean(filepath.ToSlash(p))
+	j.ensureDirSet()
+	for d := range j.dirs {
+		if dirContains(d, p) {
+			return true
+		}
+	}
+	for _, d := range j.Dirs {
+		if dirContains(d, p) {
+			return true
+		}
+	}
+	return false
+}
+
+func dirContains(dir, p string) bool {
+	dir = NormalizeDir(dir)
+	if dir == "." {
+		return true
+	}
+	return p == dir || strings.HasPrefix(p, dir+"/")
+}
+
 // ListsDir reports whether the job listed the repo-relative directory d ("."
 // is the repository root).
 func (j *Job) ListsDir(d string) bool {
 	j.ensureDirSet()
+	d = NormalizeDir(d)
 	_, ok := j.dirs[d]
-	return ok
+	if ok {
+		return true
+	}
+	for _, stored := range j.Dirs {
+		if NormalizeDir(stored) == d {
+			return true
+		}
+	}
+	return false
 }
 
 // FileCount is how many files the job read.

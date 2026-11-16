@@ -20,6 +20,7 @@ type Report struct {
 	OutputTokens     int64        `json:"output_tokens"`
 	EstimatedCostUSD float64      `json:"estimated_cost_usd"`
 	PriceNote        string       `json:"price_note"`
+	Warnings         []string     `json:"warnings,omitempty"`
 	Truth            *TruthReport `json:"truth,omitempty"`
 }
 

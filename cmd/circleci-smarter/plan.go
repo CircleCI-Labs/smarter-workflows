@@ -47,6 +47,7 @@ func runPlan(args []string, stdout, stderr io.Writer) int {
 	mapPath := fs.String("map", "", "impact map file (default: run in-process analyze)")
 	repoDir := fs.String("repo", ".", "repository root for analyze")
 	learned := fs.String("learned", "", "learned layer JSON to merge into analyze")
+	minConf := fs.Float64("min-confidence", 0.8, "minimum AI confidence when merging learned inputs")
 	analyzeReport := fs.String("analyze-report", "", "write analyze Markdown report here")
 	aiReview := fs.String("ai-review", "off", "plan-time AI review: off, shadow, or on")
 	aiReviewModel := fs.String("ai-review-model", "claude-haiku-5-5", "model for plan-time AI review")
@@ -167,8 +168,9 @@ func runPlan(args []string, stdout, stderr io.Writer) int {
 		if headRev == "" {
 			headRev = *head
 		}
-		ar := planRunAnalyze(ctx, *repoDir, absConfig(*repoDir, *cfgPath), wfName, headRev, *learned, *analyzeReport, stderr)
+		ar := planRunAnalyze(ctx, *repoDir, absConfig(*repoDir, *cfgPath), wfName, headRev, *learned, *minConf, *analyzeReport, stderr)
 		in.Map, in.MapProblem, in.MapJobSummaries = ar.Map, ar.MapProblem, ar.Summaries
+		in.MapFromAnalyze = ar.Map != nil
 		analyzeMs = ar.Elapsed.Seconds() * 1000
 		for _, w := range ar.Warnings {
 			fmt.Fprintf(stderr, "circleci-smarter plan: warning: %s\n", w)

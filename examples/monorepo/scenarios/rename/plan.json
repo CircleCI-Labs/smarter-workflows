@@ -26,15 +26,16 @@
       "run": true,
       "reasons": [
         "reads services/api/handler.go",
-        "lists services/api, where services/api/handler.go was deleted",
-        "lists services/api, where services/api/routes.go was added"
+        "reads services/api/routes.go"
       ]
     },
     {
       "name": "security-scan",
       "run": true,
       "reasons": [
-        "mandatory job"
+        "mandatory job",
+        "reads services/api/handler.go",
+        "reads services/api/routes.go"
       ]
     },
     {
@@ -42,8 +43,7 @@
       "run": true,
       "reasons": [
         "reads services/api/handler.go",
-        "lists services/api, where services/api/handler.go was deleted",
-        "lists services/api, where services/api/routes.go was added"
+        "reads services/api/routes.go"
       ]
     },
     {
@@ -58,8 +58,7 @@
       "run": true,
       "reasons": [
         "reads services/api/handler.go",
-        "lists services/api, where services/api/handler.go was deleted",
-        "lists services/api, where services/api/routes.go was added"
+        "reads services/api/routes.go"
       ]
     },
     {

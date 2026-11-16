@@ -168,6 +168,7 @@ func Run(ctx context.Context, opts Options, fetch HistoryFetcher, log io.Writer)
 		AnalyzeBefore: beforeAnalyze,
 		Corrections:   countNewCorrections(beforeAnalyze, afterAnalyze),
 		Warnings:      warnings,
+		History:       history,
 	})
 	if opts.ReportMD != "" {
 		if err := os.WriteFile(opts.ReportMD, []byte(rep.Markdown()), 0o644); err != nil {

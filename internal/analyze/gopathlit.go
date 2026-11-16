@@ -72,25 +72,16 @@ func (e *Engine) scanGoFilePathLiterals(repoRoot, modRoot, absPath string, into 
 		}
 	}
 	ast.Inspect(f, func(n ast.Node) bool {
-		switch x := n.(type) {
-		case *ast.CallExpr:
-			if join, ok := joinStrings(x, consts); ok {
-				e.tryAddResolvedGoPath(repoRoot, fileDir, modRel, join, into)
-			}
-			if lit, ok := readFileArg(x, consts); ok {
-				e.tryAddResolvedGoPath(repoRoot, fileDir, modRel, lit, into)
-			}
-			if len(x.Args) > 0 {
-				if s, ok := stringExpr(x.Args[0], consts); ok && looksLikePath(s) {
-					e.tryAddResolvedGoPath(repoRoot, fileDir, modRel, s, into)
-				}
-			}
-		case *ast.BasicLit:
-			if x.Kind == token.STRING {
-				if s, err := strconvUnquote(x.Value); err == nil && looksLikePath(s) {
-					e.tryAddResolvedGoPath(repoRoot, fileDir, modRel, s, into)
-				}
-			}
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		if join, ok := joinStrings(call, consts); ok {
+			e.tryAddResolvedGoPath(repoRoot, fileDir, modRel, join, into)
+			return true
+		}
+		if lit, ok := pathIOCallArg(call, consts); ok {
+			e.tryAddResolvedGoPath(repoRoot, fileDir, modRel, lit, into)
 		}
 		return true
 	})
@@ -116,6 +107,18 @@ func stringExpr(e ast.Expr, consts map[string]string) (string, bool) {
 	}
 }
 
+// literalLooksLikePath reports whether a bare string literal (not already inside a
+// path IO call) should be treated as a filesystem path.
+func literalLooksLikePath(p string) bool {
+	if strings.Contains(p, "/") {
+		return true
+	}
+	if i := strings.LastIndex(p, "."); i > 0 {
+		return true
+	}
+	return false
+}
+
 func joinStrings(call *ast.CallExpr, consts map[string]string) (string, bool) {
 	sel, ok := call.Fun.(*ast.SelectorExpr)
 	if !ok {
@@ -136,24 +139,42 @@ func joinStrings(call *ast.CallExpr, consts map[string]string) (string, bool) {
 	return filepath.ToSlash(filepath.Join(parts...)), true
 }
 
-func readFileArg(call *ast.CallExpr, consts map[string]string) (string, bool) {
+var goPathIOFns = map[string][]string{
+	"os":     {"ReadFile", "Open", "OpenFile", "ReadDir", "Stat", "Lstat"},
+	"ioutil": {"ReadFile"},
+	"fs":     {"ReadFile", "ReadDir"},
+}
+
+func pathIOCallArg(call *ast.CallExpr, consts map[string]string) (string, bool) {
 	sel, ok := call.Fun.(*ast.SelectorExpr)
-	if !ok || sel.Sel.Name != "ReadFile" {
+	if !ok {
 		return "", false
 	}
 	pkg, ok := sel.X.(*ast.Ident)
-	if !ok || pkg.Name != "os" {
+	if !ok {
 		return "", false
 	}
-	if len(call.Args) != 1 {
+	names, ok := goPathIOFns[pkg.Name]
+	if !ok {
 		return "", false
 	}
-	if sub, ok := call.Args[0].(*ast.CallExpr); ok {
+	found := false
+	for _, n := range names {
+		if sel.Sel.Name == n {
+			found = true
+			break
+		}
+	}
+	if !found || len(call.Args) == 0 {
+		return "", false
+	}
+	arg0 := call.Args[0]
+	if sub, ok := arg0.(*ast.CallExpr); ok {
 		if join, ok := joinStrings(sub, consts); ok {
 			return join, true
 		}
 	}
-	return stringExpr(call.Args[0], consts)
+	return stringExpr(arg0, consts)
 }
 
 func (e *Engine) tryAddResolvedGoPath(repoRoot, fileDir, modRel, p string, into *InputSet) {
@@ -170,12 +191,8 @@ func (e *Engine) tryAddResolvedGoPath(repoRoot, fileDir, modRel, p string, into 
 		if rel == "" || strings.HasPrefix(rel, "..") {
 			continue
 		}
-		if st, err := statRepo(repoRoot, rel); err == nil {
-			if st.IsDir() {
-				into.addVerifiedPath(repoRoot, rel, InputNote{Signal: SignalGoImports, Detail: "literal"})
-			} else {
-				into.addVerifiedPath(repoRoot, rel, InputNote{Signal: SignalGoImports, Detail: "literal"})
-			}
+		if _, err := statRepo(repoRoot, rel); err == nil {
+			into.addVerifiedPath(repoRoot, rel, InputNote{Signal: SignalGoImports, Detail: "literal"})
 			return
 		}
 	}

@@ -10,6 +10,7 @@ import (
 var (
 	pyOpenRe     = regexp.MustCompile(`open\s*\(\s*['"]([^'"]+)['"]`)
 	pyJoinRe     = regexp.MustCompile(`os\.path\.join\s*\(([^)]+)\)`)
+	pyPathlibRe  = regexp.MustCompile(`Path\s*\(\s*['"]([^'"]+)['"]`)
 	pyJoinPartRe = regexp.MustCompile(`['"]([^'"]+)['"]`)
 )
 
@@ -39,9 +40,20 @@ func (e *Engine) scanPytestReadFiles(repoRoot, wd string, into *InputSet) {
 }
 
 func (e *Engine) scanPythonSource(repoRoot, wd, src string, into *InputSet) {
+	addPath := func(p string) {
+		if strings.TrimSpace(p) == "" {
+			return
+		}
+		into.addVerifiedPathOrDir(repoRoot, wd, p)
+	}
 	for _, m := range pyOpenRe.FindAllStringSubmatch(src, -1) {
 		if len(m) > 1 {
-			into.addVerifiedPathOrDir(repoRoot, wd, m[1])
+			addPath(m[1])
+		}
+	}
+	for _, m := range pyPathlibRe.FindAllStringSubmatch(src, -1) {
+		if len(m) > 1 {
+			addPath(m[1])
 		}
 	}
 	for _, m := range pyJoinRe.FindAllStringSubmatch(src, -1) {
@@ -55,6 +67,6 @@ func (e *Engine) scanPythonSource(repoRoot, wd, src string, into *InputSet) {
 			continue
 		}
 		rel := filepath.ToSlash(filepath.Join(parts...))
-		into.addVerifiedPathOrDir(repoRoot, wd, rel)
+		addPath(rel)
 	}
 }

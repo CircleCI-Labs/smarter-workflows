@@ -21,14 +21,15 @@
       "name": "lint",
       "run": true,
       "reasons": [
-        "lists services/web/src, where services/web/src/footer.ts was added"
+        "reads services/web/src/footer.ts"
       ]
     },
     {
       "name": "security-scan",
       "run": true,
       "reasons": [
-        "mandatory job"
+        "mandatory job",
+        "reads services/web/src/footer.ts"
       ]
     },
     {
@@ -42,14 +43,14 @@
       "name": "web-test",
       "run": true,
       "reasons": [
-        "lists services/web/src, where services/web/src/footer.ts was added"
+        "reads services/web/src/footer.ts"
       ]
     },
     {
       "name": "build",
       "run": true,
       "reasons": [
-        "lists services/web/src, where services/web/src/footer.ts was added"
+        "reads services/web/src/footer.ts"
       ]
     },
     {

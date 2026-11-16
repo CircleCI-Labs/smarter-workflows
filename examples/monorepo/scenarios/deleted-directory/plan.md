@@ -2,7 +2,7 @@
 
 | Job | Run | Reason |
 |---|---|---|
-| lint | run | lists ., where directory scripts is gone |
+| lint | run | reads scripts/deploy.sh |
 | security-scan | run | mandatory job |
 | api-test | skip | inputs unchanged |
 | web-test | skip | inputs unchanged |

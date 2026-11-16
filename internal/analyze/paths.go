@@ -1,9 +1,12 @@
 package analyze
 
 import (
+	"path"
 	"path/filepath"
 	"strings"
 	"unicode"
+
+	"github.com/CircleCI-Labs/smarter-workflows/internal/impactmap"
 )
 
 // normalizePathToken strips quotes and trailing shell punctuation from a candidate path token.
@@ -28,9 +31,22 @@ func normalizePathToken(tok string) string {
 }
 
 func (s *InputSet) addVerifiedPath(repoRoot, rel string, note InputNote) bool {
-	rel = filepath.ToSlash(filepath.Clean(rel))
-	rel = strings.TrimPrefix(rel, "./")
-	if rel == "" || rel == "." || strings.Contains(rel, "..") || !filepath.IsLocal(rel) {
+	rel = impactmap.NormalizeDir(filepath.ToSlash(path.Clean(rel)))
+	if rel == "." {
+		if note.Signal != SignalRunCommand {
+			return false
+		}
+		if st, err := statRepo(repoRoot, "."); err == nil && st.IsDir() {
+			s.dirs["."] = struct{}{}
+			s.got = true
+			if note.Signal != "" {
+				s.note(".", true, note)
+			}
+			return true
+		}
+		return false
+	}
+	if rel == "" || strings.Contains(rel, "..") || !filepath.IsLocal(rel) {
 		return false
 	}
 	st, err := statRepo(repoRoot, rel)
@@ -46,7 +62,7 @@ func (s *InputSet) addVerifiedPath(repoRoot, rel string, note InputNote) bool {
 }
 
 func (s *InputSet) addDirVerified(rel string, note InputNote) {
-	if c := cleanDir(rel); c != "" {
+	if c := cleanDir(rel); c != "" && c != "." {
 		s.dirs[c] = struct{}{}
 		s.got = true
 		if note.Signal != "" {
@@ -80,14 +96,7 @@ func (s *InputSet) addVerifiedDir(repoRoot, wd, token string, note InputNote) {
 		return
 	}
 	rel := resolveWD(repoRoot, wd, tok)
-	rel = filepath.ToSlash(filepath.Clean(rel))
-	if st, err := statRepo(repoRoot, rel); err == nil && st.IsDir() {
-		s.addDirVerified(rel, note)
-		return
-	}
-	if st, err := statRepo(repoRoot, rel); err == nil && !st.IsDir() {
-		return
-	}
+	s.addVerifiedPath(repoRoot, rel, note)
 }
 
 func looksLikeFlag(tok string) bool {

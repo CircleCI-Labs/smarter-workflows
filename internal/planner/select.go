@@ -1,9 +1,7 @@
 package planner
 
 import (
-	"context"
 	"fmt"
-	"path"
 	"slices"
 	"sort"
 	"strings"
@@ -165,8 +163,6 @@ type changeSet struct {
 	all []diff.Change
 	// effective is all minus the paths that match --ignore-paths.
 	effective []diff.Change
-	// movedDirs holds the directories that exist at only one of base and head.
-	movedDirs map[string]bool
 }
 
 func newChangeSet(all []diff.Change, ignore []string) *changeSet {
@@ -183,53 +179,6 @@ func newChangeSet(all []diff.Change, ignore []string) *changeSet {
 		}
 	}
 	return cs
-}
-
-// chain lists the non-root directories on the way to p, outermost first:
-// "a/b/c.txt" gives "a" and "a/b".
-func chain(p string) []string {
-	var dirs []string
-	for d := path.Dir(p); d != "." && d != "/"; d = path.Dir(d) {
-		dirs = append([]string{d}, dirs...)
-	}
-	return dirs
-}
-
-// loadDirs finds, for the added and deleted paths, which directories on their
-// way exist at only one of base and head (step 3, with `git ls-tree`).
-func (cs *changeSet) loadDirs(ctx context.Context, repo Repo, base, head string) error {
-	cs.movedDirs = map[string]bool{}
-	seen := map[string]bool{}
-	var cands []string
-	for _, c := range cs.effective {
-		if c.Status == "M" {
-			continue
-		}
-		for _, d := range chain(c.Path) {
-			if !seen[d] {
-				seen[d] = true
-				cands = append(cands, d)
-			}
-		}
-	}
-	if len(cands) == 0 {
-		return nil
-	}
-	sort.Strings(cands)
-	atBase, err := repo.DirsExist(ctx, base, cands)
-	if err != nil {
-		return fmt.Errorf("checking directories at the base: %w", err)
-	}
-	atHead, err := repo.DirsExist(ctx, head, cands)
-	if err != nil {
-		return fmt.Errorf("checking directories at the head: %w", err)
-	}
-	for _, d := range cands {
-		if atBase[d] != atHead[d] {
-			cs.movedDirs[d] = true
-		}
-	}
-	return nil
 }
 
 // selection is the outcome of steps 3 and 4.
@@ -285,38 +234,13 @@ func (p *planner) directReasons(e *config.Entry, cs *changeSet, mandatory, force
 		return append(reasons, "the impact map entry is incomplete")
 	}
 
-	var reads, dirs []string
+	var touches []string
 	for _, c := range cs.effective {
-		if mj.ReadsFile(c.Path) {
-			reads = append(reads, c.Path)
-		}
-		if c.Status == "M" {
-			continue
-		}
-		verb := "added"
-		if c.Status == "D" {
-			verb = "deleted"
-		}
-		if parent := path.Dir(c.Path); mj.ListsDir(parent) {
-			dirs = append(dirs, fmt.Sprintf("lists %s, where %s was %s", parent, c.Path, verb))
-			continue
-		}
-		for _, d := range chain(c.Path) {
-			if !cs.movedDirs[d] {
-				continue
-			}
-			if above := path.Dir(d); mj.ListsDir(above) {
-				state := "new"
-				if c.Status == "D" {
-					state = "gone"
-				}
-				dirs = append(dirs, fmt.Sprintf("lists %s, where directory %s is %s", above, d, state))
-				break
-			}
+		if mj.CoversPath(c.Path) {
+			touches = append(touches, c.Path)
 		}
 	}
-	reasons = append(reasons, capped(reads, "reads ", "changed files read")...)
-	return append(reasons, capped(dirs, "", "directory changes")...)
+	return append(reasons, capped(touches, "reads ", "changed files read")...)
 }
 
 // capped turns the first few items into reasons, each with the given prefix,
