@@ -1,0 +1,40 @@
+description: >
+  Setup with plan on every pipeline and a weekly learn job on scheduled
+  pipelines. Attach a context with CIRCLECI_TOKEN and optionally
+  ANTHROPIC_API_KEY to learn; attach ANTHROPIC_API_KEY to plan when using
+  ai-review shadow or on.
+usage:
+  version: 2.1
+  setup: true
+  orbs:
+    smarter: cci-labs/smarter-workflows@1.0.0
+  workflows:
+    plan:
+      when:
+        not:
+          equal: [schedule, << pipeline.trigger.type >>]
+      jobs:
+        - smarter/plan:
+            config: .circleci/continue.yml
+            workflow: ci
+            mode: shadow
+            mandatory: security-scan
+            policy-bundle: policies
+            ai-review: shadow
+            resource_class: medium
+            executor: smarter/go
+            source: build
+    refresh-learned:
+      when:
+        equal: [schedule, << pipeline.trigger.type >>]
+      jobs:
+        - smarter/learn:
+            config: .circleci/continue.yml
+            workflow: ci
+            limit: 200
+            project-slug: << pipeline.project.slug >>
+            context:
+              - smarter-ci-tokens
+            resource_class: medium
+            executor: smarter/go
+            source: build

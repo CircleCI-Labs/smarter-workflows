@@ -51,6 +51,18 @@ config="$work/config.yml"
   printf '          executor: smarter/go\n'
   printf '          source: build\n'
   printf '          resource_class: medium\n'
+  printf '          learned-key-prefix: smarter-learned-v1\n'
+  printf '          ai-review: shadow\n'
+  printf '  validate-orb-learn:\n'
+  printf '    jobs:\n'
+  printf '      - smarter/learn:\n'
+  printf '          executor: smarter/go\n'
+  printf '          source: build\n'
+  printf '          resource_class: medium\n'
+  printf '          learned-key-prefix: smarter-learned-v1\n'
+  printf '          limit: 10\n'
+  printf '          project-slug: gh/CircleCI-Labs/smarter-workflows\n'
+  printf '          ai: "off"\n'
 } > "$config"
 
 circleci config validate "$config"

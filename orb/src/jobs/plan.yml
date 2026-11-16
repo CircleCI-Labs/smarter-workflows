@@ -1,7 +1,8 @@
 description: >
-  The setup job. It installs the planner, finds the diff base, optionally
-  restores an impact map, plans, stores the plan report and continues the
-  pipeline with the planned config.
+  The setup job. It installs the planner, finds the diff base, restores the
+  learned layer when present, plans with inline analysis, stores plan and analyze
+  reports, and continues the pipeline. Plan-time AI review (--ai-review on or
+  shadow) needs ANTHROPIC_API_KEY from a context you attach to this job.
 parameters:
   executor:
     type: executor
@@ -76,6 +77,28 @@ parameters:
       Path to a JSON file of pipeline parameter values for the continuation
       (plan --parameters). The planner uses them for workflow when/unless and
       writes parameters.json under the plan report directory for continue.
+  learned-key-prefix:
+    type: string
+    default: smarter-learned-v1
+    description: >
+      Cache key prefix for the learned layer; the newest entry matching the
+      prefix is restored before plan.
+  ai-review:
+    type: enum
+    enum:
+      - "off"
+      - shadow
+      - "on"
+    default: "off"
+    description: >
+      Optional plan-time AI review that may add jobs (never remove). Needs
+      ANTHROPIC_API_KEY when not off.
+  min-confidence:
+    type: string
+    default: "0.8"
+    description: >
+      Minimum AI confidence for learned-layer inputs (reserved; plan uses 0.8
+      until the CLI wires this flag).
   resource_class:
     type: enum
     enum: [small, medium, medium+, large]
@@ -90,6 +113,11 @@ steps:
   - install:
       version: << parameters.version >>
       source: << parameters.source >>
+  - restore_cache:
+      keys:
+        - << parameters.learned-key-prefix >>-
+      paths:
+        - /tmp/smarter
   - run:
       name: "smarter: base"
       environment:
@@ -114,14 +142,20 @@ steps:
         SMARTER_ARG_POLICY_BUNDLE: "<< parameters.policy-bundle >>"
         SMARTER_ARG_POLICY_META: "<< parameters.policy-meta >>"
         SMARTER_ARG_PARAMETERS: "<< parameters.parameters >>"
+        SMARTER_ARG_AI_REVIEW: "<< parameters.ai-review >>"
+        SMARTER_ARG_LEARNED: "/tmp/smarter/learned.json"
+        SMARTER_ARG_ANALYZE_REPORT: "/tmp/smarter/plan/analyze-report.md"
       command: |
         set -eu
+        mkdir -p /tmp/smarter/plan
         set -- plan \
           --config "$SMARTER_ARG_CONFIG" \
           --default-branch "$SMARTER_ARG_DEFAULT_BRANCH" \
           --mode "$SMARTER_ARG_MODE" \
           --full-run-paths "$SMARTER_ARG_FULL_RUN_PATHS" \
-          --gate-job "$SMARTER_ARG_GATE_JOB"
+          --gate-job "$SMARTER_ARG_GATE_JOB" \
+          --analyze-report "$SMARTER_ARG_ANALYZE_REPORT" \
+          --ai-review "$SMARTER_ARG_AI_REVIEW"
         [ -z "$SMARTER_ARG_WORKFLOW" ] || set -- "$@" --workflow "$SMARTER_ARG_WORKFLOW"
         [ -z "$SMARTER_ARG_TRIGGER_TYPE" ] || set -- "$@" --trigger-type "$SMARTER_ARG_TRIGGER_TYPE"
         [ -z "$SMARTER_ARG_MANDATORY" ] || set -- "$@" --mandatory "$SMARTER_ARG_MANDATORY"
@@ -131,6 +165,9 @@ steps:
         [ -z "$SMARTER_ARG_POLICY_META" ] || set -- "$@" --policy-meta "$SMARTER_ARG_POLICY_META"
         [ -z "$SMARTER_ARG_PARAMETERS" ] || set -- "$@" --parameters "$SMARTER_ARG_PARAMETERS"
         case $SMARTER_ARG_FORCE_FULL in *=true | *=1) set -- "$@" --force-full ;; esac
+        if [ -s "$SMARTER_ARG_LEARNED" ]; then
+          set -- "$@" --learned "$SMARTER_ARG_LEARNED"
+        fi
         /tmp/smarter/bin/circleci-smarter "$@"
   - store_artifacts:
       path: /tmp/smarter/plan
