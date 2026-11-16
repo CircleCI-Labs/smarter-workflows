@@ -137,7 +137,7 @@ jobs:
   release-dry-run:
     docker:
       - image: cimg/go:1.27.3
-    resource_class: small
+    resource_class: medium
     steps:
       - checkout
       - run:
