@@ -19,17 +19,12 @@
 #             mandatory: security-scan
 #             policy-bundle: policies
 #             full-run-paths: examples/demo/.circleci/**
-#             map-key-prefix: smarter-demo-impact-v1
-#             trace-orb-jobs: true
 #             source: build
 #             executor: smarter/go
 #             resource_class: medium
 #
-# The repository's own pipeline runs in the same project and shares its cache.
-# So this pipeline keeps its impact map under its own key prefix,
-# smarter-demo-impact-v1, in both the restore here and the map job the planner
-# adds. Restore keys match by prefix, so the prefix must not start with the
-# default one (smarter-impact-v1): that one's fallback would restore it.
+# This demo pipeline lives in the same project as the main repo pipeline and
+# shares its project cache for the planner binary only.
 version: 2.1
 
 setup: true
@@ -41,8 +36,7 @@ jobs:
     resource_class: medium
     steps:
       - checkout
-      # The planner binary. Its version is the commit, and so is its cache key:
-      # the generated smarter-impact-map job restores the same binary.
+      # The planner binary. Its version is the commit, and so is its cache key.
       - run:
           name: "smarter: pick the version"
           command: |
@@ -71,12 +65,6 @@ jobs:
             set -eu
             /tmp/smarter/bin/circleci-smarter version
             /tmp/smarter/bin/circleci-smarter base --default-branch main > .smarter-key
-      # The impact map of the diff base, or else the newest one of this
-      # pipeline's own prefix.
-      - restore_cache:
-          keys:
-            - smarter-demo-impact-v1-{{ checksum ".smarter-key" }}
-            - smarter-demo-impact-v1-
       - run:
           name: "smarter: plan"
           environment:
@@ -90,9 +78,7 @@ jobs:
               --mode select \
               --mandatory security-scan \
               --policy-bundle policies \
-              --full-run-paths 'examples/demo/.circleci/**' \
-              --map-key-prefix smarter-demo-impact-v1 \
-              --trace-orb-jobs
+              --full-run-paths 'examples/demo/.circleci/**'
             if [ -n "$SMARTER_ARG_TRIGGER_TYPE" ]; then
               set -- "$@" --trigger-type "$SMARTER_ARG_TRIGGER_TYPE"
             fi

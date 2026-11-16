@@ -15,8 +15,7 @@ jobs:
     resource_class: medium
     steps:
       - checkout
-      # The planner binary. Its version is the commit, and so is its cache key:
-      # the generated smarter-impact-map job restores the same binary.
+      # The planner binary. Its version is the commit, and so is its cache key.
       - run:
           name: "smarter: pick the version"
           command: |
@@ -45,11 +44,6 @@ jobs:
             set -eu
             /tmp/smarter/bin/circleci-smarter version
             /tmp/smarter/bin/circleci-smarter base --default-branch main > .smarter-key
-      # The impact map of the diff base, or else the newest one.
-      - restore_cache:
-          keys:
-            - smarter-impact-v1-{{ checksum ".smarter-key" }}
-            - smarter-impact-v1-
       - run:
           name: "smarter: plan"
           environment:

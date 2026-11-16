@@ -123,16 +123,10 @@ jobs:
           name: shellcheck
           command: |
             shellcheck --version
-            shellcheck -s sh internal/tracescript/*.sh orb/src/scripts/*.sh scripts/*.sh scripts/bench/*.sh
+            shellcheck -s sh orb/src/scripts/*.sh scripts/*.sh scripts/bench/*.sh
       - run:
           name: Bench fixture parse
           command: scripts/bench/test-parse.sh
-      # Atime must work here: the docker executor is the one the traces run on.
-      - run:
-          name: Tests of the trace scripts
-          environment:
-            REQUIRE_ATIME: "1"
-          command: scripts/test-trace.sh
       - run:
           name: Tests of the orb install script
           command: scripts/test-install.sh
@@ -249,9 +243,7 @@ jobs:
       - checkout
       - attach_workspace:
           at: /tmp/workspace
-      # Run the built binary on the example monorepo, as a full run with the
-      # trace steps, so the embedded scripts are in the output. Before the
-      # example exists, run `version`.
+      # Run the built binary on the example monorepo. Before the example exists, run `version`.
       - run:
           name: Plan the example
           command: |
@@ -259,11 +251,10 @@ jobs:
             bin=/tmp/workspace/circleci-smarter
             mkdir -p /tmp/e2e
             if [ -f examples/monorepo/continue.yml ]; then
-              "$bin" plan --config examples/monorepo/continue.yml --force-full --trace on --out /tmp/e2e/continue.yml --report-dir /tmp/e2e/plan
+              "$bin" plan --config examples/monorepo/continue.yml --force-full --out /tmp/e2e/continue.yml --report-dir /tmp/e2e/plan
               test -s /tmp/e2e/continue.yml
               test -s /tmp/e2e/plan/plan.json
-              grep -q "smarter: collect trace" /tmp/e2e/continue.yml
-              grep -q "smarter-impact-map" /tmp/e2e/continue.yml
+              grep -q smarter-gate /tmp/e2e/continue.yml
             else
               "$bin" version
             fi
@@ -320,9 +311,6 @@ jobs:
     steps:
       - checkout
       - install-circleci-cli
-      - restore_cache:
-          keys:
-            - smarter-impact-v1-
       - run:
           name: Build circleci-smarter
           command: |
@@ -342,9 +330,9 @@ jobs:
           name: Backtest recall and savings
           command: |
             set -eu
-            map=/tmp/smarter/impact-map.json.gz
+            map=examples/monorepo/impact-map.json.gz
             if [ ! -s "$map" ]; then
-              echo "benchmark: no impact map in cache; run a full pipeline on main first" >&2
+              echo "benchmark: missing $map" >&2
               exit 1
             fi
             /tmp/smarter/bin/circleci-smarter backtest \
