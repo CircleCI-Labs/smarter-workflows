@@ -8,160 +8,14 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-	"time"
 )
 
-func tsv(lines ...string) string {
-	return strings.Join(lines, "\n") + "\n"
-}
-
-func TestParseTrace(t *testing.T) {
-	tests := []struct {
-		name    string
-		in      string
-		want    *Trace
-		wantErr string
-	}{
-		{
-			name: "full trace",
-			in: tsv("# smarter-trace v1", "job\tapi-test", "node\t2", "method\tatime", "supported\ttrue",
-				"F\tservices/api/main.go", "F\t./go.mod", "D\tservices/api", "D\t."),
-			want: &Trace{Job: "api-test", Node: 2, Method: "atime", Supported: true,
-				Files: []string{"services/api/main.go", "go.mod"}, Dirs: []string{"services/api", "."}},
-		},
-		{
-			name: "unsupported with reason and no reads",
-			in:   tsv("# smarter-trace v1", "job\tlint", "node\t0", "method\tatime", "supported\tfalse", "reason\tnoatime mount"),
-			want: &Trace{Job: "lint", Method: "atime", Reason: "noatime mount"},
-		},
-		{
-			name: "missing supported means unsupported, node defaults to 0",
-			in:   tsv("# smarter-trace v1", "job\tlint", "F\ta.txt"),
-			want: &Trace{Job: "lint", Method: "atime", Files: []string{"a.txt"}},
-		},
-		{
-			name: "crlf, comments, blank lines and unknown keys are tolerated",
-			in:   "\n# smarter-trace v1\r\njob\tdocs\r\n# note\r\n\r\nfuture\tvalue\r\nsupported\ttrue\r\nF\tdocs/a.md\r\n",
-			want: &Trace{Job: "docs", Method: "atime", Supported: true, Files: []string{"docs/a.md"}},
-		},
-		{
-			name: "job name with spaces and a tab-free path with spaces",
-			in:   tsv("# smarter-trace v1", "job\tbuild linux", "supported\ttrue", "F\tdir with space/a b.txt"),
-			want: &Trace{Job: "build linux", Method: "atime", Supported: true, Files: []string{"dir with space/a b.txt"}},
-		},
-		{name: "no header", in: tsv("job\tx"), wantErr: "want header"},
-		{name: "wrong header version", in: tsv("# smarter-trace v2", "job\tx"), wantErr: "want header"},
-		{name: "empty input", in: "", wantErr: "missing header"},
-		{name: "no job", in: tsv("# smarter-trace v1", "supported\ttrue"), wantErr: "no job line"},
-		{name: "duplicate job", in: tsv("# smarter-trace v1", "job\ta", "job\tb"), wantErr: `duplicate "job"`},
-		{name: "bad node", in: tsv("# smarter-trace v1", "job\ta", "node\tx"), wantErr: "bad node"},
-		{name: "negative node", in: tsv("# smarter-trace v1", "job\ta", "node\t-1"), wantErr: "bad node"},
-		{name: "bad supported", in: tsv("# smarter-trace v1", "job\ta", "supported\tyes"), wantErr: "supported must be"},
-		{name: "line without tab", in: tsv("# smarter-trace v1", "job a"), wantErr: "tab"},
-		{name: "absolute file path", in: tsv("# smarter-trace v1", "job\ta", "F\t/etc/passwd"), wantErr: "absolute"},
-		{name: "path escapes the repo", in: tsv("# smarter-trace v1", "job\ta", "F\t../x"), wantErr: "leaves the repository"},
-		{name: "dot is not a file", in: tsv("# smarter-trace v1", "job\ta", "F\t."), wantErr: "not a file"},
-		{name: "empty path", in: tsv("# smarter-trace v1", "job\ta", "F\t"), wantErr: "unusable path"},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			got, err := ParseTrace(strings.NewReader(tc.in))
-			if tc.wantErr != "" {
-				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
-					t.Fatalf("error = %v, want it to contain %q", err, tc.wantErr)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if !reflect.DeepEqual(got, tc.want) {
-				t.Fatalf("got %+v, want %+v", got, tc.want)
-			}
-		})
-	}
-}
-
-func TestMerge(t *testing.T) {
-	now := time.Date(2026, 11, 12, 18, 30, 0, 0, time.UTC)
-	ok := func(job string, node int, files, dirs []string) *Trace {
-		return &Trace{Job: job, Node: node, Method: "atime", Supported: true, Files: files, Dirs: dirs}
-	}
-	tests := []struct {
-		name   string
-		traces []*Trace
-		want   map[string]*Job
-		method string
-	}{
-		{
-			name: "union over nodes, sorted and deduplicated",
-			traces: []*Trace{
-				ok("test", 1, []string{"b.go", "a.go"}, []string{"pkg"}),
-				ok("test", 0, []string{"a.go", "c.go"}, []string{".", "pkg"}),
-			},
-			want: map[string]*Job{"test": {Files: []string{"a.go", "b.go", "c.go"}, Dirs: []string{".", "pkg"}, Complete: true, Nodes: 2}},
-		},
-		{
-			name: "one unsupported node makes the job incomplete",
-			traces: []*Trace{
-				ok("test", 0, []string{"a.go"}, nil),
-				{Job: "test", Node: 1, Method: "atime", Supported: false},
-			},
-			want: map[string]*Job{"test": {Files: []string{"a.go"}, Dirs: []string{}, Complete: false, Nodes: 2}},
-		},
-		{
-			name:   "an unknown method is incomplete and the map says mixed",
-			traces: []*Trace{ok("a", 0, nil, nil), {Job: "b", Method: "ebpf", Supported: true}},
-			want: map[string]*Job{
-				"a": {Files: []string{}, Dirs: []string{}, Complete: true, Nodes: 1},
-				"b": {Files: []string{}, Dirs: []string{}, Complete: false, Nodes: 1},
-			},
-			method: "mixed",
-		},
-		{
-			name:   "the same node twice counts once",
-			traces: []*Trace{ok("a", 0, []string{"x"}, nil), ok("a", 0, []string{"y"}, nil)},
-			want:   map[string]*Job{"a": {Files: []string{"x", "y"}, Dirs: []string{}, Complete: true, Nodes: 1}},
-		},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			m, err := Merge(tc.traces, "abc123", now)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if m.Version != Version || m.Revision != "abc123" || m.CreatedAt != "2026-11-12T18:30:00Z" {
-				t.Fatalf("header = %+v", m)
-			}
-			wantMethod := tc.method
-			if wantMethod == "" {
-				wantMethod = "atime"
-			}
-			if m.Method != wantMethod {
-				t.Fatalf("method = %q, want %q", m.Method, wantMethod)
-			}
-			// Compare only the exported data fields.
-			got := map[string]*Job{}
-			for k, j := range m.Jobs {
-				got[k] = &Job{Files: j.Files, Dirs: j.Dirs, Complete: j.Complete, Nodes: j.Nodes}
-			}
-			if !reflect.DeepEqual(got, tc.want) {
-				t.Fatalf("jobs = %+v, want %+v", got, tc.want)
-			}
-		})
-	}
-	if _, err := Merge(nil, "x", now); err == nil {
-		t.Fatal("Merge of no traces must fail, so that no empty map is cached")
-	}
-}
-
 func TestMarshalParseRoundTrip(t *testing.T) {
-	now := time.Date(2026, 11, 12, 18, 30, 0, 0, time.UTC)
-	m, err := Merge([]*Trace{
-		{Job: "lint", Method: "atime", Supported: true, Files: []string{"a<b>&.go"}, Dirs: []string{"."}},
-	}, "deadbeef", now)
-	if err != nil {
-		t.Fatal(err)
+	m := &Map{
+		Version: 2, Revision: "deadbeef", CreatedAt: "2026-11-12T18:30:00Z", Method: "static",
+		Jobs: map[string]*Job{
+			"lint": {Files: []string{"a<b>&.go"}, Dirs: []string{"."}, Complete: true, Nodes: 1},
+		},
 	}
 	b, err := m.Marshal()
 	if err != nil {
@@ -270,34 +124,6 @@ func TestLoadMissingFile(t *testing.T) {
 	}
 }
 
-func TestReadTraceDir(t *testing.T) {
-	dir := t.TempDir()
-	write := func(name, body string) {
-		t.Helper()
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	write("b.0.tsv", tsv("# smarter-trace v1", "job\tb", "supported\ttrue", "F\tb.txt"))
-	write("a.0.tsv", tsv("# smarter-trace v1", "job\ta", "supported\ttrue", "F\ta.txt"))
-	write("notes.txt", "ignored")
-	if err := os.Mkdir(filepath.Join(dir, "sub.tsv"), 0o755); err != nil { // a directory is not a trace
-		t.Fatal(err)
-	}
-	traces, err := ReadTraceDir(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(traces) != 2 || traces[0].Job != "a" || traces[1].Job != "b" {
-		t.Fatalf("traces = %+v", traces)
-	}
-
-	write("bad.0.tsv", "garbage\n")
-	if _, err := ReadTraceDir(dir); err == nil || !strings.Contains(err.Error(), "bad.0.tsv") {
-		t.Fatalf("error = %v, want it to name the bad file", err)
-	}
-}
-
 func TestParseRejectsOversizedMap(t *testing.T) {
 	jobs := make(map[string]*Job, MaxMapJobs+1)
 	for i := range MaxMapJobs + 1 {
@@ -337,17 +163,6 @@ func TestLoadRejectsOversizedFile(t *testing.T) {
 	}
 }
 
-func TestParseTraceRejectsTooManyPaths(t *testing.T) {
-	var b strings.Builder
-	b.WriteString(tsv("# smarter-trace v1", "job\tx", "supported\ttrue"))
-	for i := 0; i < MaxPathsPerTrace+1; i++ {
-		fmt.Fprintf(&b, "F\tf%d.go\n", i)
-	}
-	if _, err := ParseTrace(strings.NewReader(b.String())); err == nil || !strings.Contains(err.Error(), "more than") {
-		t.Fatalf("error = %v, want a path limit error", err)
-	}
-}
-
 func TestConvertMonorepoExampleMap(t *testing.T) {
 	if os.Getenv("WRITE_MONOREPO_MAP") == "" {
 		t.Skip("set WRITE_MONOREPO_MAP=1 to regenerate examples/monorepo/impact-map.json.gz")
@@ -371,7 +186,7 @@ func TestConvertMonorepoExampleMap(t *testing.T) {
 }
 
 func TestParseV1StillWorks(t *testing.T) {
-	v1 := `{"version":1,"revision":"x","created_at":"2026-11-12T18:30:00Z","method":"atime","jobs":{"a":{"files":["z.go"],"dirs":["."],"complete":true,"nodes":1}}}`
+	v1 := `{"version":1,"revision":"x","created_at":"2026-11-12T18:30:00Z","method":"static","jobs":{"a":{"files":["z.go"],"dirs":["."],"complete":true,"nodes":1}}}`
 	m, err := Parse([]byte(v1))
 	if err != nil {
 		t.Fatal(err)

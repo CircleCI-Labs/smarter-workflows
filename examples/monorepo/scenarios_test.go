@@ -18,7 +18,6 @@ import (
 	"github.com/CircleCI-Labs/smarter-workflows/internal/impactmap"
 	"github.com/CircleCI-Labs/smarter-workflows/internal/planner"
 	"github.com/CircleCI-Labs/smarter-workflows/internal/report"
-	"github.com/CircleCI-Labs/smarter-workflows/internal/tracescript"
 )
 
 var update = flag.Bool("update", false, "rewrite the golden files in scenarios/")
@@ -47,11 +46,9 @@ type scenario struct {
 	wantFull string
 	// wantRun is the set of jobs the plan runs.
 	wantRun []string
-	// wantEmitted is the jobs of the emitted workflow, gate (and map job) last;
-	// nil means wantRun, then the gate.
+	// wantEmitted is the jobs of the emitted workflow, gate last; nil means
+	// wantRun, then the gate.
 	wantEmitted []string
-	// traced says whether the plan must carry the trace steps.
-	traced bool
 }
 
 func scenarios() []scenario {
@@ -110,13 +107,11 @@ func scenarios() []scenario {
 			wantEmitted: append(slices.Clone(allJobs), "smarter-gate"),
 		},
 		{
-			name:        "no-map",
-			what:        "there is no impact map yet",
-			change:      func(r *difftest.Repo) { r.Write("docs/guide.md", "# Guide\n\nA new paragraph.\n") },
-			noMap:       true,
-			wantFull:    "no usable impact map: there is no impact map at",
-			wantRun:     []string{"lint", "security-scan", "api-test", "web-test", "build", "e2e", "docs"},
-			wantEmitted: append(slices.Clone(allJobs), "smarter-gate"),
+			name:    "no-map",
+			what:    "there is no impact map yet",
+			change:  func(r *difftest.Repo) { r.Write("docs/guide.md", "# Guide\n\nA new paragraph.\n") },
+			noMap:   true,
+			wantRun: []string{"lint", "security-scan", "api-test", "web-test", "build", "e2e", "docs"},
 		},
 		{
 			name:        "mandatory-repaired",
@@ -134,18 +129,6 @@ func scenarios() []scenario {
 			wantRun: []string{"lint", "security-scan", "docs"},
 			wantEmitted: []string{
 				"lint", "security-scan", "api-test", "web-test", "build", "e2e", "docs", "hold-deploy", "deploy", "smarter-gate",
-			},
-		},
-		{
-			name:     "main-branch-trace",
-			what:     "a merge to the default branch: a full run that traces every job and rebuilds the map",
-			branch:   "main",
-			change:   func(r *difftest.Repo) { r.Write("docs/guide.md", "# Guide\n\nA new paragraph.\n") },
-			wantFull: "default branch main",
-			wantRun:  allJobs,
-			traced:   true,
-			wantEmitted: []string{
-				"lint", "security-scan", "api-test", "web-test", "build", "e2e", "docs", "hold-deploy", "deploy", "smarter-impact-map", "smarter-gate",
 			},
 		},
 	}
@@ -196,16 +179,6 @@ type outcome struct {
 	planJSON []byte
 	planMD   string
 	config   []byte
-}
-
-// stubScripts replaces the embedded trace scripts for the golden files, so
-// that they do not change whenever the collector does.
-func stubScripts(t *testing.T) {
-	t.Helper()
-	oldReset, oldScript := tracescript.Reset, tracescript.Script
-	tracescript.Reset = "# stub: the post-checkout reset of internal/tracescript\ntrue\n"
-	tracescript.Script = "# stub: the trace collector of internal/tracescript\ntrue\n"
-	t.Cleanup(func() { tracescript.Reset, tracescript.Script = oldReset, oldScript })
 }
 
 // run plans one scenario in a fresh git repository.
@@ -264,9 +237,6 @@ func (sc scenario) run(t *testing.T) outcome {
 	if !sc.noMandatory {
 		o.Mandatory = []string{"security-scan"}
 	}
-	o.Version = "dev-example"
-	o.BinPath = "/usr/local/bin/circleci-smarter"
-
 	res, err := planner.Run(context.Background(), in, o)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
@@ -293,7 +263,6 @@ func (sc scenario) run(t *testing.T) outcome {
 func TestScenarios(t *testing.T) {
 	for _, sc := range scenarios() {
 		t.Run(sc.name, func(t *testing.T) {
-			stubScripts(t)
 			out := sc.run(t)
 			rep := out.result.Report
 
@@ -318,9 +287,6 @@ func TestScenarios(t *testing.T) {
 			}
 			if got := emittedJobs(t, out.config); !slices.Equal(got, wantEmitted) {
 				t.Errorf("emitted jobs = %v, want %v", got, wantEmitted)
-			}
-			if (rep.Trace != nil) != sc.traced {
-				t.Errorf("trace = %+v, want traced = %v", rep.Trace, sc.traced)
 			}
 			if rep.Gate == nil || rep.Gate.Name != "smarter-gate" {
 				t.Errorf("gate = %+v", rep.Gate)

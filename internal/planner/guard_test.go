@@ -244,14 +244,3 @@ func TestGuardrailsBundleThatCannotBeUsed(t *testing.T) {
 		t.Fatalf("warnings = %v", res.Report.Warnings)
 	}
 }
-
-func TestGuardrailsCheckTheTracedConfigToo(t *testing.T) {
-	c := &fakeChecker{check: func(int, []string) (guard.Result, error) { return guard.Result{Status: guard.Pass}, nil }}
-	in := guardInput(c)
-	o := opts()
-	o.Branch = "main"
-	plan(t, in, o)
-	if !slices.Contains(c.seen[0], "smarter-impact-map") {
-		t.Fatalf("the checker saw %v: the map job must be checked", c.seen[0])
-	}
-}

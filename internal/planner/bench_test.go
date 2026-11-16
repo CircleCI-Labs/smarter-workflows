@@ -44,8 +44,6 @@ func benchPlannerInput(shape benchgen.Shape, jobs, mapFiles, diffN int) (planner
 	o.Workflow = "ci"
 	o.Branch = "feature"
 	o.Base, o.Head = "base1", "head1"
-	o.Version = "bench"
-	o.BinPath = "/usr/local/bin/circleci-smarter"
 	return planner.Input{
 		Config:        cfg,
 		Map:           m,

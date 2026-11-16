@@ -73,7 +73,7 @@ func TestImpactMapMatchesTheExample(t *testing.T) {
 			t.Errorf("job %s paths mismatch after round-trip", name)
 		}
 	}
-	if !regexp.MustCompile(`^[0-9a-f]{40}$`).MatchString(m.Revision) || m.Method != "atime" {
+	if !regexp.MustCompile(`^[0-9a-f]{40}$`).MatchString(m.Revision) || m.Method == "" {
 		t.Errorf("revision = %q, method = %q", m.Revision, m.Method)
 	}
 	if len(m.Problems) != 0 {
@@ -106,8 +106,8 @@ func TestImpactMapMatchesTheExample(t *testing.T) {
 		}
 	}
 
-	// Every job of the workflow that can be traced has an entry; the deploy
-	// chain never ran in the traced run, so it has none.
+	// Every job that ran in the baseline full run has a map entry; the deploy
+	// chain is absent from this fixture map, so it has none.
 	cfg, err := config.Parse([]byte(exampleConfig()))
 	if err != nil {
 		t.Fatal(err)
@@ -123,7 +123,7 @@ func TestImpactMapMatchesTheExample(t *testing.T) {
 		switch e.Name {
 		case "hold-deploy", "deploy":
 			if inMap {
-				t.Errorf("%s never runs in a traced run, so the map has no entry for it", e.Name)
+				t.Errorf("%s is not in the fixture map, so the map must have no entry for it", e.Name)
 			}
 		default:
 			if !inMap {

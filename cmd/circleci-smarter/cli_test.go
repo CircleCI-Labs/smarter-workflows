@@ -75,7 +75,7 @@ func (c *cliRepo) path(name string) string { return filepath.Join(c.dir, name) }
 
 func (c *cliRepo) writeMap(t *testing.T, jobs map[string][]string) {
 	t.Helper()
-	m := &impactmap.Map{Version: 1, Revision: c.base, CreatedAt: "2026-11-12T18:30:00Z", Method: "atime", Jobs: map[string]*impactmap.Job{}}
+	m := &impactmap.Map{Version: 1, Revision: c.base, CreatedAt: "2026-11-12T18:30:00Z", Method: "static", Jobs: map[string]*impactmap.Job{}}
 	for name, files := range jobs {
 		m.Jobs[name] = &impactmap.Job{Files: files, Complete: true, Nodes: 1}
 	}
@@ -109,10 +109,6 @@ func doPlan(t *testing.T, args ...string) (int, string, string) {
 
 func doBase(t *testing.T, args ...string) (int, string, string) {
 	return run(t, func(a []string, o, e *bytes.Buffer) int { return runBase(a, o, e) }, args...)
-}
-
-func doMap(t *testing.T, args ...string) (int, string, string) {
-	return run(t, func(a []string, o, e *bytes.Buffer) int { return runMap(a, o, e) }, args...)
 }
 
 func readReport(t *testing.T, c *cliRepo) *report.Plan {
@@ -180,75 +176,6 @@ func TestBaseCommandUsage(t *testing.T) {
 	t.Setenv("GIT_CEILING_DIRECTORIES", filepath.Dir(t.TempDir()))
 	if code, out, _ := doBase(t, "--branch", "x"); code != 0 || out != "" {
 		t.Fatalf("outside a repository: %d, %q", code, out)
-	}
-}
-
-func TestMapBuildCommand(t *testing.T) {
-	dir := t.TempDir()
-	write := func(name, body string) {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	write("aaaa.0.tsv", "# smarter-trace v1\njob\tlint\nnode\t0\nmethod\tatime\nsupported\ttrue\nF\ta.go\nD\t.\n")
-	write("aaaa.1.tsv", "# smarter-trace v1\njob\tlint\nnode\t1\nmethod\tatime\nsupported\ttrue\nF\tb.go\n")
-	write("bbbb.0.tsv", "# smarter-trace v1\njob\tdocs\nnode\t0\nmethod\tatime\nsupported\tfalse\nreason\tnoatime\n")
-	out := filepath.Join(t.TempDir(), "nested", impactmap.MapFilenameV2)
-
-	code, stdout, stderr := doMap(t, "build", "--traces", dir, "--revision", "abc123", "--out", out)
-	if code != 0 || stderr != "" || !strings.Contains(stdout, "3 traces, 2 jobs (1 complete)") {
-		t.Fatalf("map build = %d, %q, %q", code, stdout, stderr)
-	}
-	m, err := impactmap.Load(out)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if m.Revision != "abc123" || m.Method != "atime" || m.CreatedAt == "" {
-		t.Fatalf("map = %+v", m)
-	}
-	lint := m.Jobs["lint"]
-	if !lint.Complete || lint.Nodes != 2 || !lint.ReadsFile("a.go") || !lint.ReadsFile("b.go") || !lint.ListsDir(".") {
-		t.Fatalf("lint = %+v", lint)
-	}
-	if m.Jobs["docs"].Complete {
-		t.Fatalf("docs = %+v", m.Jobs["docs"])
-	}
-}
-
-func TestMapBuildCommandErrors(t *testing.T) {
-	empty := t.TempDir()
-	bad := t.TempDir()
-	if err := os.WriteFile(filepath.Join(bad, "x.tsv"), []byte("not a trace\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	out := filepath.Join(t.TempDir(), "m.json")
-	tests := []struct {
-		name string
-		args []string
-		code int
-		want string
-	}{
-		{"no subcommand", nil, 2, "usage: circleci-smarter map build"},
-		{"unknown subcommand", []string{"merge"}, 2, "usage: circleci-smarter map build"},
-		{"help", []string{"--help"}, 0, "usage: circleci-smarter map build"},
-		{"missing traces", []string{"build", "--revision", "r", "--out", out}, 2, "--traces is required"},
-		{"missing revision", []string{"build", "--traces", empty, "--out", out}, 2, "--revision is required"},
-		{"missing out", []string{"build", "--traces", empty, "--revision", "r"}, 2, "--out is required"},
-		{"a stray argument", []string{"build", "--traces", empty, "--revision", "r", "--out", out, "x"}, 2, "unexpected argument"},
-		{"a bad flag", []string{"build", "--wat"}, 2, "not defined"},
-		{"no traces", []string{"build", "--traces", empty, "--revision", "r", "--out", out}, 1, "no traces"},
-		{"a bad trace", []string{"build", "--traces", bad, "--revision", "r", "--out", out}, 1, "x.tsv"},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			code, _, stderr := doMap(t, tc.args...)
-			if code != tc.code || !strings.Contains(stderr, tc.want) {
-				t.Fatalf("= %d, %q; want %d, %q", code, stderr, tc.code, tc.want)
-			}
-			if _, err := os.Stat(out); err == nil {
-				t.Fatal("no map may be written when the build fails")
-			}
-		})
 	}
 }
 
@@ -342,7 +269,6 @@ func TestPlanCommandFullRuns(t *testing.T) {
 		setup func(t *testing.T, c *cliRepo) []string
 		want  string
 	}{
-		{"no map", func(t *testing.T, c *cliRepo) []string { return c.planArgs("--map", c.path("missing.json")) }, "there is no impact map at"},
 		{"an invalid map", func(t *testing.T, c *cliRepo) []string {
 			if err := os.WriteFile(c.path("map.json"), []byte(`{"version":9}`), 0o644); err != nil {
 				t.Fatal(err)
@@ -402,52 +328,6 @@ func TestPlanCommandFullRuns(t *testing.T) {
 	}
 }
 
-func TestPlanCommandTracesFullRunsOnTheDefaultBranch(t *testing.T) {
-	c := newCLIRepo(t)
-	c.Git("checkout", "-q", "main")
-	bin := "/opt/smarter/circleci-smarter"
-	args := c.planArgs("--branch", "main", "--smarter-bin", bin)
-	if code, _, stderr := doPlan(t, args...); code != 0 {
-		t.Fatalf("plan = %d, %q", code, stderr)
-	}
-	cfg, _ := os.ReadFile(c.path("continue.yml"))
-	for _, want := range []string{"smarter-impact-map", "smarter: collect trace", "smarter: reset atime", bin + " map build"} {
-		if !strings.Contains(string(cfg), want) {
-			t.Errorf("the traced config lacks %q:\n%s", want, cfg)
-		}
-	}
-	// The reset is a setting.
-	args = c.planArgs("--branch", "main", "--smarter-bin", bin, "--trace-reset", "off")
-	if code, _, stderr := doPlan(t, args...); code != 0 {
-		t.Fatalf("plan = %d, %q", code, stderr)
-	}
-	cfg, _ = os.ReadFile(c.path("continue.yml"))
-	if strings.Contains(string(cfg), "reset atime") || !strings.Contains(string(cfg), "smarter: collect trace") {
-		t.Fatalf("--trace-reset off:\n%s", cfg)
-	}
-	args = c.planArgs("--branch", "main", "--trace", "off")
-	if code, _, _ := doPlan(t, args...); code != 0 {
-		t.Fatal("plan failed")
-	}
-	cfg, _ = os.ReadFile(c.path("continue.yml"))
-	if strings.Contains(string(cfg), "smarter-impact-map") {
-		t.Fatalf("--trace off:\n%s", cfg)
-	}
-	// By default the map job runs the binary this process runs from.
-	args = c.planArgs("--branch", "main")
-	if code, _, _ := doPlan(t, args...); code != 0 {
-		t.Fatal("plan failed")
-	}
-	cfg, _ = os.ReadFile(c.path("continue.yml"))
-	exe, _ := os.Executable()
-	if real, err := filepath.EvalSymlinks(exe); err == nil {
-		exe = real
-	}
-	if !strings.Contains(string(cfg), exe+" map build") && !strings.Contains(string(cfg), "'"+exe+"' map build") {
-		t.Fatalf("the map job must run %s:\n%s", exe, cfg)
-	}
-}
-
 func TestPlanCommandExitCodes(t *testing.T) {
 	c := newCLIRepo(t)
 	c.writeMap(t, map[string][]string{"ta": {"a.txt"}, "tb": {"b.txt"}})
@@ -467,8 +347,6 @@ func TestPlanCommandExitCodes(t *testing.T) {
 		{"a bad flag", c.planArgs("--nope"), 2, "not defined"},
 		{"a stray argument", c.planArgs("extra"), 2, "unexpected argument"},
 		{"a bad mode", c.planArgs("--mode", "fast"), 2, "mode must be shadow or select"},
-		{"a bad trace", c.planArgs("--trace", "sometimes"), 2, "trace must be"},
-		{"a bad trace-reset", c.planArgs("--trace-reset", "maybe"), 2, "--trace-reset must be on or off"},
 		{"a bad glob", c.planArgs("--ignore-paths", "["), 2, "ignore paths"},
 		{"bad extra inputs", c.planArgs("--extra-inputs", "nojob"), 2, "--extra-inputs"},
 		{"an unknown workflow", c.planArgs("--workflow", "zzz"), 2, `no workflow "zzz"`},
@@ -624,7 +502,7 @@ func TestPlanCommandGuardrails(t *testing.T) {
 }
 
 func TestVersionAndRegistry(t *testing.T) {
-	for _, name := range []string{"base", "plan", "map", "version"} {
+	for _, name := range []string{"base", "plan", "version"} {
 		if _, ok := commands[name]; !ok {
 			t.Errorf("command %q is not registered", name)
 		}

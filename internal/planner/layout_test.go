@@ -498,15 +498,14 @@ func TestLayoutGate(t *testing.T) {
       - node/job
       - node/after:
           requires: [node/job]
-      - smarter-impact-map
       - smarter-gate:
           requires: [lint, node/after]
       - notify:
           requires: [smarter-gate]
 `), withGate(planner.LayoutOptions{}))
 		// The approval, the job behind it, and the job that comes after the gate
-		// are not awaited. The impact-map job is the planner's own. A job that the
-		// gate waits for through another one is awaited.
+		// are not awaited. A job that the gate waits for through another one is
+		// awaited.
 		wantFindings(t, res)
 	})
 	t.Run("a no-op job and a job group", func(t *testing.T) {

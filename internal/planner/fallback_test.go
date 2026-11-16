@@ -66,11 +66,11 @@ func TestInternalErrorsGiveAFullPlan(t *testing.T) {
 }
 
 // A plan that falls back to a full run after the config has loaded is still a
-// plan: it has the gate, and on the default branch the trace too. Only a config
-// that cannot be emitted at all passes through as it came (the tests below).
-// The config has anchors, aliases and a merge key: the fallback plan is built
-// from the expanded config, so none of them is left in the output.
-func TestAFullFallbackStillGetsTheGateAndTheTrace(t *testing.T) {
+// plan: it has the gate. Only a config that cannot be emitted at all passes
+// through as it came (the tests below). The config has anchors, aliases and a
+// merge key: the fallback plan is built from the expanded config, so none of
+// them is left in the output.
+func TestAFullFallbackStillGetsTheGate(t *testing.T) {
 	const cfg = `version: 2.1
 jobs:
   a: {docker: &img [{image: x}], steps: [checkout]}
@@ -106,40 +106,20 @@ workflows:
 		return res
 	}
 
-	t.Run("on a branch: the gate", func(t *testing.T) {
-		res := plan(t, "feature")
-		if got := emittedJobs(t, res, "w"); !slices.Equal(got, []string{"a", "b", "smarter-gate"}) {
-			t.Errorf("emitted jobs = %v", got)
-		}
-		if got := res.Report.Gate.Requires; !slices.Equal(got, []string{"a", "b"}) {
-			t.Errorf("gate requires %v", got)
-		}
-		if res.Report.Trace != nil || strings.Contains(string(res.Config), "smarter: collect trace") {
-			t.Errorf("a branch plan has no trace")
-		}
-	})
-
-	t.Run("on the default branch: the gate and the trace", func(t *testing.T) {
-		res := plan(t, "main")
-		if got := emittedJobs(t, res, "w"); !slices.Equal(got, []string{"a", "b", "smarter-impact-map", "smarter-gate"}) {
-			t.Errorf("emitted jobs = %v", got)
-		}
-		if res.Report.Trace == nil || !slices.Equal(res.Report.Trace.Jobs, []string{"a", "b"}) {
-			t.Fatalf("trace = %+v", res.Report.Trace)
-		}
-		cfg := decodeConfig(t, res.Config)
-		for _, name := range []string{"a", "b"} {
-			// One collect step each: b took its arguments from a's by a merge key.
-			post, _ := workflowEntry(t, cfg, "w", name)["post-steps"].([]any)
-			if len(post) != 2 {
-				t.Errorf("%s post-steps = %v, want the collect and persist steps", name, post)
+	for _, branch := range []string{"feature", "main"} {
+		t.Run("on "+branch+": the gate", func(t *testing.T) {
+			res := plan(t, branch)
+			if got := emittedJobs(t, res, "w"); !slices.Equal(got, []string{"a", "b", "smarter-gate"}) {
+				t.Errorf("emitted jobs = %v", got)
 			}
-		}
-		// The entry of the other workflow shares nothing with a's arguments.
-		if args := workflowEntry(t, cfg, "other", "b"); args["post-steps"] != nil || args["context"] != "shared" {
-			t.Errorf("the other workflow's entry = %v", args)
-		}
-	})
+			if got := res.Report.Gate.Requires; !slices.Equal(got, []string{"a", "b"}) {
+				t.Errorf("gate requires %v", got)
+			}
+			if strings.Contains(string(res.Config), "smarter: collect trace") {
+				t.Errorf("the plan must not inject trace steps")
+			}
+		})
+	}
 }
 
 func TestADuplicateJobNameFallsBackToTheConfigAsItCame(t *testing.T) {

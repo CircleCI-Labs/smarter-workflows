@@ -16,7 +16,7 @@ func FuzzParseV2Indices(f *testing.F) {
 }
 
 func FuzzParseMap(f *testing.F) {
-	f.Add([]byte(`{"version":2,"revision":"x","created_at":"t","method":"atime","files":[],"dirs":[],"jobs":{}}`))
+	f.Add([]byte(`{"version":2,"revision":"x","created_at":"t","method":"static","files":[],"dirs":[],"jobs":{}}`))
 	f.Fuzz(func(t *testing.T, data []byte) {
 		if len(data) > 1024*1024 {
 			return

@@ -93,8 +93,8 @@ func TestCatalogCommandAddsInputsFromTheMap(t *testing.T) {
 		t.Errorf("map_revision = %q", cat.MapRevision)
 	}
 	for _, j := range cat.Jobs {
-		if want := j.Name == "test"; j.Inputs.Traced != want {
-			t.Errorf("%s traced = %v, want %v", j.Name, j.Inputs.Traced, want)
+		if want := j.Name == "test"; j.Inputs.Mapped != want {
+			t.Errorf("%s mapped = %v, want %v", j.Name, j.Inputs.Mapped, want)
 		}
 		if j.Name == "test" && (j.Inputs.Files != 2 || strings.Join(j.Inputs.TopDirs, ",") != ".,services/api") {
 			t.Errorf("test inputs = %+v", j.Inputs)
