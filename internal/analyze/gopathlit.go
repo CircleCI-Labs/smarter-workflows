@@ -178,22 +178,5 @@ func pathIOCallArg(call *ast.CallExpr, consts map[string]string) (string, bool) 
 }
 
 func (e *Engine) tryAddResolvedGoPath(repoRoot, fileDir, modRel, p string, into *InputSet) {
-	p = filepath.ToSlash(p)
-	if p == "" || strings.Contains(p, "$") {
-		return
-	}
-	candidates := []string{
-		filepath.ToSlash(filepath.Clean(filepath.Join(fileDir, p))),
-		filepath.ToSlash(filepath.Clean(filepath.Join(modRel, p))),
-		filepath.ToSlash(filepath.Clean(p)),
-	}
-	for _, rel := range candidates {
-		if rel == "" || strings.HasPrefix(rel, "..") {
-			continue
-		}
-		if _, err := statRepo(repoRoot, rel); err == nil {
-			into.addVerifiedPath(repoRoot, rel, InputNote{Signal: SignalGoImports, Detail: "literal"})
-			return
-		}
-	}
+	tryAddResolvedLiteralPath(repoRoot, fileDir, modRel, p, into, InputNote{Signal: SignalGoImports, Detail: "literal"})
 }
