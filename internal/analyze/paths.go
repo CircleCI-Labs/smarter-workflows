@@ -30,6 +30,27 @@ func normalizePathToken(tok string) string {
 	return tok
 }
 
+// tryAddResolvedLiteralPath stores p when it exists under fileDir, modRel, or repo root.
+func tryAddResolvedLiteralPath(repoRoot, fileDir, modRel, p string, into *InputSet, note InputNote) {
+	p = filepath.ToSlash(strings.TrimSpace(p))
+	if p == "" || strings.Contains(p, "$") {
+		return
+	}
+	candidates := []string{
+		filepath.ToSlash(filepath.Clean(filepath.Join(fileDir, p))),
+		filepath.ToSlash(filepath.Clean(filepath.Join(modRel, p))),
+		filepath.ToSlash(filepath.Clean(p)),
+	}
+	for _, rel := range candidates {
+		if rel == "" || strings.HasPrefix(rel, "..") {
+			continue
+		}
+		if into.addVerifiedPath(repoRoot, rel, note) {
+			return
+		}
+	}
+}
+
 func (s *InputSet) addVerifiedPath(repoRoot, rel string, note InputNote) bool {
 	rel = impactmap.NormalizeDir(filepath.ToSlash(path.Clean(rel)))
 	if rel == "." {

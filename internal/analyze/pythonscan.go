@@ -40,11 +40,10 @@ func (e *Engine) scanPytestReadFiles(repoRoot, wd string, into *InputSet) {
 }
 
 func (e *Engine) scanPythonSource(repoRoot, wd, src string, into *InputSet) {
+	note := InputNote{Signal: SignalRunCommand, Detail: "literal"}
+	modRel := "."
 	addPath := func(p string) {
-		if strings.TrimSpace(p) == "" {
-			return
-		}
-		into.addVerifiedPathOrDir(repoRoot, wd, p)
+		tryAddResolvedLiteralPath(repoRoot, wd, modRel, p, into, note)
 	}
 	for _, m := range pyOpenRe.FindAllStringSubmatch(src, -1) {
 		if len(m) > 1 {
