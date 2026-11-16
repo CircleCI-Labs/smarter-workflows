@@ -25,6 +25,7 @@ func runBacktest(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	fs.Usage = func() {
 		fmt.Fprintln(stderr, "usage: circleci-smarter backtest --history PATH --map PATH --config PATH --workflow NAME [flags]")
+		fmt.Fprintln(stderr, "The map file is what circleci-smarter analyze writes with --out.")
 		fs.PrintDefaults()
 	}
 	historyPath := fs.String("history", "", "JSON file of historical commits (required)")

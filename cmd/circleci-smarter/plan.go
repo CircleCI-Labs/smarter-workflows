@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/CircleCI-Labs/smarter-workflows/internal/ai"
 	"github.com/CircleCI-Labs/smarter-workflows/internal/diff"
 	"github.com/CircleCI-Labs/smarter-workflows/internal/guard"
 	"github.com/CircleCI-Labs/smarter-workflows/internal/impactmap"
@@ -43,7 +44,12 @@ func runPlan(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	cfgPath := fs.String("config", ".circleci/continue.yml", "the full continuation config (the catalog)")
 	workflow := fs.String("workflow", "", "the workflow to plan (default: the only workflow)")
-	mapPath := fs.String("map", impactmap.DefaultMapPath, "the impact map; a missing or invalid map means a full run")
+	mapPath := fs.String("map", "", "impact map file (default: run in-process analyze)")
+	repoDir := fs.String("repo", ".", "repository root for analyze")
+	learned := fs.String("learned", "", "learned layer JSON to merge into analyze")
+	analyzeReport := fs.String("analyze-report", "", "write analyze Markdown report here")
+	aiReview := fs.String("ai-review", "off", "plan-time AI review: off, shadow, or on")
+	aiReviewModel := fs.String("ai-review-model", "claude-haiku-5-5", "model for plan-time AI review")
 	base := fs.String("base", "", "the diff base (default: what the base command prints)")
 	head := fs.String("head", "HEAD", "the head commit")
 	branch := fs.String("branch", "", "the branch (default: $CIRCLE_BRANCH)")
@@ -118,9 +124,8 @@ func runPlan(args []string, stdout, stderr io.Writer) int {
 
 	ctx := context.Background()
 	in := planner.Input{Config: config}
-	in.Map, in.MapProblem = planLoadMap(*mapPath)
-
-	git := diff.Git{Dir: "."}
+	var analyzeMs float64
+	git := diff.Git{Dir: *repoDir}
 	in.Repo = git
 	if sha, err := git.ResolveCommit(ctx, *head); err == nil {
 		opts.Head = sha
@@ -143,6 +148,33 @@ func runPlan(args []string, stdout, stderr io.Writer) int {
 		in.Checker, in.GuardrailsProblem = planLoadGuardrails(*policyBundle, *policyMeta)
 	}
 
+	wfName, err := planWorkflowName(config, *workflow)
+	if err != nil {
+		var ue *planner.UsageError
+		if errors.As(err, &ue) {
+			return usage("%v", err)
+		}
+		fmt.Fprintf(stderr, "circleci-smarter plan: %v\n", err)
+		return planExitFatal
+	}
+	if opts.Workflow == "" {
+		opts.Workflow = wfName
+	}
+	if flagWasGiven(fs, "map") {
+		in.Map, in.MapProblem = planLoadMap(*mapPath)
+	} else {
+		headRev := opts.Head
+		if headRev == "" {
+			headRev = *head
+		}
+		ar := planRunAnalyze(ctx, *repoDir, absConfig(*repoDir, *cfgPath), wfName, headRev, *learned, *analyzeReport, stderr)
+		in.Map, in.MapProblem, in.MapJobSummaries = ar.Map, ar.MapProblem, ar.Summaries
+		analyzeMs = ar.Elapsed.Seconds() * 1000
+		for _, w := range ar.Warnings {
+			fmt.Fprintf(stderr, "circleci-smarter plan: warning: %s\n", w)
+		}
+	}
+
 	res, err := planner.Run(ctx, in, opts)
 	var ue *planner.UsageError
 	switch {
@@ -151,6 +183,41 @@ func runPlan(args []string, stdout, stderr io.Writer) int {
 	case err != nil:
 		fmt.Fprintf(stderr, "circleci-smarter plan: %v\n", err)
 		return planExitFatal
+	}
+
+	reviewMode := strings.ToLower(strings.TrimSpace(*aiReview))
+	switch reviewMode {
+	case "off", "shadow", "on":
+	default:
+		return usage("--ai-review must be off, shadow, or on, not %q", *aiReview)
+	}
+	var reviewer *ai.Reviewer
+	if reviewMode != "off" {
+		reviewer = ai.NewReviewer(ai.ReviewerConfig{
+			Model:   *aiReviewModel,
+			BaseURL: os.Getenv("ANTHROPIC_BASE_URL"),
+		})
+	}
+	aiOut := planAIReview(ctx, reviewMode, config, wfName, opts.Base, opts.Head, *branch, *tag, git, res.Report, in.MapJobSummaries, reviewer)
+	res.Report.Warnings = append(res.Report.Warnings, aiOut.Warnings...)
+	if aiOut.Report != nil {
+		res.Report.AIReview = aiOut.Report
+	}
+	if len(aiOut.Added) > 0 {
+		in.AIAdded = aiOut.Added
+		res, err = planner.Run(ctx, in, opts)
+		if err != nil {
+			var ue *planner.UsageError
+			if errors.As(err, &ue) {
+				return usage("%v", err)
+			}
+			fmt.Fprintf(stderr, "circleci-smarter plan: %v\n", err)
+			return planExitFatal
+		}
+		if aiOut.Report != nil {
+			res.Report.AIReview = aiOut.Report
+		}
+		res.Report.Warnings = append(res.Report.Warnings, aiOut.Warnings...)
 	}
 
 	if err := validOutputPath(*reportDir); err != nil {
@@ -192,6 +259,9 @@ func runPlan(args []string, stdout, stderr io.Writer) int {
 	if err := writeOutputFile(*out, res.Config, 0o600); err != nil {
 		fmt.Fprintf(stderr, "circleci-smarter plan: cannot write the config: %v\n", err)
 		return planExitFatal
+	}
+	if analyzeMs > 0 {
+		summary += fmt.Sprintf("; analyze %.0fms", analyzeMs)
 	}
 	fmt.Fprintf(stdout, "circleci-smarter plan: %s\n  config: %s\n  report: %s\n", summary, *out, *reportDir)
 	return planExitOK
