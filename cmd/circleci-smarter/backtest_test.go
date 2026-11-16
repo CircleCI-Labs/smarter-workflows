@@ -8,6 +8,28 @@ import (
 	"testing"
 )
 
+func TestCLI_BacktestStrictOnWarning(t *testing.T) {
+	dir := filepath.Join("..", "..", "internal", "backtest", "testdata", "param-gated")
+	params := filepath.Join(t.TempDir(), "params.json")
+	if err := os.WriteFile(params, []byte(`{"run-ci":false}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	args := []string{
+		"--history", filepath.Join(dir, "history.json"),
+		"--map", filepath.Join(dir, "map.json"),
+		"--config", filepath.Join(dir, "config.yml"),
+		"--workflow", "ci",
+		"--parameters", params,
+		"--format", "json",
+		"--strict",
+	}
+	var outBuf, errBuf bytes.Buffer
+	code := runBacktest(args, &outBuf, &errBuf)
+	if code != 1 {
+		t.Fatalf("exit %d stderr=%q", code, errBuf.String())
+	}
+}
+
 func TestCLI_BacktestGolden(t *testing.T) {
 	dir := filepath.Join("..", "..", "internal", "backtest", "testdata")
 	args := []string{
