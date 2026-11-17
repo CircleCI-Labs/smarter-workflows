@@ -28,7 +28,7 @@ The orb example wires `learn` to `pipeline.trigger.type == "schedule"` and keeps
 version: 2.1
 setup: true
 orbs:
-  smarter: cci-labs/smarter-workflows@1.0.0
+  smarter: cci-labs/smarter-workflows@0.3.0
 workflows:
   plan:
     when:
