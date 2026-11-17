@@ -136,7 +136,16 @@ jobs:
           key: smarter-demo-learned-v1-{{ epoch }}
           paths:
             - /tmp/smarter/learned.json
+      - run:
+          name: "smarter: stage learned layer artifact"
+          when: always
+          command: |
+            if [ -f /tmp/smarter/learned.json ]; then
+              mkdir -p /tmp/smarter/learn
+              cp /tmp/smarter/learned.json /tmp/smarter/learn/learned.json
+            fi
       - store_artifacts:
+          when: always
           path: /tmp/smarter/learn
           destination: smarter-learn
       - run:
