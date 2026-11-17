@@ -1,7 +1,7 @@
 # Scenarios of this repository's own pipeline (workflow ci), run by run-scenarios.sh.
 # Fields, separated by tabs: name, expectation, change, commit message (optional).
 #
-# Expectations recomputed with scripts/e2e/expect.sh (v0.3 analyze at origin/main).
+# Expectations from scripts/e2e/expect.sh (plan with --branch scenario/…, --base, --head).
 # Static analysis often keeps build and e2e-plan because release paths and workspaces
 # are conservative until the learned layer is populated.
 self-docs-only	build docs-site-build e2e-plan go-lint security-scan	printf '\nThe planner never skips a job it cannot prove is unaffected.\n' >> docs/limitations.md	docs: restate a limit
