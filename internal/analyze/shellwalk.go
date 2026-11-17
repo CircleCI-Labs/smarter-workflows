@@ -3,6 +3,7 @@ package analyze
 import (
 	"fmt"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"mvdan.cc/sh/v3/syntax"
@@ -32,10 +33,18 @@ type shellWalk struct {
 	depth       int
 	needsInputs bool
 	opaque      string
-	funcs       map[string]struct{}
+	funcs       map[string][]*syntax.Stmt
+	scriptRel   string
+	env         map[string]string
+	positional  []string
+	workspaceAt []string
 }
 
-func (e *Engine) walkShellScript(repoRoot, wd, script string, depth int, into *InputSet, proof *JobProof) string {
+func (e *Engine) walkShellScript(repoRoot, wd, script string, depth int, into *InputSet, proof *JobProof, workspaceAt []string) string {
+	return e.walkShellScriptFile(repoRoot, wd, "", script, depth, into, proof, nil, nil, workspaceAt)
+}
+
+func (e *Engine) walkShellScriptFile(repoRoot, wd, scriptRel, script string, depth int, into *InputSet, proof *JobProof, positional []string, parentEnv map[string]string, workspaceAt []string) string {
 	script = strings.TrimSpace(script)
 	if script == "" {
 		return ""
@@ -44,7 +53,10 @@ func (e *Engine) walkShellScript(repoRoot, wd, script string, depth int, into *I
 	if err != nil {
 		return truncateOpaque(script)
 	}
-	sw := &shellWalk{e: e, repoRoot: repoRoot, into: into, proof: proof, depth: depth, funcs: map[string]struct{}{}}
+	sw := &shellWalk{e: e, repoRoot: repoRoot, into: into, proof: proof, depth: depth, funcs: map[string][]*syntax.Stmt{}, scriptRel: scriptRel, env: cloneShellEnv(parentEnv), positional: []string{""}, workspaceAt: workspaceAt}
+	if len(positional) > 0 {
+		sw.setPositional(positional)
+	}
 	sw.collectFuncs(file.Stmts)
 	start := wdSet{wd: {}}
 	for _, st := range file.Stmts {
@@ -62,7 +74,9 @@ func (sw *shellWalk) collectFuncs(stmts []*syntax.Stmt) {
 			continue
 		}
 		if fd, ok := st.Cmd.(*syntax.FuncDecl); ok && fd.Name != nil {
-			sw.funcs[fd.Name.Value] = struct{}{}
+			if blk, ok := fd.Body.Cmd.(*syntax.Block); ok {
+				sw.funcs[fd.Name.Value] = blk.Stmts
+			}
 		}
 	}
 }
@@ -128,11 +142,7 @@ func (sw *shellWalk) command(cmd syntax.Command, wds wdSet) wdSet {
 	case *syntax.Block:
 		return sw.stmts(c.Stmts, wds.copy())
 	case *syntax.CaseClause:
-		out := wds.copy()
-		for _, item := range c.Items {
-			out.merge(sw.stmts(item.Stmts, wds.copy()))
-		}
-		return out
+		return sw.caseClause(c, wds)
 	case *syntax.TestClause:
 		sw.walkTestExpr(c.X, wds)
 		return wds
@@ -154,6 +164,18 @@ func (sw *shellWalk) command(cmd syntax.Command, wds wdSet) wdSet {
 }
 
 func (sw *shellWalk) ifClause(c *syntax.IfClause, wds wdSet) wdSet {
+	if c == nil {
+		return wds
+	}
+	if truth, ok := sw.evalIfCondition(c.Cond, wds); ok {
+		if truth {
+			return sw.stmts(c.Then, wds.copy())
+		}
+		if c.Else != nil {
+			return sw.ifClause(c.Else, wds.copy())
+		}
+		return wds
+	}
 	out := wds.copy()
 	out.merge(sw.stmts(c.Cond, wds.copy()))
 	out.merge(sw.stmts(c.Then, wds.copy()))
@@ -217,11 +239,15 @@ func (sw *shellWalk) walkWordParts(w *syntax.Word, wds wdSet) {
 	for _, p := range w.Parts {
 		switch sub := p.(type) {
 		case *syntax.CmdSubst:
-			_ = sw.stmts(sub.Stmts, wds.copy())
+			if _, ok := sw.evalCmdSubst(sub, wds); !ok {
+				_ = sw.stmts(sub.Stmts, wds.copy())
+			}
 		case *syntax.DblQuoted:
 			for _, dp := range sub.Parts {
 				if cs, ok := dp.(*syntax.CmdSubst); ok {
-					_ = sw.stmts(cs.Stmts, wds.copy())
+					if _, ok := sw.evalCmdSubst(cs, wds); !ok {
+						_ = sw.stmts(cs.Stmts, wds.copy())
+					}
 				}
 			}
 		}
@@ -232,30 +258,126 @@ func (sw *shellWalk) callExpr(c *syntax.CallExpr, wds wdSet, nested bool) wdSet 
 	for _, a := range c.Args {
 		sw.walkWordParts(a, wds)
 	}
+	sw.captureAssigns(c.Assigns, wds)
 	for _, a := range c.Assigns {
-		if a.Value != nil {
-			sw.walkWordParts(a.Value, wds)
+		if a.Value == nil || a.Name == nil {
+			continue
 		}
+		if _, ok := sw.env[a.Name.Value]; ok {
+			continue
+		}
+		sw.walkWordParts(a.Value, wds)
 	}
 	if len(c.Args) == 0 && len(c.Assigns) > 0 {
 		return wds
 	}
 	argv := parseCallArgv(c)
+	for len(argv) > 0 && !argv[0].Dynamic && argv[0].Lit == "!" {
+		argv = argv[1:]
+	}
+	if expanded, ok := sw.expandAtCommand(argv); ok {
+		argv = expanded
+	}
+	for i := range argv {
+		if !argv[i].Dynamic || argv[i].Word == nil {
+			continue
+		}
+		if i == 0 {
+			if p, ok := sw.resolveExecutable(argv[i].Word, pickWD(wds)); ok {
+				argv[i] = ArgWord{Lit: p, Dynamic: false, Word: argv[i].Word}
+				continue
+			}
+			if s, ok := sw.expandWord(argv[i].Word, wds); ok {
+				argv[i] = ArgWord{Lit: s, Dynamic: false, Word: argv[i].Word}
+				continue
+			}
+			if commandVarUnset(argv[i].Word, sw) {
+				return wds
+			}
+			continue
+		}
+		if s, ok := sw.expandWord(argv[i].Word, wds); ok {
+			argv[i] = ArgWord{Lit: s, Dynamic: false, Word: argv[i].Word}
+		}
+	}
 	if len(argv) == 0 {
 		return sw.callExprPartial(c, wds)
 	}
 	name, nameErr := resolveCommandName(argv)
+	if nameErr != "" && len(argv) >= 2 {
+		sub := strings.ToLower(argv[1].Lit)
+		if (sub == "version" || sub == "--version") && argv[0].Word != nil {
+			if base, ok := literalBasenameFromWord(argv[0].Word); ok {
+				argv[0] = ArgWord{Lit: base, Dynamic: false, Word: argv[0].Word}
+				name, nameErr = resolveCommandName(argv)
+			}
+		}
+	}
 	if nameErr != "" {
+		if len(argv) >= 2 {
+			sub := strings.ToLower(argv[1].Lit)
+			if sub == "version" || sub == "--version" {
+				return wds
+			}
+			if sub == "verify-blob" || sub == "sign-blob" {
+				return wds
+			}
+		}
+		if len(argv) > 0 {
+			lit0 := normalizePathToken(argv[0].Lit)
+			if argv[0].Dynamic && argv[0].Word != nil {
+				if s, ok := sw.expandWord(argv[0].Word, wds); ok {
+					lit0 = normalizePathToken(s)
+				}
+			}
+			if isWorkspaceBinaryPath(lit0, sw.workspaceAt) {
+				sw.e.noteArgvRepoPaths(sw.repoRoot, wds, argv, c.Args, sw.into)
+				return wds
+			}
+		}
+		if argv[0].Dynamic && argv[0].Word != nil {
+			if s, ok := sw.expandWord(argv[0].Word, wds); ok {
+				s = normalizePathToken(s)
+				if strings.HasSuffix(s, ".sh") {
+					rel := resolveWD(sw.repoRoot, pickWD(wds), s)
+					if fileExists(sw.repoRoot, rel) {
+						sw.needsInputs = true
+						if op := sw.e.followScript(sw.repoRoot, pickWD(wds), s, sw.depth, sw.into, sw.funcs, argv[1:], sw.env, nil); op != "" {
+							sw.fail(op)
+						}
+						return wds
+					}
+				}
+			}
+		}
 		sw.fail(nameErr)
 		return wds
 	}
 	if name == "" {
 		return sw.callExprPartial(c, wds)
 	}
+	if name == "shift" {
+		n := 1
+		if len(argv) >= 2 && !argv[1].Dynamic {
+			if v, err := strconv.Atoi(argv[1].Lit); err == nil && v > 0 {
+				n = v
+			}
+		}
+		if len(sw.positional) > n {
+			sw.positional = append([]string{sw.positional[0]}, sw.positional[1+n:]...)
+		} else {
+			sw.positional = []string{""}
+		}
+		return wds
+	}
 	if len(c.Args) > 0 {
 		if lit := litWord(c.Args[0]); lit != "" {
-			if _, ok := sw.funcs[lit]; ok {
-				return wds
+			if stmts, ok := sw.funcs[lit]; ok {
+				saved := sw.positional
+				sw.setPositional(positionalArgsFromArgv(sw.repoRoot, pickWD(wds), argv[1:]))
+				out := sw.stmts(stmts, wds)
+				sw.positional = saved
+				return out
 			}
 		}
 	}
@@ -277,8 +399,12 @@ func (sw *shellWalk) callExpr(c *syntax.CallExpr, wds wdSet, nested bool) wdSet 
 		}
 		return wds
 	}
-	if _, ok := sw.funcs[name]; ok {
-		return wds
+	if stmts, ok := sw.funcs[name]; ok {
+		saved := sw.positional
+		sw.setPositional(positionalArgsFromArgv(sw.repoRoot, pickWD(wds), argv[1:]))
+		out := sw.stmts(stmts, wds)
+		sw.positional = saved
+		return out
 	}
 	if name == "find" {
 		sw.needsInputs = true
@@ -295,7 +421,14 @@ func (sw *shellWalk) callExpr(c *syntax.CallExpr, wds wdSet, nested bool) wdSet 
 	}
 	if name == "cd" && len(argv) >= 2 {
 		if argv[1].Dynamic {
-			if !outsideRepoLiteralPrefix(argv[1].Word) {
+			if p, ok := sw.expandWord(argv[1].Word, wds); ok {
+				out := wdSet{}
+				for wd := range wds {
+					out[resolveWD(sw.repoRoot, wd, p)] = struct{}{}
+				}
+				return out
+			}
+			if !dynamicArgIsBounded(argv[1].Word, sw.env) {
 				sw.fail(truncateOpaque("dynamic argument to cd"))
 				return wds
 			}
@@ -315,6 +448,13 @@ func (sw *shellWalk) callExpr(c *syntax.CallExpr, wds wdSet, nested bool) wdSet 
 		if len(argv) < 2 {
 			return wds
 		}
+		if argv[1].Dynamic && argv[1].Word != nil {
+			if p, ok := sw.expandWord(argv[1].Word, wds); ok {
+				argv[1] = ArgWord{Lit: p, Dynamic: false, Word: argv[1].Word}
+			} else if p, ok := sw.resolveExecutable(argv[1].Word, pickWD(wds)); ok {
+				argv[1] = ArgWord{Lit: p, Dynamic: false, Word: argv[1].Word}
+			}
+		}
 		if argv[1].Dynamic {
 			if outsideRepoLiteralPrefix(argv[1].Word) {
 				return wds
@@ -328,10 +468,13 @@ func (sw *shellWalk) callExpr(c *syntax.CallExpr, wds wdSet, nested bool) wdSet 
 			sw.fail(fmt.Sprintf("source %q not in repo", argv[1].Lit))
 			return wds
 		}
-		sw.e.followScript(sw.repoRoot, pickWD(wds), argv[1].Lit, sw.depth, sw.into)
+		if op := sw.e.followScript(sw.repoRoot, pickWD(wds), argv[1].Lit, sw.depth, sw.into, sw.funcs, nil, sw.env, nil); op != "" {
+			sw.fail(op)
+		}
 		return wds
 	}
-	if op := sw.e.analyzeSimpleCommand(sw.repoRoot, wds, argv, c.Args, sw.into, &sw.needsInputs, sw.depth); op != "" {
+	pos := positionalFromSlice(sw.positional)
+	if op := sw.e.analyzeSimpleCommand(sw.repoRoot, wds, argv, c.Args, sw.into, &sw.needsInputs, sw.depth, sw.funcs, sw.env, sw.scriptRel, pos); op != "" {
 		sw.fail(op)
 	}
 	return wds
@@ -403,7 +546,8 @@ func (e *Engine) expandShellGlob(repoRoot, wd, pattern string, into *InputSet) {
 
 func (sw *shellWalk) callExprPartial(c *syntax.CallExpr, wds wdSet) wdSet {
 	argv := parseCallArgv(c)
-	if op := sw.e.analyzeSimpleCommand(sw.repoRoot, wds, argv, c.Args, sw.into, &sw.needsInputs, sw.depth); op != "" {
+	pos := positionalFromSlice(sw.positional)
+	if op := sw.e.analyzeSimpleCommand(sw.repoRoot, wds, argv, c.Args, sw.into, &sw.needsInputs, sw.depth, sw.funcs, sw.env, sw.scriptRel, pos); op != "" {
 		sw.fail(op)
 	}
 	return wds

@@ -63,12 +63,15 @@ func patchFile(t *testing.T, dir, rel, content string) {
 
 func runPlanSelect(t *testing.T, dir string, args ...string) map[string]bool {
 	t.Helper()
+	cleanCIEnv(t)
 	t.Chdir(dir)
 	outDir := filepath.Join(t.TempDir(), "plan")
 	all := append([]string{
 		"--config", ".circleci/continue.yml",
 		"--workflow", "ci",
 		"--mode", "select",
+		"--branch", "feature/plan-regression",
+		"--default-branch", "main",
 		"--mandatory", "security-scan",
 		"--full-run-paths", ".circleci/**",
 		"--report-dir", outDir,
@@ -91,6 +94,7 @@ func runPlanSelect(t *testing.T, dir string, args ...string) map[string]bool {
 
 func runPlanDemo(t *testing.T, dir string, base, head string) map[string]bool {
 	t.Helper()
+	cleanCIEnv(t)
 	t.Chdir(dir)
 	outDir := filepath.Join(t.TempDir(), "plan")
 	args := []string{
@@ -98,6 +102,8 @@ func runPlanDemo(t *testing.T, dir string, base, head string) map[string]bool {
 		"--config", "examples/demo/.circleci/continue.yml",
 		"--workflow", "demo",
 		"--mode", "select",
+		"--branch", "feature/plan-regression",
+		"--default-branch", "main",
 		"--base", base,
 		"--head", head,
 		"--report-dir", outDir,
@@ -170,6 +176,19 @@ func jobList(runs map[string]bool) string {
 	}
 	sort.Strings(names)
 	return strings.Join(names, ", ")
+}
+
+func TestPlanRegressionDogfoodReleaseScript(t *testing.T) {
+	root := moduleRoot(t)
+	wt, base := planRegressionWorktree(t, root)
+	before, err := os.ReadFile(filepath.Join(wt, "internal/report/report.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	patchFile(t, wt, "internal/report/report.go", string(before)+"\n// plan regression\n")
+	head := difftest.CommitFileInDir(t, wt, "internal/report/report.go", "touch report.go")
+	runs := runPlanSelect(t, wt, "--base", base, "--head", head)
+	wantJobs(t, runs, []string{"release-dry-run", "go-test", "go-lint", "security-scan"}, nil)
 }
 
 func TestPlanRegressionDogfoodGoDiff(t *testing.T) {
@@ -245,7 +264,7 @@ func TestPlanRegressionDogfoodRootPlusGoLint(t *testing.T) {
 	patchFile(t, wt, "orb/src/@orb.yml", "# plan regression touch\n")
 	head := difftest.CommitFileInDir(t, wt, "orb/src/@orb.yml", "touch orb metadata")
 	runs := runPlanSelect(t, wt, "--base", base, "--head", head)
-	wantJobs(t, runs, []string{"go-lint", "security-scan"}, nil)
+	wantJobs(t, runs, []string{"go-lint", "orb-validate", "security-scan"}, nil)
 }
 
 func TestPlanRegressionDemoDocs(t *testing.T) {

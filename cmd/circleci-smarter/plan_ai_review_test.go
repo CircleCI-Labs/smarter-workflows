@@ -40,6 +40,7 @@ workflows:
 `
 
 func TestPlanAIReviewAddsJobAndClosure(t *testing.T) {
+	cleanCIEnv(t)
 	t.Setenv("ANTHROPIC_API_KEY", "test-key")
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -86,6 +87,7 @@ func TestPlanAIReviewAddsJobAndClosure(t *testing.T) {
 }
 
 func TestPlanAIReviewShadowAndNoKey(t *testing.T) {
+	cleanCIEnv(t)
 	t.Setenv("ANTHROPIC_API_KEY", "")
 	t.Setenv("ANTHROPIC_AUTH_TOKEN", "")
 	c := newCLIRepoWith(t, cliConfig)
@@ -101,6 +103,7 @@ func TestPlanAIReviewShadowAndNoKey(t *testing.T) {
 }
 
 func TestPlanAIReviewRemovalIgnored(t *testing.T) {
+	cleanCIEnv(t)
 	t.Setenv("ANTHROPIC_API_KEY", "k")
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

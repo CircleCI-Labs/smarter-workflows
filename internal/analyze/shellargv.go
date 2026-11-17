@@ -40,6 +40,45 @@ func parseArgWord(w *syntax.Word) ArgWord {
 	return ArgWord{Dynamic: true, Word: w}
 }
 
+func wordTemplateLit(w *syntax.Word) string {
+	if w == nil {
+		return ""
+	}
+	var b strings.Builder
+	for _, p := range w.Parts {
+		switch x := p.(type) {
+		case *syntax.Lit:
+			b.WriteString(x.Value)
+		case *syntax.SglQuoted:
+			b.WriteString(x.Value)
+		case *syntax.DblQuoted:
+			for _, dp := range x.Parts {
+				switch d := dp.(type) {
+				case *syntax.Lit:
+					b.WriteString(d.Value)
+				case *syntax.SglQuoted:
+					b.WriteString(d.Value)
+				case *syntax.ParamExp:
+					b.WriteByte('$')
+					if d.Param != nil {
+						b.WriteString(d.Param.Value)
+					}
+				default:
+					b.WriteString("?")
+				}
+			}
+		case *syntax.ParamExp:
+			b.WriteByte('$')
+			if x.Param != nil {
+				b.WriteString(x.Param.Value)
+			}
+		default:
+			b.WriteString("?")
+		}
+	}
+	return b.String()
+}
+
 func fullLiteralWord(w *syntax.Word) string {
 	if w == nil || wordHasExpansion(w) {
 		return ""
@@ -118,6 +157,9 @@ func resolveCommandName(argv []ArgWord) (name string, err string) {
 	}
 	base, ok := literalBasenameFromWord(argv[0].Word)
 	if !ok {
+		return "", "command name is not literal"
+	}
+	if strings.HasSuffix(strings.ToLower(base), ".sh") {
 		return "", "command name is not literal"
 	}
 	return strings.ToLower(strings.TrimPrefix(base, "./")), ""
@@ -323,13 +365,63 @@ var goValueFlags = map[string]struct{}{
 
 var understoodDynamicBuiltins = map[string]struct{}{
 	"echo": {}, "printf": {}, "mkdir": {}, "export": {}, "test": {}, "[": {},
+	"mktemp": {}, "trap": {},
 }
 
 var fileReadingBuiltins = map[string]struct{}{
 	"cat": {}, "cp": {}, "source": {}, ".": {}, "tar": {}, "unzip": {}, "jq": {},
 }
 
-func dynamicArgOpaque(repoRoot, name string, argv []ArgWord) string {
+func argvHasDynamic(argv []ArgWord) bool {
+	for _, a := range argv {
+		if a.Dynamic {
+			return true
+		}
+	}
+	return false
+}
+
+// dynamicArgIsBounded is true when a dynamic word is not treated as a possible repo path (temp, HOME, known shell var, etc.).
+func dynamicArgIsBounded(w *syntax.Word, env map[string]string) bool {
+	if w == nil {
+		return false
+	}
+	if outsideRepoLiteralPrefix(w) || wordReferencesOutsideVar(w) {
+		return true
+	}
+	names := shellParamNames(w)
+	if len(names) == 0 {
+		return false
+	}
+	for _, n := range names {
+		switch n {
+		case "1", "2", "3", "4", "5", "6", "7", "8", "9", "@", "*", "#", "?", "$", "!":
+			return false
+		}
+		if len(n) == 1 {
+			return false
+		}
+		if _, ok := env[n]; ok {
+			return true
+		}
+	}
+	return true
+}
+
+// argvHasOpaqueDynamic is true when some dynamic argument might name a repo path we cannot bound.
+func argvHasOpaqueDynamic(argv []ArgWord, env map[string]string) bool {
+	for _, a := range argv {
+		if !a.Dynamic || a.Word == nil {
+			continue
+		}
+		if !dynamicArgIsBounded(a.Word, env) {
+			return true
+		}
+	}
+	return false
+}
+
+func dynamicArgOpaque(repoRoot, name string, argv []ArgWord, env map[string]string) string {
 	if len(argv) == 0 {
 		return ""
 	}
@@ -353,6 +445,9 @@ func dynamicArgOpaque(repoRoot, name string, argv []ArgWord) string {
 			continue
 		}
 		if _, ok := fileReadingBuiltins[name]; ok {
+			if dynamicArgIsBounded(a.Word, env) {
+				continue
+			}
 			return fmt.Sprintf("dynamic argument to %s", name)
 		}
 		if toolDynamicOpaque(name, argv, i) {

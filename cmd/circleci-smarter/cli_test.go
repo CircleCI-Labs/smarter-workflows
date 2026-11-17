@@ -17,7 +17,7 @@ import (
 	"github.com/CircleCI-Labs/smarter-workflows/internal/report"
 )
 
-// cleanEnv keeps the tests independent of the CI they may run in.
+// cleanEnv clears CircleCI branch/tag env used by plan defaults in cli_test repos.
 func cleanEnv(t *testing.T) {
 	t.Helper()
 	for _, k := range []string{"CIRCLE_BRANCH", "CIRCLE_TAG", "CIRCLE_SHA1", "CIRCLE_PROJECT_ID", "CIRCLE_BUILD_NUM", "CIRCLE_REPOSITORY_URL", "CIRCLE_PULL_REQUEST"} {

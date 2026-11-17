@@ -1,6 +1,7 @@
 package analyze
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 )
@@ -24,26 +25,82 @@ var downloadCommands = map[string]struct{}{
 
 // analyzeRunCommand parses a run step command. It returns a non-empty opaque reason when the step cannot be understood.
 func (e *Engine) analyzeRunCommand(repoRoot, wd, cmd string, into *InputSet, proof *JobProof) string {
-	if strings.TrimSpace(cmd) == "" {
+	cmd = strings.TrimSpace(cmd)
+	if cmd == "" {
 		return ""
 	}
-	op := e.walkShellScript(repoRoot, wd, cmd, 0, into, proof)
+	if script, args, ok := parseScriptStepCommand(cmd); ok {
+		rel := resolveWD(repoRoot, wd, script)
+		if !fileExists(repoRoot, rel) {
+			return fmt.Sprintf("script %q not found", script)
+		}
+		if proof != nil {
+			proof.requiresRepoInputs = true
+		}
+		if op := e.followScript(repoRoot, wd, script, 0, into, nil, args, nil, proof); op != "" {
+			return op
+		}
+		return ""
+	}
+	if script, ok := stepCommandIsScript(cmd); ok {
+		rel := resolveWD(repoRoot, wd, script)
+		if !fileExists(repoRoot, rel) {
+			return fmt.Sprintf("script %q not found", script)
+		}
+		if proof != nil {
+			proof.requiresRepoInputs = true
+		}
+		if op := e.followScript(repoRoot, wd, script, 0, into, nil, nil, nil, proof); op != "" {
+			return op
+		}
+		return ""
+	}
+	op := e.walkShellScript(repoRoot, wd, cmd, 0, into, proof, e.jobWorkspaceAt)
 	e.scanLangCommands(repoRoot, wd, cmd, into)
 	return op
+}
+
+func stepCommandIsScript(cmd string) (string, bool) {
+	cmd = strings.TrimSpace(cmd)
+	if cmd == "" || strings.Contains(cmd, "\n") {
+		return "", false
+	}
+	if strings.ContainsAny(cmd, "|&;") {
+		return "", false
+	}
+	if m := bareScriptRe.FindStringSubmatch(cmd); len(m) > 1 {
+		return m[1], true
+	}
+	if m := dotSlashExecRe.FindStringSubmatch(cmd); len(m) > 1 {
+		return strings.Trim(m[1], `"'`), true
+	}
+	return "", false
 }
 
 func (into *InputSet) hasInputs() bool {
 	return len(into.files) > 0 || len(into.dirs) > 0
 }
 
-func (e *Engine) scanGoBuildLineFromArgv(repoRoot, wd string, argv []ArgWord, into *InputSet) {
+func (e *Engine) scanGoBuildLineFromArgv(repoRoot, wd string, argv []ArgWord, into *InputSet, env map[string]string, scriptRel string) {
 	into.addVerifiedFile(repoRoot, wd, "go.mod", InputNote{Signal: SignalGoImports, Detail: "go build"})
 	into.addVerifiedFile(repoRoot, wd, "go.sum", InputNote{Signal: SignalGoImports, Detail: "go build"})
+	sw := &shellWalk{repoRoot: repoRoot, env: env, scriptRel: scriptRel}
+	if sw.env == nil {
+		sw.env = map[string]string{}
+	}
+	wds := wdSet{wd: {}}
 	for i := len(argv) - 1; i >= 0; i-- {
-		if argv[i].Dynamic {
+		var f string
+		if !argv[i].Dynamic {
+			f = strings.Trim(argv[i].Lit, `"'`)
+		} else if argv[i].Word != nil {
+			if s, ok := sw.expandWord(argv[i].Word, wds); ok {
+				f = strings.Trim(s, `"'`)
+			}
+		}
+		if f == "" {
 			continue
 		}
-		f := strings.Trim(argv[i].Lit, `"'`)
 		if f == "." || strings.HasPrefix(f, "./") || strings.Contains(f, "/") {
 			e.addGoTarget(repoRoot, wd, f, into)
 			return

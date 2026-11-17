@@ -39,9 +39,10 @@ type LLMResultFile struct {
 
 // Correction describes a history-driven path addition.
 type Correction struct {
-	Job    string `json:"job"`
-	Path   string `json:"path"`
-	Commit string `json:"commit"`
+	Job      string `json:"job"`
+	Path     string `json:"path"`
+	Commit   string `json:"commit"`
+	Pipeline string `json:"pipeline,omitempty"`
 }
 
 // Build runs static inference (and optional LLM merge and history correction).
@@ -199,7 +200,12 @@ func applyHistory(repoRoot, historyPath string, jobs map[string]*InputSet) ([]Co
 				}
 				unionPath(repoRoot, in, ch.Path, InputNote{Signal: SignalHistory, Detail: rec.Commit})
 				unionPath(repoRoot, in, pathDir(ch.Path), InputNote{Signal: SignalHistory, Detail: rec.Commit})
-				out = append(out, Correction{Job: j.Name, Path: ch.Path, Commit: rec.Commit})
+				out = append(out, Correction{
+					Job:      j.Name,
+					Path:     ch.Path,
+					Commit:   rec.Commit,
+					Pipeline: rec.Commit,
+				})
 			}
 		}
 	}

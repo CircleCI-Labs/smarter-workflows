@@ -3,7 +3,7 @@
 # The expectation is full, full:TEXT, blocked, or the exact jobs that run besides
 # smarter-gate. The matrix of worker-test always runs: v0.1 does not prune matrices.
 #
-# Expectations recomputed with scripts/e2e/expect.sh (v0.3 analyze at origin/main).
+# Expectations from scripts/e2e/expect.sh (plan with --branch scenario/…, --base, --head).
 # worker-test expectations use CircleCI matrix names worker-test-3.12.16 and worker-test-3.13.18.
 docs-only	docs-check security-scan worker-test-3.12.16 worker-test-3.13.18	printf '\nRun every check from the directory of its service.\n' >> examples/demo/docs/runbook.md	docs: remind where the checks run
 api-only	api-test build e2e lint security-scan worker-test-3.12.16 worker-test-3.13.18	sed -i 's|^// newMux returns the routes of the api\.$|// newMux returns the routes of the api, one per endpoint.|' examples/demo/services/api/handler.go	refactor(api): reword a comment

@@ -387,7 +387,7 @@ run_scenario() {
       printf '%s,%s,%s,%s,"%s",%s,%s,%s\n' "$name" "$tgt" "$run" "${pnum:-}" "$jobs_csv" "$job_sec" "$wall_sec" "$plan_sec" >> "$csv"
     fi
   }
-  fail() { problems+=("$1"); }
+  fail() { problems+=("$1"); return 0; }
 
   if [ "$repeat" -gt 1 ]; then
     echo "=== $tgt/$name (run $run/$repeat): expect $expect"
@@ -636,10 +636,20 @@ run_scenario() {
           if [ -n "$plan" ] && [ "$plan_full" = true ]; then
             fail "the plan is a full run ($plan_reason), want a selection"
           fi
-          if [ -n "$plan" ] && [ "$(jq -r '.map_revision' "$plan")" != "$(jq -r '.base' "$plan")" ]; then
-            # The base of a scenario is main, whose pipeline built this map: any
-            # other map is a stale one, and what it skips proves nothing.
-            fail "the plan used the impact map of $(jq -r '.map_revision | .[0:9]' "$plan"), not the one of its base $(jq -r '.base | .[0:9]' "$plan")"
+          if [ -n "$plan" ]; then
+            local map_rev plan_head plan_base
+            map_rev=$(jq -r '.map_revision // ""' "$plan")
+            plan_head=$(jq -r '.head // ""' "$plan")
+            plan_base=$(jq -r '.base // ""' "$plan")
+            if [ -n "$map_rev" ]; then
+              # plan.json has no map_source field: inline analyze sets map_revision to head;
+              # --map loads a catalog built at the diff base (tracing-era setups).
+              if [ -n "$plan_head" ] && [ "$map_rev" = "$plan_head" ]; then
+                [ "$map_rev" = "$sha" ] || fail "inline map_revision is ${map_rev:0:9}, want the scenario commit ${sha:0:9}"
+              else
+                [ "$map_rev" = "$plan_base" ] || fail "the plan used the impact map of ${map_rev:0:9}, not the one of its base ${plan_base:0:9}"
+              fi
+            fi
           fi
           expected=$(tr ' ' '\n' <<< "$expect" | grep -v '^$' | sort -u)
           local missing unexpected j

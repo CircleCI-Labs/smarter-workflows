@@ -14,10 +14,11 @@ var (
 )
 
 var benignCommands = map[string]struct{}{
-	"echo": {}, "printf": {}, "cd": {}, "export": {}, "set": {}, "mkdir": {},
+	"echo": {}, "printf": {}, "cd": {}, "export": {}, "set": {}, "unset": {}, "mkdir": {}, ":": {},
 	"mv": {}, "rm": {}, "ls": {}, "test": {}, "true": {},
-	"sleep": {}, "then": {}, "else": {}, "fi": {}, "do": {}, "done": {}, "esac": {},
-	"exit": {}, "continue": {}, "break": {}, "sort": {}, "wc": {}, "tail": {}, "tr": {},
+	"sleep": {}, "seq": {}, "read": {}, "then": {}, "else": {}, "fi": {}, "do": {}, "done": {}, "esac": {},
+	"exit": {}, "return": {}, "continue": {}, "break": {}, "sort": {}, "wc": {}, "tail": {}, "tr": {},
+	"dirname": {}, "pwd": {}, "mktemp": {}, "trap": {}, "cut": {}, "shift": {}, "od": {}, "openssl": {},
 	"[": {}, "circleci-smarter": {}, "find": {}, "grep": {}, "head": {}, "sed": {},
 }
 
