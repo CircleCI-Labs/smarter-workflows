@@ -9,6 +9,7 @@ import (
 )
 
 func TestCLI_BacktestStrictOnWarning(t *testing.T) {
+	cleanCIEnv(t)
 	dir := filepath.Join("..", "..", "internal", "backtest", "testdata", "param-gated")
 	params := filepath.Join(t.TempDir(), "params.json")
 	if err := os.WriteFile(params, []byte(`{"run-ci":false}`), 0o644); err != nil {
@@ -31,6 +32,7 @@ func TestCLI_BacktestStrictOnWarning(t *testing.T) {
 }
 
 func TestCLI_BacktestGolden(t *testing.T) {
+	cleanCIEnv(t)
 	dir := filepath.Join("..", "..", "internal", "backtest", "testdata")
 	args := []string{
 		"--history", filepath.Join(dir, "history.json"),

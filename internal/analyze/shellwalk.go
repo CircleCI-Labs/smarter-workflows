@@ -32,10 +32,16 @@ type shellWalk struct {
 	depth       int
 	needsInputs bool
 	opaque      string
-	funcs       map[string]struct{}
+	funcs       map[string][]*syntax.Stmt
+	scriptRel   string
+	env         map[string]string
 }
 
 func (e *Engine) walkShellScript(repoRoot, wd, script string, depth int, into *InputSet, proof *JobProof) string {
+	return e.walkShellScriptFile(repoRoot, wd, "", script, depth, into, proof)
+}
+
+func (e *Engine) walkShellScriptFile(repoRoot, wd, scriptRel, script string, depth int, into *InputSet, proof *JobProof) string {
 	script = strings.TrimSpace(script)
 	if script == "" {
 		return ""
@@ -44,7 +50,7 @@ func (e *Engine) walkShellScript(repoRoot, wd, script string, depth int, into *I
 	if err != nil {
 		return truncateOpaque(script)
 	}
-	sw := &shellWalk{e: e, repoRoot: repoRoot, into: into, proof: proof, depth: depth, funcs: map[string]struct{}{}}
+	sw := &shellWalk{e: e, repoRoot: repoRoot, into: into, proof: proof, depth: depth, funcs: map[string][]*syntax.Stmt{}, scriptRel: scriptRel, env: map[string]string{}}
 	sw.collectFuncs(file.Stmts)
 	start := wdSet{wd: {}}
 	for _, st := range file.Stmts {
@@ -62,7 +68,9 @@ func (sw *shellWalk) collectFuncs(stmts []*syntax.Stmt) {
 			continue
 		}
 		if fd, ok := st.Cmd.(*syntax.FuncDecl); ok && fd.Name != nil {
-			sw.funcs[fd.Name.Value] = struct{}{}
+			if blk, ok := fd.Body.Cmd.(*syntax.Block); ok {
+				sw.funcs[fd.Name.Value] = blk.Stmts
+			}
 		}
 	}
 }
@@ -232,15 +240,25 @@ func (sw *shellWalk) callExpr(c *syntax.CallExpr, wds wdSet, nested bool) wdSet 
 	for _, a := range c.Args {
 		sw.walkWordParts(a, wds)
 	}
+	sw.captureAssigns(c.Assigns, wds)
 	for _, a := range c.Assigns {
-		if a.Value != nil {
-			sw.walkWordParts(a.Value, wds)
+		if a.Value == nil || a.Name == nil {
+			continue
 		}
+		if _, ok := sw.env[a.Name.Value]; ok {
+			continue
+		}
+		sw.walkWordParts(a.Value, wds)
 	}
 	if len(c.Args) == 0 && len(c.Assigns) > 0 {
 		return wds
 	}
 	argv := parseCallArgv(c)
+	if len(argv) > 0 && argv[0].Dynamic && argv[0].Word != nil {
+		if p, ok := sw.resolveExecutable(argv[0].Word, pickWD(wds)); ok {
+			argv[0] = ArgWord{Lit: p, Dynamic: false, Word: argv[0].Word}
+		}
+	}
 	if len(argv) == 0 {
 		return sw.callExprPartial(c, wds)
 	}
@@ -254,8 +272,8 @@ func (sw *shellWalk) callExpr(c *syntax.CallExpr, wds wdSet, nested bool) wdSet 
 	}
 	if len(c.Args) > 0 {
 		if lit := litWord(c.Args[0]); lit != "" {
-			if _, ok := sw.funcs[lit]; ok {
-				return wds
+			if stmts, ok := sw.funcs[lit]; ok {
+				return sw.stmts(stmts, wds)
 			}
 		}
 	}
@@ -277,8 +295,8 @@ func (sw *shellWalk) callExpr(c *syntax.CallExpr, wds wdSet, nested bool) wdSet 
 		}
 		return wds
 	}
-	if _, ok := sw.funcs[name]; ok {
-		return wds
+	if stmts, ok := sw.funcs[name]; ok {
+		return sw.stmts(stmts, wds)
 	}
 	if name == "find" {
 		sw.needsInputs = true
@@ -295,6 +313,13 @@ func (sw *shellWalk) callExpr(c *syntax.CallExpr, wds wdSet, nested bool) wdSet 
 	}
 	if name == "cd" && len(argv) >= 2 {
 		if argv[1].Dynamic {
+			if p, ok := sw.expandWord(argv[1].Word, wds); ok {
+				out := wdSet{}
+				for wd := range wds {
+					out[resolveWD(sw.repoRoot, wd, p)] = struct{}{}
+				}
+				return out
+			}
 			if !outsideRepoLiteralPrefix(argv[1].Word) {
 				sw.fail(truncateOpaque("dynamic argument to cd"))
 				return wds
@@ -315,6 +340,11 @@ func (sw *shellWalk) callExpr(c *syntax.CallExpr, wds wdSet, nested bool) wdSet 
 		if len(argv) < 2 {
 			return wds
 		}
+		if argv[1].Dynamic && argv[1].Word != nil {
+			if p, ok := sw.resolveExecutable(argv[1].Word, pickWD(wds)); ok {
+				argv[1] = ArgWord{Lit: p, Dynamic: false, Word: argv[1].Word}
+			}
+		}
 		if argv[1].Dynamic {
 			if outsideRepoLiteralPrefix(argv[1].Word) {
 				return wds
@@ -328,10 +358,10 @@ func (sw *shellWalk) callExpr(c *syntax.CallExpr, wds wdSet, nested bool) wdSet 
 			sw.fail(fmt.Sprintf("source %q not in repo", argv[1].Lit))
 			return wds
 		}
-		sw.e.followScript(sw.repoRoot, pickWD(wds), argv[1].Lit, sw.depth, sw.into)
+		sw.e.followScript(sw.repoRoot, pickWD(wds), argv[1].Lit, sw.depth, sw.into, sw.funcs)
 		return wds
 	}
-	if op := sw.e.analyzeSimpleCommand(sw.repoRoot, wds, argv, c.Args, sw.into, &sw.needsInputs, sw.depth); op != "" {
+	if op := sw.e.analyzeSimpleCommand(sw.repoRoot, wds, argv, c.Args, sw.into, &sw.needsInputs, sw.depth, sw.funcs, sw.env, sw.scriptRel); op != "" {
 		sw.fail(op)
 	}
 	return wds
@@ -403,7 +433,7 @@ func (e *Engine) expandShellGlob(repoRoot, wd, pattern string, into *InputSet) {
 
 func (sw *shellWalk) callExprPartial(c *syntax.CallExpr, wds wdSet) wdSet {
 	argv := parseCallArgv(c)
-	if op := sw.e.analyzeSimpleCommand(sw.repoRoot, wds, argv, c.Args, sw.into, &sw.needsInputs, sw.depth); op != "" {
+	if op := sw.e.analyzeSimpleCommand(sw.repoRoot, wds, argv, c.Args, sw.into, &sw.needsInputs, sw.depth, sw.funcs, sw.env, sw.scriptRel); op != "" {
 		sw.fail(op)
 	}
 	return wds

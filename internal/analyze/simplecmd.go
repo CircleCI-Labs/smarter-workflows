@@ -22,7 +22,7 @@ func (into *InputSet) addVerifiedPathOrDir(repoRoot, wd, lit string) {
 	}
 }
 
-func (e *Engine) analyzeSimpleCommand(repoRoot string, wds wdSet, argv []ArgWord, args []*syntax.Word, into *InputSet, needsInputs *bool, depth int) string {
+func (e *Engine) analyzeSimpleCommand(repoRoot string, wds wdSet, argv []ArgWord, args []*syntax.Word, into *InputSet, needsInputs *bool, depth int, funcs map[string][]*syntax.Stmt, env map[string]string, scriptRel string) string {
 	name, nameErr := resolveCommandName(argv)
 	if nameErr != "" {
 		return nameErr
@@ -42,13 +42,13 @@ func (e *Engine) analyzeSimpleCommand(repoRoot string, wds wdSet, argv []ArgWord
 	seg := argvSeg(argv)
 	litSeg := strings.Join(litArgv, " ")
 	wd := pickWD(wds)
-	for w := range wds {
-		e.noteLiteralWords(repoRoot, w, args, into)
-	}
 	if bashProcessSubstitution(litArgv) {
 		return truncateOpaque(seg)
 	}
 	if name == "go" && len(litArgv) >= 2 && litArgv[1] == "env" {
+		return ""
+	}
+	if name == "dirname" || name == "pwd" {
 		return ""
 	}
 	if isVersionOnlyCommand(name, litArgv, seg) {
@@ -73,7 +73,7 @@ func (e *Engine) analyzeSimpleCommand(repoRoot string, wds wdSet, argv []ArgWord
 	if goBuildLineRe.MatchString(litSeg) {
 		*needsInputs = true
 		for w := range wds {
-			e.scanGoBuildLineFromArgv(repoRoot, w, argv, into)
+			e.scanGoBuildLineFromArgv(repoRoot, w, argv, into, env, scriptRel)
 		}
 		return ""
 	}
@@ -98,11 +98,14 @@ func (e *Engine) analyzeSimpleCommand(repoRoot string, wds wdSet, argv []ArgWord
 			return fmt.Sprintf("script %q not found", script)
 		}
 		before := into.hasInputs()
-		e.followScript(repoRoot, wd, script, depth, into)
+		e.followScript(repoRoot, wd, script, depth, into, funcs)
 		if !into.hasInputs() && !before {
 			return fmt.Sprintf("script %q produced no inputs", script)
 		}
 		return ""
+	}
+	for w := range wds {
+		e.noteLiteralWords(repoRoot, w, args, into)
 	}
 	if name == "[" || name == "test" {
 		return ""
@@ -127,7 +130,7 @@ func bashProcessSubstitution(argv []string) bool {
 func isVersionOnlyCommand(name string, argv []string, seg string) bool {
 	low := strings.ToLower(seg)
 	switch name {
-	case "circleci", "shellcheck", "gofmt", "jq", "yamllint", "hugo", "lychee", "go":
+	case "circleci", "shellcheck", "gofmt", "jq", "yamllint", "hugo", "lychee", "go", "gh", "cosign":
 		if strings.Contains(low, "--version") || strings.HasSuffix(low, " version") || strings.Contains(low, "--help") {
 			return true
 		}
@@ -166,7 +169,7 @@ func scriptArgv(name string, argv []string, seg string) (string, bool) {
 	if (name == "sh" || name == "bash") && len(argv) >= 2 {
 		return argv[1], true
 	}
-	if strings.HasSuffix(name, ".sh") {
+	if strings.HasSuffix(name, ".sh") && len(argv) > 0 && argv[0] != "" {
 		return argv[0], true
 	}
 	return "", false

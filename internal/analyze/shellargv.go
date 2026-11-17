@@ -120,6 +120,9 @@ func resolveCommandName(argv []ArgWord) (name string, err string) {
 	if !ok {
 		return "", "command name is not literal"
 	}
+	if strings.HasSuffix(strings.ToLower(base), ".sh") {
+		return "", "command name is not literal"
+	}
 	return strings.ToLower(strings.TrimPrefix(base, "./")), ""
 }
 
@@ -323,6 +326,7 @@ var goValueFlags = map[string]struct{}{
 
 var understoodDynamicBuiltins = map[string]struct{}{
 	"echo": {}, "printf": {}, "mkdir": {}, "export": {}, "test": {}, "[": {},
+	"mktemp": {}, "trap": {},
 }
 
 var fileReadingBuiltins = map[string]struct{}{

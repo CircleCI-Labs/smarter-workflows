@@ -17,7 +17,8 @@ var benignCommands = map[string]struct{}{
 	"echo": {}, "printf": {}, "cd": {}, "export": {}, "set": {}, "mkdir": {},
 	"mv": {}, "rm": {}, "ls": {}, "test": {}, "true": {},
 	"sleep": {}, "then": {}, "else": {}, "fi": {}, "do": {}, "done": {}, "esac": {},
-	"exit": {}, "continue": {}, "break": {}, "sort": {}, "wc": {}, "tail": {}, "tr": {},
+	"exit": {}, "return": {}, "continue": {}, "break": {}, "sort": {}, "wc": {}, "tail": {}, "tr": {},
+	"dirname": {}, "pwd": {}, "mktemp": {}, "trap": {}, "cut": {},
 	"[": {}, "circleci-smarter": {}, "find": {}, "grep": {}, "head": {}, "sed": {},
 }
 
