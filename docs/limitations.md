@@ -24,6 +24,10 @@ Orb jobs, self-hosted images, and steps the analyzer cannot follow stay unknown 
 
 `plan` merges the learned layer from cache on every pipeline. Until the first scheduled `learn` completes, maps are **static only** (more conservative). First pipelines after onboarding may run more jobs than after learn.
 
+## History corrections from infrastructure failures
+
+Failures whose root cause is infrastructure (for example a missing CI token, not the commit under test) can still add **history corrections** during `learn`. Corrections only make jobs run more often; they never remove static proof. The `learn` report lists corrections per job. Use a new `learned-key-prefix` when you want an empty learned layer instead of merging forward from a bad history window.
+
 ## Costs
 
 - **`learn`:** CircleCI API calls for history; optional Anthropic usage during classify (see the report’s token and cost lines).

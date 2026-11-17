@@ -1,12 +1,43 @@
 ---
 page-title: Benchmarks
 page-audience: admin
-page-description: Overview of end-to-end CI savings, historical backtest recall, and local performance targets for the planner.
+page-description: v0.3 end-to-end and learn savings on this repository and the demo, plus v0.1 baselines and local performance targets.
 ---
 
 # Benchmarks
 
-Measured results for v0.1: real CircleCI pipelines for job selection, a replay of this repository's history against today's map, and synthetic workloads for planner timing.
+Measured results for v0.3 on real CircleCI pipelines (2026-11-17). Older v0.1 tables remain for comparison.
+
+## v0.3 savings
+
+From [`scripts/e2e/run-scenarios.sh`](../scripts/e2e/run-scenarios.sh) on `main` at `fdbdeac` and the first scheduled `learn` runs. Method and caveats: [Validation](validation.md#v03-validation).
+
+**End to end** — job seconds vs each target's full-run scenario (demo full **159 s**, self full **668 s**):
+
+| Scenario / change | Target | Saved |
+| --- | --- | ---: |
+| docs-only | demo | 88% |
+| infra-only | demo | 77% |
+| worker-only | demo | 68% |
+| e2e-script | demo | 64% |
+| web-lockfile | demo | 55% |
+| web-only | demo | 49% |
+| web-deleted | demo | 42% |
+| api-rename | demo | 27% |
+| added-file-api | demo | 14% |
+| docs-and-api | demo | 11% |
+| shared-lib | demo | 6% |
+| api-only | demo | −1% |
+| self-docs-only | self | 81% |
+| self-orb | self | 26% |
+| self-internal-report, self-policies | self | ~0% |
+
+**Learn backtest** (first schedule, 2026-11-17):
+
+| Target | Projected savings | Recall |
+| --- | ---: | ---: |
+| This repository | 15.2% (4246 s matched) | 100% |
+| Demo | 19.5% (1174 s matched) | n/a |
 
 ## Method
 
