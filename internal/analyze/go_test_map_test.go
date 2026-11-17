@@ -44,6 +44,9 @@ func TestGoTestJobCoversPackagesAndNormalizedDirs(t *testing.T) {
 	if !j.CoversPath("internal/diff/git.go") {
 		t.Fatal("go-test should cover internal/diff/git.go via go packages")
 	}
+	if !j.ListsDir("policies") {
+		t.Fatal("go-test should list policies/ from cmd test bundle paths")
+	}
 	if j.CoversPath("docs/plan-regression-only.md") {
 		t.Fatal("go-test should not cover arbitrary docs paths outside its package closure")
 	}

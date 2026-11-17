@@ -30,19 +30,44 @@ func normalizePathToken(tok string) string {
 	return tok
 }
 
+// repoRelPath resolves p from baseDir (repo-relative) to a repo-relative path inside repoRoot.
+func repoRelPath(repoRoot, baseDir, p string) (string, bool) {
+	p = filepath.ToSlash(strings.TrimSpace(p))
+	if p == "" {
+		return "", false
+	}
+	repoAbs, err := filepath.Abs(filepath.Clean(repoRoot))
+	if err != nil {
+		return "", false
+	}
+	base := repoAbs
+	baseDir = filepath.ToSlash(baseDir)
+	if baseDir != "" && baseDir != "." {
+		base = filepath.Join(repoAbs, filepath.FromSlash(baseDir))
+	}
+	target := filepath.Clean(filepath.Join(base, filepath.FromSlash(p)))
+	rel, err := filepath.Rel(repoAbs, target)
+	if err != nil {
+		return "", false
+	}
+	rel = filepath.ToSlash(rel)
+	if rel == ".." || strings.HasPrefix(rel, "../") {
+		return "", false
+	}
+	if !filepath.IsLocal(rel) {
+		return "", false
+	}
+	return rel, true
+}
+
 // tryAddResolvedLiteralPath stores p when it exists under fileDir, modRel, or repo root.
 func tryAddResolvedLiteralPath(repoRoot, fileDir, modRel, p string, into *InputSet, note InputNote) {
-	p = filepath.ToSlash(strings.TrimSpace(p))
-	if p == "" || strings.Contains(p, "$") {
+	if strings.TrimSpace(p) == "" || strings.Contains(p, "$") {
 		return
 	}
-	candidates := []string{
-		filepath.ToSlash(filepath.Clean(filepath.Join(fileDir, p))),
-		filepath.ToSlash(filepath.Clean(filepath.Join(modRel, p))),
-		filepath.ToSlash(filepath.Clean(p)),
-	}
-	for _, rel := range candidates {
-		if rel == "" || strings.HasPrefix(rel, "..") {
+	for _, base := range []string{fileDir, modRel, "."} {
+		rel, ok := repoRelPath(repoRoot, base, p)
+		if !ok {
 			continue
 		}
 		if into.addVerifiedPath(repoRoot, rel, note) {

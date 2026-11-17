@@ -195,6 +195,16 @@ func TestPlanRegressionDogfoodPolicy(t *testing.T) {
 	wantJobs(t, runs, []string{"go-test", "policy-test", "security-scan"}, nil)
 }
 
+func TestPlanRegressionDogfoodNewPolicyFile(t *testing.T) {
+	root := moduleRoot(t)
+	wt, base := planRegressionWorktree(t, root)
+	rel := "policies/new.rego"
+	patchFile(t, wt, rel, "package smarter\n")
+	head := difftest.CommitFileInDir(t, wt, rel, "new policy file")
+	runs := runPlanSelect(t, wt, "--base", base, "--head", head)
+	wantJobs(t, runs, []string{"go-test", "policy-test", "security-scan"}, nil)
+}
+
 func TestPlanRegressionDogfoodDocsOnly(t *testing.T) {
 	root := moduleRoot(t)
 	wt, base := planRegressionWorktree(t, root)
