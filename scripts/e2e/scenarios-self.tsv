@@ -1,13 +1,12 @@
 # Scenarios of this repository's own pipeline (workflow ci), run by run-scenarios.sh.
 # Fields, separated by tabs: name, expectation, change, commit message (optional).
 #
-# What each job reads (from its trace on main): docs-site-build reads docs/ and site/.
-# go-test, go-lint, build, e2e-plan and release-dry-run follow Go paths the release
-# touches; security-scan is mandatory. policy-test and orb-validate read their bundles;
-# script-test does not touch internal/report.
-self-docs-only	docs-site-build security-scan	printf '\nThe planner never skips a job it cannot prove is unaffected.\n' >> docs/limitations.md	docs: restate a limit
-self-internal-report	go-test go-lint build e2e-plan release-dry-run security-scan	sed -i 's|^// maxChangedInMarkdown is how many changed files plan\.md lists\.$|// maxChangedInMarkdown is how many changed files plan.md lists at most.|' internal/report/report.go	refactor(report): reword a comment
-self-added-file-internal-report	go-test go-lint build e2e-plan release-dry-run security-scan	printf '# report\n\nWrites plan.json and plan.md.\n' > internal/report/NOTES.md	docs(report): add a note on the package
-self-smarter-full-message	full:asks for a full run	printf '\nA full run is always one commit message away.\n' >> docs/limitations.md	docs: add a note [smarter full]
-self-policies	build e2e-plan go-lint go-test policy-test release-dry-run security-scan	printf '# Scenario: policies bundle\n' >> policies/NOTES.md	docs(policies): add a note on the bundle
-self-orb	orb-validate security-scan	sed -i 's|still runs every job\.|still runs every job (scenario).|' orb/src/@orb.yml	docs(orb): reword the orb description
+# Expectations recomputed with scripts/e2e/expect.sh (v0.3 analyze at origin/main).
+# Static analysis often keeps build and e2e-plan because release paths and workspaces
+# are conservative until the learned layer is populated.
+self-docs-only	build docs-site-build e2e-plan go-lint security-scan	printf '\nThe planner never skips a job it cannot prove is unaffected.\n' >> docs/limitations.md	docs: restate a limit
+self-internal-report	build e2e-plan go-lint go-test policy-test security-scan	sed -i 's|^// maxChangedInMarkdown is how many changed files plan\.md lists\.$|// maxChangedInMarkdown is how many changed files plan.md lists at most.|' internal/report/report.go	refactor(report): reword a comment
+self-added-file-internal-report	build e2e-plan go-lint go-test policy-test security-scan	printf '# report\n\nWrites plan.json and plan.md.\n' > internal/report/NOTES.md	docs(report): add a note on the package
+self-smarter-full-message	full:the head commit asks for a full run	printf '\nA full run is always one commit message away.\n' >> docs/limitations.md	docs: add a note [smarter full]
+self-policies	build e2e-plan go-lint policy-test security-scan	printf '# Scenario: policies bundle\n' >> policies/NOTES.md	docs(policies): add a note on the bundle
+self-orb	build e2e-plan go-lint orb-validate security-scan	sed -i 's|still runs every job\.|still runs every job (scenario).|' orb/src/@orb.yml	docs(orb): reword the orb description

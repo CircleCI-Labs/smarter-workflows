@@ -91,7 +91,7 @@ func TestSelection(t *testing.T) {
 			mod:     scan,
 			wantRun: []string{"lint", "security-scan", "web-test", "build", "e2e"},
 			reasons: map[string][]string{
-				"web-test": {"lists services/web/src, where services/web/src/new.test.ts was added"},
+				"web-test": {"reads services/web/src/new.test.ts"},
 				"api-test": {"inputs unchanged"},
 			},
 		},
@@ -100,7 +100,7 @@ func TestSelection(t *testing.T) {
 			changes: changes("D services/web/src/extra.ts"),
 			mod:     scan,
 			wantRun: []string{"lint", "security-scan", "web-test", "build", "e2e"},
-			reasons: map[string][]string{"web-test": {"where services/web/src/extra.ts was deleted"}},
+			reasons: map[string][]string{"web-test": {"reads services/web/src/extra.ts"}},
 		},
 		{
 			name:     "a new directory under a directory a job listed",
@@ -109,8 +109,8 @@ func TestSelection(t *testing.T) {
 			mod:      scan,
 			wantRun:  []string{"lint", "security-scan", "build", "e2e"},
 			reasons: map[string][]string{
-				"lint":     {"lists services, where directory services/billing is new"},
-				"build":    {"lists services, where directory services/billing is new"},
+				"lint":     {"reads services/billing/main.go"},
+				"build":    {"reads services/billing/main.go"},
 				"api-test": {"inputs unchanged"},
 			},
 		},
@@ -121,17 +121,16 @@ func TestSelection(t *testing.T) {
 			mod:      scan,
 			// lint and build listed services/api, whose child http is new; security-scan listed only the root.
 			wantRun: []string{"lint", "security-scan", "api-test", "build", "e2e"},
-			reasons: map[string][]string{"api-test": {"lists services/api, where directory services/api/http is new"}},
+			reasons: map[string][]string{"api-test": {"reads services/api/http/handler.go"}},
 		},
 		{
 			name:     "a directory that is gone",
 			changes:  changes("D scripts/x.sh"),
 			headDirs: without(sourceDirs(), "scripts"),
 			mod:      scan,
-			wantRun:  []string{"lint", "security-scan"},
+			wantRun:  []string{"security-scan"},
 			reasons: map[string][]string{
-				"lint":          {"lists ., where directory scripts is gone"},
-				"security-scan": {"lists ., where directory scripts is gone"},
+				"security-scan": {"mandatory job"},
 			},
 		},
 		{
@@ -139,7 +138,7 @@ func TestSelection(t *testing.T) {
 			changes: changes("D services/api/main.go", "A services/api/server.go"),
 			mod:     scan,
 			wantRun: []string{"lint", "security-scan", "api-test", "build", "e2e"},
-			reasons: map[string][]string{"api-test": {"reads services/api/main.go", "lists services/api, where services/api/server.go was added"}},
+			reasons: map[string][]string{"api-test": {"reads services/api/main.go", "reads services/api/server.go"}},
 		},
 		{
 			name:    "ignored paths select nothing",
@@ -184,6 +183,23 @@ func TestSelection(t *testing.T) {
 			mod:     scan,
 			wantRun: []string{"lint", "security-scan", "api-test", "web-test", "build", "e2e"},
 			reasons: map[string][]string{"build": {"reads Makefile", "and 2 more changed files read"}},
+		},
+		{
+			name:    "a new file deep under an input dir",
+			changes: changes("A services/web/src/nested/pkg/footer.ts"),
+			mod:     scan,
+			wantRun: []string{"lint", "security-scan", "web-test", "build", "e2e"},
+			reasons: map[string][]string{"web-test": {"reads services/web/src/nested/pkg/footer.ts"}},
+		},
+		{
+			name:    "repository root among inputs covers any path",
+			changes: changes("M CHANGELOG.md"),
+			mapMod: func(m *impactmap.Map) {
+				m.Jobs["api-test"].Dirs = append(m.Jobs["api-test"].Dirs, ".")
+			},
+			mod:     scan,
+			wantRun: []string{"lint", "security-scan", "api-test"},
+			reasons: map[string][]string{"api-test": {"reads CHANGELOG.md"}, "lint": {"required by api-test"}},
 		},
 	}
 	for _, tc := range tests {

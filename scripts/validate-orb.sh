@@ -1,9 +1,8 @@
 #!/bin/sh
-# validate-orb.sh [ORB]: validates an orb without a CircleCI API token.
+# validate-orb.sh [ORB]: validates an orb by inlining it in a throwaway config.
 #
-# `circleci orb validate` needs a token, and CI has none. `circleci config
-# validate` does not: it compiles a config, and an orb defined inside the config
-# needs no lookup. So this script writes a throwaway config that defines ORB
+# `circleci config validate` needs CIRCLE_TOKEN (smarter-workflows-ci in CI).
+# This script writes a config that defines ORB
 # inline as `smarter`, adds a workflow that runs its plan job, and validates
 # that config. A broken orb makes the config invalid.
 #
@@ -52,6 +51,20 @@ config="$work/config.yml"
   printf '          executor: smarter/go\n'
   printf '          source: build\n'
   printf '          resource_class: medium\n'
+  printf '          learned-key-prefix: smarter-learned-v1\n'
+  printf '          ai-review: shadow\n'
+  printf '  validate-orb-learn:\n'
+  printf '    jobs:\n'
+  printf '      - smarter/learn:\n'
+  printf '          executor: smarter/go\n'
+  printf '          source: build\n'
+  printf '          resource_class: medium\n'
+  printf '          learned-key-prefix: smarter-learned-v1\n'
+  printf '          limit: 10\n'
+  printf '          project-slug: gh/CircleCI-Labs/smarter-workflows\n'
+  printf '          ai: "off"\n'
+  printf '          mandatory: security-scan\n'
+  printf '          policy-bundle: policies\n'
 } > "$config"
 
 circleci config validate "$config"

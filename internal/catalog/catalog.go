@@ -107,11 +107,10 @@ type Matrix struct {
 	Parameters map[string][]any `json:"parameters"`
 }
 
-// Inputs says what the impact map knows of the job: how much of the repository
-// it read in the last traced full run. Without a map, or without an entry for the
-// job, Traced is false.
+// Inputs says what the impact map knows of the job. Without a map, or without
+// an entry for the job, Mapped is false.
 type Inputs struct {
-	Traced   bool `json:"traced"`
+	Mapped   bool `json:"mapped"`
 	Complete bool `json:"complete"`
 	Files    int  `json:"files"`
 	Dirs     int  `json:"dirs"`
@@ -258,7 +257,7 @@ func inputsOf(m *impactmap.Map, name string) Inputs {
 	if !ok || j == nil {
 		return in
 	}
-	in.Traced, in.Complete = true, j.Complete
+	in.Mapped, in.Complete = true, j.Complete
 	in.Files, in.Dirs = j.FileCount(), j.DirCount()
 	in.TopDirs = topDirs(j.FilePaths())
 	return in

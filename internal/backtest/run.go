@@ -53,7 +53,6 @@ func Run(ctx context.Context, config []byte, m *impactmap.Map, history []CommitH
 		planOpts.FullRunPaths = append([]string(nil), o.FullRunPaths...)
 		planOpts.IgnorePaths = append([]string(nil), o.IgnorePaths...)
 		planOpts.Parameters = mergeParameters(o.Parameters, h.Parameters)
-		planOpts.Trace = planner.TraceOff
 		if err := planOpts.Validate(); err != nil {
 			return nil, fmt.Errorf("commit %s: %w", shortSHA(h.Commit), err)
 		}
@@ -166,7 +165,7 @@ func Run(ctx context.Context, config []byte, m *impactmap.Map, history []CommitH
 func planSelection(res *planner.Result) map[string]bool {
 	out := make(map[string]bool, len(res.Report.Jobs))
 	for _, j := range res.Report.Jobs {
-		if j.Name == planner.DefaultGateJob || j.Name == planner.ImpactMapJob {
+		if j.Name == planner.DefaultGateJob {
 			continue
 		}
 		out[j.Name] = j.Run

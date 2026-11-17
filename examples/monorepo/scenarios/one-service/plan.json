@@ -28,7 +28,8 @@
       "name": "security-scan",
       "run": true,
       "reasons": [
-        "mandatory job"
+        "mandatory job",
+        "reads services/api/handler.go"
       ]
     },
     {

@@ -85,7 +85,7 @@ func TestJSONMatchesTheSpecShape(t *testing.T) {
 }
 
 func TestJSONEmptyListsAreNotNull(t *testing.T) {
-	p := &report.Plan{Mode: "shadow", Jobs: []report.Job{{Name: "a"}}, Trace: &report.Trace{MapJob: "m"}, Gate: &report.Gate{Name: "g"}}
+	p := &report.Plan{Mode: "shadow", Jobs: []report.Job{{Name: "a"}}, Gate: &report.Gate{Name: "g"}}
 	data, err := p.JSON()
 	if err != nil {
 		t.Fatal(err)
@@ -97,7 +97,7 @@ func TestJSONEmptyListsAreNotNull(t *testing.T) {
 	if err := json.Unmarshal(data, &back); err != nil {
 		t.Fatal(err)
 	}
-	if back.Version != 1 || back.Trace.MapJob != "m" {
+	if back.Version != 1 || back.Gate == nil || back.Gate.Name != "g" {
 		t.Fatalf("round trip: %+v", back)
 	}
 }

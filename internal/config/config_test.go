@@ -1257,7 +1257,7 @@ workflows:
     jobs: [via-cmd]
 `
 	reset := func() *yaml.Node {
-		return config.RunStep("smarter: reset atime", "/bin/sh", "", "reset")
+		return config.RunStep("smarter: post-checkout", "/bin/sh", "", "reset")
 	}
 	c := mustParse(t, src)
 	got, err := c.InsertAfterCheckout("via-cmd", reset())
@@ -1265,11 +1265,11 @@ workflows:
 		t.Fatalf("InsertAfterCheckout = %v, %v", got, err)
 	}
 	out := mustMarshal(t, c)
-	if !strings.Contains(out, "with-checkout") || !strings.Contains(out, "smarter: reset atime") {
+	if !strings.Contains(out, "with-checkout") || !strings.Contains(out, "smarter: post-checkout") {
 		t.Fatalf("reset must follow the command step:\n%s", out)
 	}
 	i := strings.Index(out, "with-checkout")
-	j := strings.Index(out, "smarter: reset atime")
+	j := strings.Index(out, "smarter: post-checkout")
 	if i < 0 || j < i {
 		t.Fatalf("reset must come after the command invocation:\n%s", out)
 	}

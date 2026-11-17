@@ -108,6 +108,12 @@ func (e *Entry) Names() []string {
 	return names
 }
 
+// EntryArgs is the workflow entry's argument mapping (pre-steps, filters, and
+// so on), or nil for a bare job name.
+func (e *Entry) EntryArgs() *yaml.Node {
+	return e.args
+}
+
 // RequireName is the name another entry writes in `requires` to wait for this
 // one. It differs from Name for a matrix entry whose name is an expression: the
 // matrix is then required by its alias, or by its job name.
@@ -603,6 +609,57 @@ func (w *Workflow) RetainRequires(i int, keep func(name string) bool, fallback s
 
 // AppendEntry adds `- ref` (or `- ref: {requires: [...]}`) at the end of the
 // job list.
+// JobHashMaterial is the canonical JSON object hashed into impact map job_hash.
+func (c *Config) JobHashMaterial(entry *Entry) (map[string]any, error) {
+	if entry == nil {
+		return nil, fmt.Errorf("job hash: nil entry")
+	}
+	out := map[string]any{
+		"ref":  entry.Ref,
+		"name": entry.Name,
+	}
+	if m := entry.MatrixParameters(); m != nil {
+		out["matrix"] = m
+	}
+	if args := entry.EntryArgs(); args != nil {
+		var decoded any
+		if err := args.Decode(&decoded); err != nil {
+			return nil, fmt.Errorf("job hash: entry args: %w", err)
+		}
+		out["workflow_args"] = decoded
+	}
+	jd := c.JobDef(entry.Ref)
+	out["job"] = map[string]any{
+		"known":     jd.Known,
+		"executor":  jd.Executor,
+		"steps":     jd.Steps,
+		"persists":  jd.Persists,
+		"attaches":  jd.Attaches,
+		"run_steps": c.CollectRunSteps(entry.Ref, entry.EntryArgs()),
+	}
+	out["orbs"] = c.orbVersionPins()
+	return out, nil
+}
+
+func (c *Config) orbVersionPins() map[string]string {
+	orbs := c.section("orbs")
+	if orbs == nil || orbs.Kind != yaml.MappingNode {
+		return nil
+	}
+	pins := map[string]string{}
+	for i := 0; i+1 < len(orbs.Content); i += 2 {
+		k := orbs.Content[i]
+		v := orbs.Content[i+1]
+		if k.Kind != yaml.ScalarNode {
+			continue
+		}
+		if v.Kind == yaml.ScalarNode {
+			pins[k.Value] = v.Value
+		}
+	}
+	return pins
+}
+
 func (w *Workflow) AppendEntry(ref string, requires []string) error {
 	if w.HasName(ref) {
 		return fmt.Errorf("workflow %q already has a job named %q", w.Name, ref)

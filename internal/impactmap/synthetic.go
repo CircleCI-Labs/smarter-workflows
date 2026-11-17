@@ -15,7 +15,7 @@ func SyntheticMap(jobCount, totalFiles, filesPerJob int) (*Map, error) {
 		Version:   Version,
 		Revision:  "bench0000000000000000000000000000000000",
 		CreatedAt: time.Date(2026, 11, 15, 0, 0, 0, 0, time.UTC).Format(time.RFC3339),
-		Method:    MethodATime,
+		Method:    DefaultMapMethod,
 		Jobs:      make(map[string]*Job, jobCount),
 	}
 	for j := 0; j < jobCount; j++ {

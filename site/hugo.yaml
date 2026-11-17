@@ -73,8 +73,8 @@ params:
       - icon: git-branch
         title: Learns from your default branch
         text: >-
-          Every full run on the default branch traces the repo files that each job reads, and builds an impact map.
-          A branch uses the map: a job whose inputs the change does not touch is skipped.
+          The planner builds an impact map with circleci-smarter analyze: static analysis of the config and the repo,
+          with optional AI and history corrections. A branch uses the map: a job whose inputs the change does not touch is skipped.
         link: docs/how-it-works/#the-loop
         linkText: The loop
       - icon: shield-check

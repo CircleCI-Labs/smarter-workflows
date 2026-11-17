@@ -15,13 +15,13 @@ The words this project uses, and what each one means. There are no implementatio
 : A pipeline that runs every job. The default branch, scheduled pipelines, changes to the pipeline definition, and any case the planner is unsure about all get a full run.
 
 **Impact map**
-: For each job, the files it read and the directories it listed during the last full run on the default branch. It is rebuilt after every green full run, and branches use it to see which jobs a change can affect.
-
-**Trace**
-: The record of the files one job read, taken at the end of the job. The impact map is built from traces.
+: For each job, the repo files and directories the planner treats as its inputs. `circleci-smarter analyze` builds it from the continuation config and the repository. Branches use the map to see which jobs a change can affect.
 
 **Inputs (of a job)**
-: The files and directories in a job's trace. A job whose inputs a change does not touch is a candidate to skip.
+: The files and directories listed for a job in the impact map. Exact `files` match only that path; each `input dir` covers every path under it recursively; `.` is the repository root and covers the whole tree. Any change status uses the same rule. A job whose inputs a change does not touch is a candidate to skip.
+
+**Input dir**
+: A directory entry in a job's impact map. It includes every file and subdirectory under that path, not only direct children.
 
 **Shadow mode**
 : The planner makes and reports a plan, but every job still runs. Shadow mode measures what select mode would save, and what it would miss.
@@ -64,3 +64,24 @@ The words this project uses, and what each one means. There are no implementatio
 
 **Catalog**
 : The jobs, commands, executors and orbs the planner may pick from. In select mode, the catalog is the project's own pipeline config.
+
+**Analyze**
+: The `circleci-smarter analyze` command that infers per-job repo inputs from CircleCI config and checkout sources, optionally aided by history and an AI classifier.
+
+**Job hash**
+: A stable SHA-256 of a job's resolved config (body, commands, executors, pinned orbs, and workflow entry parameters). Used to reuse AI output safely in the learned layer.
+
+**Learned layer**
+: A versioned cache of costly analyze output: AI mappings and history corrections keyed by job name and job hash.
+
+**AI classifier**
+: The optional Anthropic call that suggests extra paths per job, constrained by structured JSON output and confidence.
+
+**Confidence**
+: The model's 0–1 self-rating for a job's inferred inputs. Analyze treats a job as complete from AI only when confidence meets `--min-confidence` and the job hash matches.
+
+**Learn**
+: The `circleci-smarter learn` command that fetches pipeline history, refreshes the learned layer with AI and corrections, and reports recall and projected savings.
+
+**AI review**
+: An optional plan-time model call that may add skipped jobs (never remove them) when a pipeline would skip work; failures leave the deterministic plan unchanged.

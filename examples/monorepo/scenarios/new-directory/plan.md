@@ -2,11 +2,11 @@
 
 | Job | Run | Reason |
 |---|---|---|
-| lint | run | lists services, where directory services/billing is new |
+| lint | run | reads services/billing/main.go |
 | security-scan | run | mandatory job |
 | api-test | skip | inputs unchanged |
 | web-test | skip | inputs unchanged |
-| build | run | lists services, where directory services/billing is new |
+| build | run | reads services/billing/main.go |
 | e2e | run | consumes the workspace of build |
 | docs | skip | inputs unchanged |
 | hold-deploy | skip | does not run: its filters leave out branch feature |

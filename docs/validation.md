@@ -6,7 +6,7 @@ page-description: The test layers, the end-to-end scenarios, the bugs that valid
 
 # Validation
 
-What was tested in v0.1, and what each layer found. Unit, robustness, guardrail and trace results are from 2026-11-14; end-to-end and backtest numbers are from 2026-11-15.
+What was tested in v0.1, and what each layer found. Unit, robustness and guardrail results are from 2026-11-14; end-to-end and backtest numbers are from 2026-11-15. Runtime tracing was removed in v0.3 (ADR 8); the trace-script layer and atime checks below are historical only and no longer gate merges.
 
 ## Test layers
 
@@ -15,7 +15,7 @@ What was tested in v0.1, and what each layer found. Unit, robustness, guardrail 
 | Unit and golden | planner, config, diff, impact map, report; 12 example scenarios with golden plans and configs; a fuzz target | pass |
 | Robustness | 27 unusual config shapes (approvals mid-graph, two workflows, matrices, orb jobs, status `requires`, anchors and merge keys, null steps, renames, unicode paths). Every emitted config must keep the job graph intact, pass the guardrails, and pass `circleci config validate` | pass (9 bugs found and fixed first) |
 | Guardrails | 53 Rego tests and Go fixture tests through CircleCI's policy engine | pass |
-| Trace scripts | 43 checks on ext4, tmpfs and the `cimg/base` image; the atime reset tested on CircleCI's docker and machine executors | pass |
+| Trace scripts (v0.1 only; removed v0.3) | 43 checks on ext4, tmpfs and the `cimg/base` image; the atime reset tested on CircleCI's docker and machine executors | pass (historical) |
 | End to end | `scripts/e2e/run-scenarios.sh`: real branches, real pipelines, and an exact comparison of the jobs that ran | pass (57/63 job-set checks on first batch; two scenario definitions fixed and rerun — see below) |
 
 ## End-to-end scenarios
@@ -67,8 +67,8 @@ The two `worker-test` matrix jobs always run on the demo target in v0.1.
 
 - A job's `requires` on a filtered-out job: the planner now follows CircleCI's documented rule. A filtered-out requirement is ignored, unless every requirement is filtered out.
 - YAML anchors, aliases and merge keys are expanded before pruning. Before the fix, they could leave dangling aliases or duplicate injected steps.
-- A null `pre-steps` or `post-steps` is an empty list. Before the fix, it dropped the whole trace.
-- A fallback full run still gets the gate and tracing.
+- A null `pre-steps` or `post-steps` is an empty list (relevant when v0.1 injected trace steps).
+- A fallback full run still gets the gate.
 - The gate says when it does not wait for a job with a status requirement.
 - In CI only: git's background maintenance made temp-repo cleanup flaky; the orb is now validated without an API token; some orgs' config policies allow only exact image tags, so the language images of the pipeline carry a tag and no digest.
 
@@ -95,3 +95,17 @@ The answers are in [`examples/compose-eval/answers/haiku-5-5/`](../examples/comp
 - Shadow mode on a busy real repository, for real hit and miss rates.
 - The approval and deploy path on the default branch beyond the hold.
 - Tampering with the cached map (see limitations).
+
+## v0.3 validation (in progress)
+
+Structure for post-integration results; numbers are **TBD** until orchestrator runs complete.
+
+| Layer | Metric | Target / method | Result |
+|---|---|---|---|
+| Static proof | Jobs with complete static analyze at HEAD | `analyze` report on main | TBD |
+| Truth coverage | Recall vs recorded history corrections | `learn` + backtest | TBD |
+| Learn trial | Projected recall and savings | `learn` report on schedule | TBD |
+| End to end | Job sets per scenario (analyze-based expectations) | `scripts/e2e/run-scenarios.sh` | TBD |
+| Backtests | Savings on N commits | `circleci-smarter backtest` / benchmark job | TBD |
+
+Expectations in `scripts/e2e/scenarios-*.tsv` are recomputed with [`scripts/e2e/expect.sh`](../scripts/e2e/expect.sh) against `origin/main` using inline analyze (no learned layer).

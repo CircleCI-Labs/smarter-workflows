@@ -547,7 +547,7 @@ func (l *layoutCheck) checkGate() {
 	}
 	for i, e := range l.an.entries {
 		switch {
-		case awaited[i], after[i], e.Name == ImpactMapJob, gateIgnores(e.Kind), l.an.afterApproval[i], e.StatusRequires:
+		case awaited[i], after[i], gateIgnores(e.Kind), l.an.afterApproval[i], e.StatusRequires:
 			// The gate waits for it; or it comes after the gate; or the gate does
 			// not wait for this kind of job, or for a job behind an approval
 			// (nobody may ever approve it), or for one that waits for a status

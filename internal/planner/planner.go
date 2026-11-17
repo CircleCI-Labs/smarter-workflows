@@ -45,6 +45,12 @@ type Input struct {
 	// the plan is a full run and the problem is recorded.
 	Checker           guard.Checker
 	GuardrailsProblem string
+	// MapJobSummaries is optional per-job input totals from analyze (plan integration).
+	MapJobSummaries map[string]string
+	// AIAdded forces jobs into the selection with a reason (plan-time AI review).
+	AIAdded map[string]string
+	// MapFromAnalyze is set when the impact map was built in-process for this plan.
+	MapFromAnalyze bool
 }
 
 // Result is the outcome of planning.
@@ -250,20 +256,17 @@ func convert(vs []guard.Violation) []report.Violation {
 func oneLine(s string) string { return strings.Join(strings.Fields(s), " ") }
 
 // plan builds a plan. If building fails, it plans a full run instead and
-// records why: first with everything, then without the trace steps, and last
-// by passing the config through untouched.
+// records why, or last passes the config through untouched.
 func (p *planner) plan(ctx context.Context, forced map[string]bool, fullReason string) *attempt {
-	a, err := p.build(ctx, forced, fullReason, true)
+	a, err := p.build(ctx, forced, fullReason)
 	if err == nil {
 		return a
 	}
 	reason := "internal error: " + oneLine(err.Error())
 	note := "internal error, planned a full run: " + oneLine(err.Error())
-	for _, withTrace := range []bool{true, false} {
-		if a, err2 := p.build(ctx, nil, reason, withTrace); err2 == nil {
-			a.rep.Warnings = append(a.rep.Warnings, note)
-			return a
-		}
+	if a, err2 := p.build(ctx, nil, reason); err2 == nil {
+		a.rep.Warnings = append(a.rep.Warnings, note)
+		return a
 	}
 	return p.verbatim(reason, note)
 }
@@ -344,11 +347,8 @@ func (p *planner) fullRunReason(wf *config.Workflow, cs *changeSet, changesErr e
 			return "no diff base: " + o.NoBaseReason
 		}
 		return "no diff base"
-	case p.in.Map == nil:
-		if p.in.MapProblem != "" {
-			return "no usable impact map: " + p.in.MapProblem
-		}
-		return "no usable impact map"
+	case p.in.Map == nil && p.in.MapProblem != "" && !strings.HasPrefix(p.in.MapProblem, "there is no impact map"):
+		return "no usable impact map: " + p.in.MapProblem
 	case changesErr != nil:
 		return "the changed files could not be listed: " + oneLine(changesErr.Error())
 	}
@@ -367,7 +367,7 @@ func (p *planner) fullRunReason(wf *config.Workflow, cs *changeSet, changesErr e
 
 // build is steps 1 to 8: one plan, from a fresh parse of the config. A
 // non-empty fullReason forces a full run.
-func (p *planner) build(ctx context.Context, forced map[string]bool, fullReason string, allowTrace bool) (a *attempt, err error) {
+func (p *planner) build(ctx context.Context, forced map[string]bool, fullReason string) (a *attempt, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			a, err = nil, fmt.Errorf("planner panic: %v", r)
@@ -418,12 +418,9 @@ func (p *planner) build(ctx context.Context, forced map[string]bool, fullReason 
 			sel.selected[i], sel.reasons[i] = true, []string{"full run"}
 		}
 	} else {
-		if err := cs.loadDirs(ctx, p.in.Repo, p.o.Base, p.o.Head); err != nil {
-			return nil, err
-		}
 		sel = p.selectJobs(an, cs, forced)
 		rep.Warnings = append(rep.Warnings, p.planWarnings(an)...)
-		if m := p.in.Map; m != nil && m.Revision != p.o.Base {
+		if m := p.in.Map; m != nil && !p.in.MapFromAnalyze && m.Revision != p.o.Base {
 			rep.Warnings = append(rep.Warnings, fmt.Sprintf("the impact map was built at %s, and the diff base is %s", short(m.Revision), short(p.o.Base)))
 		}
 	}
@@ -452,6 +449,9 @@ func (p *planner) build(ctx context.Context, forced map[string]bool, fullReason 
 			job.Reasons = append(job.Reasons, sel.reasons[i]...)
 		default:
 			job.Reasons = []string{an.skipReason(i, p.o.Branch, p.o.Tag)}
+			if sum := p.in.MapJobSummaries[e.Name]; sum != "" && job.Reasons[0] == "inputs unchanged" {
+				job.Reasons = append(job.Reasons, sum+"; none touched")
+			}
 		}
 		rep.Jobs = append(rep.Jobs, job)
 		if kept[i] && an.will[i] == triUnknown && filterVerdict(e.Filters, p.o.Branch, p.o.Tag) == triUnknown {
@@ -510,20 +510,6 @@ func (p *planner) build(ctx context.Context, forced map[string]bool, fullReason 
 		}
 	}
 
-	if allowTrace && p.traceOn(rep.Full) {
-		tr, notes, cov, err := p.injectTrace(cfg, wf, an)
-		if err != nil {
-			return nil, err
-		}
-		rep.Warnings = append(rep.Warnings, notes...)
-		if len(cov) > 0 {
-			rep.TraceCoverage = cov
-		}
-		if tr != nil {
-			rep.Trace = tr
-			keptNames = append(keptNames, ImpactMapJob)
-		}
-	}
 	if err := p.addGate(cfg, wf, gateRequires); err != nil {
 		return nil, err
 	}

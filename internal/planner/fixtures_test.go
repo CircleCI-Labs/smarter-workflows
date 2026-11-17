@@ -108,11 +108,11 @@ func monorepoMap() *impactmap.Map {
 		return &impactmap.Job{Files: files, Dirs: dirs, Complete: true, Nodes: 1}
 	}
 	return &impactmap.Map{
-		Version: 1, Revision: "base1", CreatedAt: "2026-11-12T18:30:00Z", Method: "atime",
+		Version: 1, Revision: "base1", CreatedAt: "2026-11-12T18:30:00Z", Method: "static",
 		Jobs: map[string]*impactmap.Job{
 			"lint": job(
 				[]string{"Makefile", "README.md", "docs/index.md", "go.mod", "libs/shared/schema.json", "services/api/main.go", "services/web/src/index.ts"},
-				[]string{".", "docs", "libs", "libs/shared", "services", "services/api", "services/web", "services/web/src"}),
+				[]string{"docs", "libs", "libs/shared", "services", "services/api", "services/web", "services/web/src"}),
 			"api-test": job(
 				[]string{"Makefile", "go.mod", "libs/shared/schema.json", "services/api/main.go"},
 				[]string{"libs/shared", "services/api"}),
@@ -124,7 +124,7 @@ func monorepoMap() *impactmap.Map {
 				[]string{"libs/shared", "services", "services/api", "services/web", "services/web/src"}),
 			"e2e":           job([]string{"e2e/smoke.test.ts"}, []string{"e2e"}),
 			"docs":          job([]string{"docs/index.md", "mkdocs.yml"}, []string{"docs"}),
-			"security-scan": job([]string{"go.mod", "go.sum"}, []string{"."}),
+			"security-scan": job([]string{"go.mod", "go.sum"}, nil),
 		},
 	}
 }
@@ -173,8 +173,6 @@ func opts() planner.Options {
 	o.Workflow = "ci"
 	o.Branch = "feature"
 	o.Base, o.Head = "base1", "head1"
-	o.Version = "dev-test"
-	o.BinPath = "/usr/local/bin/circleci-smarter"
 	return o
 }
 

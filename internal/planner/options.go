@@ -22,33 +22,11 @@ const (
 	ModeSelect Mode = "select"
 )
 
-// TraceMode says whether to add the trace steps.
-type TraceMode string
-
-const (
-	// TraceAuto traces full runs on the default branch.
-	TraceAuto TraceMode = "auto"
-	// TraceOn always traces.
-	TraceOn TraceMode = "on"
-	// TraceOff never traces.
-	TraceOff TraceMode = "off"
-)
-
 const (
 	// DefaultGateJob is the name of the gate job.
 	DefaultGateJob = "smarter-gate"
-	// DefaultMapImage is the image of the impact-map job: a pinned monthly
-	// cimg/base tag. The gate is a no-op job and has no image.
-	DefaultMapImage = "cimg/base:2026.11"
 	// DefaultFullRunPaths makes a change to the pipeline definition a full run.
 	DefaultFullRunPaths = ".circleci/**"
-	// ImpactMapJob is the name of the job that merges the traces into the map.
-	ImpactMapJob = "smarter-impact-map"
-	// DefaultMapKeyPrefix starts the cache key the map job saves the impact
-	// map under: <prefix>-<checksum of the commit>.
-	DefaultMapKeyPrefix = "smarter-impact-v1"
-	// TraceDir is where the traced jobs leave their traces (in the workspace).
-	TraceDir = "/tmp/smarter"
 )
 
 // Options are the planner settings: the `plan` flags (spec, CLI contract).
@@ -73,30 +51,7 @@ type Options struct {
 	ExtraInputs  map[string][]string
 	IgnorePaths  []string
 
-	Trace        TraceMode
-	TraceOrbJobs bool
-	// TraceJobs is a comma-separated list of job-name globs (plan --trace-jobs):
-	// jobs that run on Linux but whose executor cannot be read are traced anyway.
-	TraceJobs []string
-	// TraceReset adds the atime reset step after checkout in traced jobs
-	// (spec step 8). It is on by default, because checkout itself reads every
-	// file; turn it off for tests.
-	TraceReset bool
-
 	GateJob string
-	// MapImage is the docker image of the impact-map job (step 8.3).
-	MapImage string
-
-	// MapKeyPrefix starts the cache key of the saved impact map. Pipelines of
-	// one project share its cache, so each one needs its own prefix, and its
-	// setup job restores the map with the same one.
-	MapKeyPrefix string
-
-	// Version is the planner's own version, written into the map job.
-	Version string
-	// BinPath is where the map job finds the planner binary: the path it ran
-	// from in the setup job, which the install step caches.
-	BinPath string
 
 	// Parameters are pipeline parameter values for condition evaluation and for
 	// the continuation API (plan passes them through to continue).
@@ -109,21 +64,11 @@ func DefaultOptions() Options {
 		Mode:          ModeShadow,
 		DefaultBranch: "main",
 		FullRunPaths:  []string{DefaultFullRunPaths},
-		Trace:         TraceAuto,
-		TraceReset:    true,
 		GateJob:       DefaultGateJob,
-		MapImage:      DefaultMapImage,
-		MapKeyPrefix:  DefaultMapKeyPrefix,
-		Version:       "dev",
-		BinPath:       "circleci-smarter",
 	}
 }
 
 var jobName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]*$`)
-
-// mapKeyPrefixRE is what a cache key prefix may look like: the characters of a
-// job name, so it needs no quoting and cannot hold a `{{ }}` template.
-var mapKeyPrefixRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]*$`)
 
 // Validate checks the settings. Its errors are usage errors.
 func (o Options) Validate() error {
@@ -132,28 +77,14 @@ func (o Options) Validate() error {
 	default:
 		return fmt.Errorf("mode must be shadow or select, not %q", o.Mode)
 	}
-	switch o.Trace {
-	case TraceAuto, TraceOn, TraceOff:
-	default:
-		return fmt.Errorf("trace must be auto, on or off, not %q", o.Trace)
-	}
 	if !jobName.MatchString(o.GateJob) {
 		return fmt.Errorf("gate job name %q is not usable", o.GateJob)
-	}
-	if strings.TrimSpace(o.MapImage) == "" || strings.ContainsAny(o.MapImage, " \t\r\n") {
-		return fmt.Errorf("map image %q is not usable", o.MapImage)
-	}
-	if !mapKeyPrefixRE.MatchString(o.MapKeyPrefix) {
-		return fmt.Errorf("map key prefix %q is not usable: start with a letter or digit, then use letters, digits, . _ or -", o.MapKeyPrefix)
 	}
 	if err := validateGlobs(o.FullRunPaths); err != nil {
 		return fmt.Errorf("full-run paths: %w", err)
 	}
 	if err := validateGlobs(o.IgnorePaths); err != nil {
 		return fmt.Errorf("ignore paths: %w", err)
-	}
-	if err := validateGlobs(o.TraceJobs); err != nil {
-		return fmt.Errorf("trace jobs: %w", err)
 	}
 	for job, globs := range o.ExtraInputs {
 		if err := validateGlobs(globs); err != nil {

@@ -1,0 +1,179 @@
+description: >
+  Refresh the learned layer from workflow history and static analysis (optional
+  AI), backtest recall, and write reports. Needs CIRCLE_TOKEN or CIRCLECI_TOKEN
+  to fetch history; ANTHROPIC_API_KEY is optional (--ai auto). Run on a schedule
+  on the default branch so pull requests cannot influence what gets skipped.
+parameters:
+  executor:
+    type: executor
+    default: default
+    description: Where the job runs. Use the go executor with source build.
+  source:
+    type: enum
+    enum: [release, build]
+    default: release
+    description: Where the planner binary comes from, see the install command.
+  version:
+    type: string
+    default: ""
+    description: The release tag to install for source release.
+  project-slug:
+    type: string
+    default: ""
+    description: >
+      CircleCI project slug for history fetch; when empty, the job uses
+      CIRCLE_PROJECT_USERNAME and CIRCLE_PROJECT_REPONAME. Pass pipeline.project.slug
+      on the job for GitHub or Bitbucket slugs.
+  workflow:
+    type: string
+    default: ci
+    description: The continuation workflow to replay (learn --workflow).
+  limit:
+    type: integer
+    default: 200
+    description: How many recent pipelines to consider per workflow.
+  config:
+    type: string
+    default: .circleci/continue.yml
+    description: The continuation config to analyze.
+  parameters:
+    type: string
+    default: ""
+    description: Path to pipeline parameter values JSON for replayed commits.
+  ai:
+    type: enum
+    enum:
+      - auto
+      - "on"
+      - "off"
+    default: auto
+    description: AI classifier mode during learn (learn --ai).
+  model:
+    type: string
+    default: claude-haiku-5-5
+    description: Anthropic model id for the classifier.
+  min-confidence:
+    type: string
+    default: "0.8"
+    description: Minimum AI confidence for complete jobs (learn --min-confidence).
+  learned-key-prefix:
+    type: string
+    default: smarter-learned-v1
+    description: Cache key prefix for the learned layer JSON.
+  mandatory:
+    type: string
+    default: ""
+    description: Jobs that always run when continuing after learn (plan --mandatory).
+  policy-bundle:
+    type: string
+    default: ""
+    description: Guardrail bundle for the continuation plan (plan --policy-bundle).
+  full-run-paths:
+    type: string
+    default: .circleci/**
+    description: Globs that force a full continuation plan (plan --full-run-paths).
+  default-branch:
+    type: string
+    default: main
+    description: Default branch for the continuation plan.
+  resource_class:
+    type: enum
+    enum: [small, medium, medium+, large]
+    default: small
+    description: CircleCI resource class for this job.
+executor: << parameters.executor >>
+resource_class: << parameters.resource_class >>
+steps:
+  - checkout
+  - run:
+      name: "smarter: fetch full history"
+      command: |
+        set -eu
+        git fetch --unshallow 2>/dev/null || git fetch --depth=100000
+  - install:
+      version: << parameters.version >>
+      source: << parameters.source >>
+  - restore_cache:
+      keys:
+        - << parameters.learned-key-prefix >>-
+      paths:
+        - /tmp/smarter
+  - run:
+      name: "smarter: learn"
+      environment:
+        SMARTER_ARG_PROJECT: "<< parameters.project-slug >>"
+        SMARTER_ARG_WORKFLOW: "<< parameters.workflow >>"
+        SMARTER_ARG_LIMIT: "<< parameters.limit >>"
+        SMARTER_ARG_CONFIG: "<< parameters.config >>"
+        SMARTER_ARG_PARAMETERS: "<< parameters.parameters >>"
+        SMARTER_ARG_AI: "<< parameters.ai >>"
+        SMARTER_ARG_MODEL: "<< parameters.model >>"
+        SMARTER_ARG_MIN_CONF: "<< parameters.min-confidence >>"
+        SMARTER_ARG_LEARNED_PREV: "/tmp/smarter/learned-prev.json"
+        SMARTER_ARG_LEARNED_OUT: "/tmp/smarter/learned.json"
+      command: |
+        set -eu
+        mkdir -p /tmp/smarter/learn
+        PREV=""
+        if [ -s "$SMARTER_ARG_LEARNED_OUT" ]; then
+          cp "$SMARTER_ARG_LEARNED_OUT" "$SMARTER_ARG_LEARNED_PREV"
+          PREV="$SMARTER_ARG_LEARNED_PREV"
+        fi
+        slug="$SMARTER_ARG_PROJECT"
+        if [ -z "$slug" ]; then
+          slug="${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}"
+        fi
+        set -- learn \
+          --project-slug "$slug" \
+          --workflow "$SMARTER_ARG_WORKFLOW" \
+          --limit "$SMARTER_ARG_LIMIT" \
+          --config "$SMARTER_ARG_CONFIG" \
+          --learned-out "$SMARTER_ARG_LEARNED_OUT" \
+          --report /tmp/smarter/learn/learn.md \
+          --report-json /tmp/smarter/learn/learn.json \
+          --ai "$SMARTER_ARG_AI" \
+          --model "$SMARTER_ARG_MODEL" \
+          --min-confidence "$SMARTER_ARG_MIN_CONF"
+        [ -z "$PREV" ] || set -- "$@" --learned "$PREV"
+        [ -z "$SMARTER_ARG_PARAMETERS" ] || set -- "$@" --parameters "$SMARTER_ARG_PARAMETERS"
+        /tmp/smarter/bin/circleci-smarter "$@"
+  - save_cache:
+      key: << parameters.learned-key-prefix >>-{{ epoch }}
+      paths:
+        - /tmp/smarter/learned.json
+  - store_artifacts:
+      path: /tmp/smarter/learn
+      destination: smarter-learn
+  - run:
+      name: "smarter: learn summary"
+      when: always
+      command: |
+        if [ ! -f /tmp/smarter/learn/learn.md ]; then
+          echo "smarter: no learn report (learn step failed or was skipped)"
+          exit 0
+        fi
+        awk 'BEGIN{p=0} /^## Summary$/{p=1;print;next} p&&/^## /{exit} p' /tmp/smarter/learn/learn.md
+  - run:
+      name: "smarter: continue (scheduled full run)"
+      when: always
+      environment:
+        SMARTER_ARG_CONFIG: "<< parameters.config >>"
+        SMARTER_ARG_WORKFLOW: "<< parameters.workflow >>"
+        SMARTER_ARG_DEFAULT_BRANCH: "<< parameters.default-branch >>"
+        SMARTER_ARG_MANDATORY: "<< parameters.mandatory >>"
+        SMARTER_ARG_POLICY_BUNDLE: "<< parameters.policy-bundle >>"
+        SMARTER_ARG_FULL_RUN_PATHS: "<< parameters.full-run-paths >>"
+      command: |
+        set -eu
+        set -- plan \
+          --config "$SMARTER_ARG_CONFIG" \
+          --default-branch "$SMARTER_ARG_DEFAULT_BRANCH" \
+          --mode select \
+          --trigger-type schedule \
+          --full-run-paths "$SMARTER_ARG_FULL_RUN_PATHS" \
+          --out /tmp/smarter/continue.yml
+        [ -z "$SMARTER_ARG_WORKFLOW" ] || set -- "$@" --workflow "$SMARTER_ARG_WORKFLOW"
+        [ -z "$SMARTER_ARG_MANDATORY" ] || set -- "$@" --mandatory "$SMARTER_ARG_MANDATORY"
+        [ -z "$SMARTER_ARG_POLICY_BUNDLE" ] || set -- "$@" --policy-bundle "$SMARTER_ARG_POLICY_BUNDLE"
+        /tmp/smarter/bin/circleci-smarter "$@"
+        /tmp/smarter/bin/circleci-smarter continue --config /tmp/smarter/continue.yml

@@ -35,14 +35,24 @@ type Plan struct {
 	Changed            []Change `json:"changed"`
 	Jobs               []Job    `json:"jobs"`
 	// Gate is absent when the plan could not add the gate job.
-	Gate *Gate `json:"gate,omitempty"`
-	// Trace is present when the plan adds the trace steps and the map job.
-	Trace *Trace `json:"trace,omitempty"`
-	// TraceCoverage lists every workflow job and whether it would be traced,
-	// when a trace plan was attempted.
-	TraceCoverage []TraceCoverage `json:"trace_coverage,omitempty"`
-	Guardrails    Guardrails      `json:"guardrails"`
-	Warnings      []string        `json:"warnings"`
+	Gate       *Gate      `json:"gate,omitempty"`
+	Guardrails Guardrails `json:"guardrails"`
+	Warnings   []string   `json:"warnings"`
+	AIReview   *AIReview  `json:"ai_review,omitempty"`
+}
+
+// AIReview records plan-time AI review output.
+type AIReview struct {
+	Mode     string        `json:"mode"`
+	Added    []AIReviewJob `json:"added,omitempty"`
+	Shadow   []AIReviewJob `json:"shadow,omitempty"`
+	Warnings []string      `json:"warnings,omitempty"`
+}
+
+// AIReviewJob is one job the review added or would add.
+type AIReviewJob struct {
+	Name string `json:"name"`
+	Why  string `json:"why"`
 }
 
 // Change is one changed path: status A, M or D.
@@ -63,25 +73,6 @@ type Job struct {
 type Gate struct {
 	Name     string   `json:"name"`
 	Requires []string `json:"requires"`
-}
-
-// Trace describes the trace injection of a full run on the default branch.
-type Trace struct {
-	// Jobs are the entries that got the trace steps.
-	Jobs []string `json:"jobs"`
-	// MapJob is the job that merges the traces, and Requires what it waits for.
-	MapJob   string   `json:"map_job"`
-	Requires []string `json:"requires"`
-	// Coverage lists every workflow job and whether it is traced, with a reason
-	// when it is not.
-	Coverage []TraceCoverage `json:"coverage,omitempty"`
-}
-
-// TraceCoverage is the trace decision for one workflow job.
-type TraceCoverage struct {
-	Name   string `json:"name"`
-	Traced bool   `json:"traced"`
-	Reason string `json:"reason,omitempty"`
 }
 
 // Guardrails is the outcome of the pre-flight check. Status is PASS, SOFT_FAIL,
@@ -120,25 +111,11 @@ func (p *Plan) normalise() {
 	if p.Gate != nil && p.Gate.Requires == nil {
 		p.Gate.Requires = []string{}
 	}
-	if p.Trace != nil {
-		if p.Trace.Jobs == nil {
-			p.Trace.Jobs = []string{}
-		}
-		if p.Trace.Requires == nil {
-			p.Trace.Requires = []string{}
-		}
-		if p.Trace.Coverage == nil {
-			p.Trace.Coverage = []TraceCoverage{}
-		}
-	}
 	if p.Guardrails.Repairs == nil {
 		p.Guardrails.Repairs = []string{}
 	}
 	if p.Guardrails.Violations == nil {
 		p.Guardrails.Violations = []Violation{}
-	}
-	if p.TraceCoverage == nil {
-		p.TraceCoverage = []TraceCoverage{}
 	}
 	if p.Warnings == nil {
 		p.Warnings = []string{}
@@ -233,26 +210,27 @@ func (p *Plan) Markdown() string {
 		}
 	}
 
-	cov := p.TraceCoverage
-	if p.Trace != nil && len(p.Trace.Coverage) > 0 {
-		cov = p.Trace.Coverage
-	}
-	if len(cov) > 0 {
-		b.WriteString("\n**Trace coverage**\n\n")
-		fmt.Fprintf(&b, "| Job | Traced | Reason |\n|---|---|---|\n")
-		for _, c := range cov {
-			traced := "no"
-			if c.Traced {
-				traced = "yes"
-			}
-			fmt.Fprintf(&b, "| %s | %s | %s |\n", cell(c.Name), traced, cell(c.Reason))
-		}
-	}
-
 	if len(p.Warnings) > 0 {
 		b.WriteString("\n**Warnings**\n\n")
 		for _, w := range p.Warnings {
 			fmt.Fprintf(&b, "- %s\n", line(w))
+		}
+	}
+
+	if p.AIReview != nil {
+		b.WriteString("\n**Added by AI review**\n\n")
+		list := p.AIReview.Added
+		prefix := ""
+		if p.AIReview.Mode == "shadow" {
+			list = p.AIReview.Shadow
+			prefix = "would add: "
+		}
+		if len(list) == 0 {
+			b.WriteString("_None._\n")
+		} else {
+			for _, j := range list {
+				fmt.Fprintf(&b, "- %s%s — %s\n", prefix, line(j.Name), line(j.Why))
+			}
 		}
 	}
 	return b.String()

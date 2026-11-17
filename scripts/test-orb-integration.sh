@@ -35,11 +35,32 @@ config=$work/config.yml
   printf '          workflow: ci\n'
   printf '          mode: shadow\n'
   printf '          force-full: true\n'
-  printf '          trace: "on"\n'
+  printf '          ai-review: "off"\n'
 } > "$config"
 
 circleci config validate "$config"
-echo "test-orb-integration: config is valid"
+echo "test-orb-integration: plan config is valid"
+
+learn_cfg=$work/learn-config.yml
+{
+  printf 'version: 2.1\n'
+  printf 'orbs:\n'
+  printf '  smarter:\n'
+  sed 's/^/    /' "$packed"
+  printf 'workflows:\n'
+  printf '  orb-integration-learn:\n'
+  printf '    jobs:\n'
+  printf '      - smarter/learn:\n'
+  printf '          executor: smarter/go\n'
+  printf '          source: build\n'
+  printf '          config: examples/monorepo/continue.yml\n'
+  printf '          workflow: ci\n'
+  printf '          limit: 5\n'
+  printf '          ai: auto\n'
+} > "$learn_cfg"
+
+circleci config validate "$learn_cfg"
+echo "test-orb-integration: learn config is valid"
 
 bin=${PLANNER_BIN:-}
 if [ -z "$bin" ]; then
@@ -57,13 +78,29 @@ if [ -n "$bin" ] && [ -x "$bin" ]; then
     --workflow ci \
     --mode shadow \
     --force-full \
-    --trace on \
+    --analyze-report /tmp/smarter/plan/analyze-report.md \
     --out /tmp/smarter/continue.yml \
     --report-dir /tmp/smarter/plan > /dev/null
   test -s /tmp/smarter/continue.yml
   test -s /tmp/smarter/plan/plan.json
+  test -s /tmp/smarter/plan/analyze-report.md
   circleci config validate /tmp/smarter/continue.yml
   echo "test-orb-integration: plan on examples/monorepo succeeded"
+
+  hist="$root/internal/backtest/testdata/param-gated/history.json"
+  if [ -s "$hist" ]; then
+    mkdir -p /tmp/smarter/learn
+    "$bin" learn \
+      --repo "$root" \
+      --config "$root/internal/backtest/testdata/param-gated/config.yml" \
+      --workflow ci \
+      --history "$hist" \
+      --learned-out /tmp/smarter/learned.json \
+      --report /tmp/smarter/learn/learn.md \
+      --ai off > /dev/null
+    test -s /tmp/smarter/learned.json
+    echo "test-orb-integration: learn with fixture history succeeded"
+  fi
 else
   echo "test-orb-integration: skipped plan run (no planner binary)"
 fi

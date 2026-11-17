@@ -1,0 +1,22 @@
+{
+  "full-suite": true,
+  "windows": true,
+  "proxy-image": true,
+  "microvm": true,
+  "linux-swarm": true,
+  "linux-swarm-proxy": true,
+  "linux-smoke": true,
+  "linux-image": true,
+  "container-agent": true,
+  "e2e-sim": true,
+  "proxy-test": true,
+  "signing": true,
+  "pull-request": true,
+  "strict": true,
+  "e2e-linux": true,
+  "e2e-windows": true,
+  "release": true,
+  "publish": true,
+  "docs-only": true,
+  "security-scan": true
+}

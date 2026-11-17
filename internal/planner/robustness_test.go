@@ -22,6 +22,7 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
+	"github.com/CircleCI-Labs/smarter-workflows/internal/circlecitest"
 	"github.com/CircleCI-Labs/smarter-workflows/internal/config"
 	"github.com/CircleCI-Labs/smarter-workflows/internal/diff"
 	"github.com/CircleCI-Labs/smarter-workflows/internal/diff/difftest"
@@ -29,13 +30,6 @@ import (
 	"github.com/CircleCI-Labs/smarter-workflows/internal/impactmap"
 	"github.com/CircleCI-Labs/smarter-workflows/internal/planner"
 	"github.com/CircleCI-Labs/smarter-workflows/internal/policy"
-)
-
-// The steps the trace adds, as rbSteps names them.
-const (
-	rbCollect = "run:smarter: collect trace"
-	rbPersist = "persist_to_workspace"
-	rbReset   = "run:smarter: reset atime"
 )
 
 // ---- fixtures, repositories and plans ----
@@ -91,7 +85,7 @@ type rbReads struct {
 // no entry.
 func rbMap(rev string, jobs map[string]rbReads) *impactmap.Map {
 	m := &impactmap.Map{
-		Version: 1, Revision: rev, CreatedAt: "2026-11-12T18:30:00Z", Method: "atime",
+		Version: 1, Revision: rev, CreatedAt: "2026-11-12T18:30:00Z", Method: "static",
 		Jobs: map[string]*impactmap.Job{},
 	}
 	for name, r := range jobs {
@@ -113,8 +107,7 @@ func rbOpts(wf, branch string, rr rbRepo) planner.Options {
 	} else {
 		o.Base = rr.base
 	}
-	o.Version = "dev-robust"
-	o.BinPath = "/usr/local/bin/circleci-smarter"
+
 	return o
 }
 
@@ -138,7 +131,6 @@ type rbCase struct {
 	reads      map[string]rbReads
 	mandatory  []string
 	parameters map[string]any
-	traceOrb   bool          // --trace-orb-jobs
 	checker    guard.Checker // the policy bundle, or nil
 	wf         string        // "ci" unless set
 	want       rbWant
@@ -159,7 +151,6 @@ func rbRun(t *testing.T, c rbCase) *planner.Result {
 	o := rbOpts(wf, branch, rr)
 	o.Mandatory = c.mandatory
 	o.Parameters = c.parameters
-	o.TraceOrbJobs = c.traceOrb
 	in := planner.Input{Config: c.cfg, Map: rbMap(rr.base, c.reads), Repo: rr.git, CommitMessage: "change"}
 	in.Checker = c.checker
 	res, err := planner.Run(context.Background(), in, o)
@@ -263,7 +254,7 @@ func rbInvariants(t *testing.T, c rbCheck) {
 	inEntries := rbEntries(t, c.in, c.wf)
 	outEntries := rbEntries(t, c.res.Config, c.wf)
 	inIdx, outIdx := rbIndex(inEntries), rbIndex(outEntries)
-	infra := func(e *config.Entry) bool { return e.Name == gate || e.Name == planner.ImpactMapJob }
+	infra := func(e *config.Entry) bool { return e.Name == gate }
 
 	// (a)
 	for _, e := range outEntries {
@@ -583,19 +574,13 @@ func rbMatches(patterns []string, name string) bool {
 	return false
 }
 
-// rbValidate runs `circleci config validate` on cfg when REQUIRE_CIRCLECI_CLI=1.
-// Under that setting a missing CLI, or an API that cannot be reached, fails the
-// test. Without it the check is logged and skipped.
+// rbValidate runs `circleci config validate` on cfg when the CLI and token are available.
 func rbValidate(t *testing.T, cfg []byte) {
 	t.Helper()
-	if os.Getenv("REQUIRE_CIRCLECI_CLI") != "1" {
-		t.Log("circleci config validate not run: set REQUIRE_CIRCLECI_CLI=1 to run it")
+	if !circlecitest.ShouldRunValidate(t) {
 		return
 	}
-	bin, err := exec.LookPath("circleci")
-	if err != nil {
-		t.Fatalf("REQUIRE_CIRCLECI_CLI=1, but the circleci CLI is not on the PATH: %v", err)
-	}
+	bin := circlecitest.FindCLI(t)
 	file := filepath.Join(t.TempDir(), "continue.yml")
 	if err := os.WriteFile(file, cfg, 0o644); err != nil {
 		t.Fatal(err)
@@ -608,10 +593,11 @@ func rbValidate(t *testing.T, cfg []byte) {
 	if err == nil {
 		return
 	}
-	for _, s := range []string{"dial tcp", "no such host", "connection refused", "i/o timeout", "network is unreachable", "TLS handshake", "context deadline exceeded"} {
-		if strings.Contains(string(out), s) {
+	if circlecitest.TransportFailure(string(out)) {
+		if circlecitest.RequireEnabled() {
 			t.Fatalf("REQUIRE_CIRCLECI_CLI=1, but the CircleCI API cannot be reached: %s", out)
 		}
+		t.Skip("the CircleCI API is not reachable: " + strings.TrimSpace(string(out)))
 	}
 	t.Errorf("not valid CircleCI config (circleci config validate): %v\n%s", err, out)
 }
@@ -895,7 +881,7 @@ func TestRobustness_ApprovalFilteredOutIsIgnoredWhileAnotherRequirementRuns(t *t
 	t.Run("on main, the approval is there and stays", func(t *testing.T) {
 		res := rbRun(t, rbCase{cfg: cfg, base: base, reads: reads, branch: "main", change: rbEdit("deploy/run.sh", "#!/bin/sh\n# changed\n"),
 			want: rbWant{full: true, running: []string{"test", "hold-deploy", "deploy"},
-				emitted: []string{"test", "hold-deploy", "deploy", "smarter-impact-map", "smarter-gate"}, gate: []string{"test"}}})
+				emitted: []string{"test", "hold-deploy", "deploy", "smarter-gate"}, gate: []string{"test"}}})
 		if got := emittedEntry(t, res, "ci", "deploy").Requires; !slices.Equal(got, []string{"hold-deploy", "test"}) {
 			t.Errorf("deploy requires %v, want [hold-deploy test]", got)
 		}
@@ -1288,142 +1274,36 @@ func TestRobustness_DiamondOnlyOneBranchChanges(t *testing.T) {
 	})
 }
 
-// Case 13: on the default branch, the trace steps are appended to the post-steps
-// a job already has, and nothing of the job's own steps is lost.
+// Case 13: on the default branch, a full run keeps each job's own steps and
+// workflow entry post-steps unchanged.
 func TestRobustness_StepsAreAppendedNotReplaced(t *testing.T) {
 	base := map[string]string{"services/api/main.go": "package api\n"}
 	change := rbEdit("services/api/main.go", "package api\n\n// changed\n")
 	t.Run("entries with their own steps", func(t *testing.T) {
 		res := rbRun(t, rbCase{cfg: rbFixture(t, "steps_existing.yml"), base: base, branch: "main", change: change,
-			want: rbWant{full: true, running: []string{"lint", "test"}, emitted: []string{"lint", "test", "smarter-impact-map", "smarter-gate"}, gate: []string{"lint", "test"}}})
+			want: rbWant{full: true, running: []string{"lint", "test"}, emitted: []string{"lint", "test", "smarter-gate"}, gate: []string{"lint", "test"}}})
 		doc := rbDoc(t, res.Config)
-		if got, want := rbSteps(t, rbEntryBody(t, doc, "ci", "lint")["post-steps"]), []string{"run", rbCollect, rbPersist}; !slices.Equal(got, want) {
+		if got, want := rbSteps(t, rbEntryBody(t, doc, "ci", "lint")["post-steps"]), []string{"run"}; !slices.Equal(got, want) {
 			t.Errorf("lint post-steps = %v, want %v", got, want)
 		}
-		if got, want := rbSteps(t, rbEntryBody(t, doc, "ci", "test")["post-steps"]), []string{"store_test_results", rbCollect, rbPersist}; !slices.Equal(got, want) {
+		if got, want := rbSteps(t, rbEntryBody(t, doc, "ci", "test")["post-steps"]), []string{"store_test_results"}; !slices.Equal(got, want) {
 			t.Errorf("test post-steps = %v, want %v", got, want)
 		}
 		if got, want := rbSteps(t, rbEntryBody(t, doc, "ci", "lint")["pre-steps"]), []string{"run"}; !slices.Equal(got, want) {
 			t.Errorf("lint pre-steps = %v, want %v", got, want)
 		}
-		if got, want := rbSteps(t, rbJob(t, doc, "lint")["steps"]), []string{"checkout", rbReset, "run"}; !slices.Equal(got, want) {
-			t.Errorf("lint steps = %v, want %v (the reset follows checkout)", got, want)
+		if got, want := rbSteps(t, rbJob(t, doc, "lint")["steps"]), []string{"checkout", "run"}; !slices.Equal(got, want) {
+			t.Errorf("lint steps = %v, want %v", got, want)
 		}
 	})
 	t.Run("an empty post-steps list", func(t *testing.T) {
 		res := rbRun(t, rbCase{cfg: rbFixture(t, "steps_empty.yml"), base: base, branch: "main", change: change,
-			want: rbWant{full: true, running: []string{"lint", "test"}, emitted: []string{"lint", "test", "smarter-impact-map", "smarter-gate"}, gate: []string{"lint", "test"}}})
-		if got, want := rbSteps(t, rbEntryBody(t, rbDoc(t, res.Config), "ci", "lint")["post-steps"]), []string{rbCollect, rbPersist}; !slices.Equal(got, want) {
-			t.Errorf("lint post-steps = %v, want %v", got, want)
+			want: rbWant{full: true, running: []string{"lint", "test"}, emitted: []string{"lint", "test", "smarter-gate"}, gate: []string{"lint", "test"}}})
+		post := rbEntryBody(t, rbDoc(t, res.Config), "ci", "lint")["post-steps"]
+		if post != nil && len(rbSteps(t, post)) != 0 {
+			t.Errorf("lint post-steps = %v, want none", post)
 		}
 	})
-}
-
-// Expected: a post-steps key with no value is an empty list, so the trace steps are added.
-func TestRobustness_EmptyPostStepsKeyIsTraced(t *testing.T) {
-	res := rbRun(t, rbCase{
-		cfg:    rbFixture(t, "steps_null.yml"),
-		base:   map[string]string{"services/api/main.go": "package api\n"},
-		branch: "main",
-		change: rbEdit("services/api/main.go", "package api\n\n// changed\n"),
-		want: rbWant{full: true, running: []string{"lint", "test"},
-			emitted: []string{"lint", "test", "smarter-impact-map", "smarter-gate"}, gate: []string{"lint", "test"}},
-	})
-	if rbWarned(res, "internal error") {
-		t.Errorf("warnings = %v, want no internal error", res.Report.Warnings)
-	}
-	if got, want := rbSteps(t, rbEntryBody(t, rbDoc(t, res.Config), "ci", "lint")["post-steps"]), []string{rbCollect, rbPersist}; !slices.Equal(got, want) {
-		t.Errorf("lint post-steps = %v, want %v", got, want)
-	}
-}
-
-// With --trace-orb-jobs an orb entry gets the pre-steps [checkout, reset]: the
-// planner cannot reach the orb job's own checkout, so the entry checks out first
-// and resets the access times after it (spec step 8). Without the flag the orb
-// entries are not traced at all, and get no pre-steps and no post-steps.
-func TestRobustness_OrbJobTraceAddsCheckoutAndResetPreSteps(t *testing.T) {
-	cfg := rbFixture(t, "orb_overrides.yml")
-	orbJobs := []string{"unit-tests", "integration-tests"}
-	run := func(t *testing.T, traceOrb bool) map[string]any {
-		res := rbRun(t, rbCase{
-			cfg:      cfg,
-			base:     map[string]string{"services/api/main.go": "package api\n", "deploy/run.sh": "#!/bin/sh\n"},
-			branch:   "main",
-			change:   rbEdit("services/api/main.go", "package api\n\n// changed\n"),
-			traceOrb: traceOrb,
-			want: rbWant{full: true, running: []string{"unit-tests", "integration-tests", "deploy"},
-				emitted: []string{"unit-tests", "integration-tests", "deploy", "smarter-impact-map", "smarter-gate"},
-				gate:    []string{"unit-tests", "integration-tests", "deploy"}},
-		})
-		wantTraced := []string{"deploy"}
-		if traceOrb {
-			wantTraced = []string{"unit-tests", "integration-tests", "deploy"}
-		}
-		if got := res.Report.Trace.Jobs; !slices.Equal(got, wantTraced) {
-			t.Errorf("traced jobs = %v, want %v", got, wantTraced)
-		}
-		if got := emittedEntry(t, res, "ci", planner.ImpactMapJob).Requires; !slices.Equal(got, wantTraced) {
-			t.Errorf("the map job requires %v, want %v", got, wantTraced)
-		}
-		return rbDoc(t, res.Config)
-	}
-	t.Run("with --trace-orb-jobs", func(t *testing.T) {
-		doc := run(t, true)
-		for _, name := range orbJobs {
-			body := rbEntryBody(t, doc, "ci", name)
-			if got, want := rbSteps(t, body["pre-steps"]), []string{"checkout", rbReset}; !slices.Equal(got, want) {
-				t.Errorf("%s pre-steps = %v, want %v", name, got, want)
-			}
-			if got, want := rbSteps(t, body["post-steps"]), []string{rbCollect, rbPersist}; !slices.Equal(got, want) {
-				t.Errorf("%s post-steps = %v, want %v", name, got, want)
-			}
-		}
-		// The local job has its reset in its definition, after its own checkout.
-		if pre := rbEntryBody(t, doc, "ci", "deploy")["pre-steps"]; pre != nil {
-			t.Errorf("deploy has pre-steps %v, want none", rbSteps(t, pre))
-		}
-		if got, want := rbSteps(t, rbJob(t, doc, "deploy")["steps"]), []string{"checkout", rbReset, "run"}; !slices.Equal(got, want) {
-			t.Errorf("deploy steps = %v, want %v", got, want)
-		}
-	})
-	t.Run("without --trace-orb-jobs", func(t *testing.T) {
-		doc := run(t, false)
-		for _, name := range orbJobs {
-			body := rbEntryBody(t, doc, "ci", name)
-			if body["pre-steps"] != nil || body["post-steps"] != nil {
-				t.Errorf("%s is not traced, but has pre-steps %v and post-steps %v", name, body["pre-steps"], body["post-steps"])
-			}
-		}
-	})
-}
-
-// Case 14: a job with `checkout: {path: x}` gets the reset after that checkout,
-// and a job with no checkout gets no reset. Both are traced and validate.
-func TestRobustness_CheckoutPathAndNoCheckout(t *testing.T) {
-	res := rbRun(t, rbCase{
-		cfg:    rbFixture(t, "checkout_forms.yml"),
-		base:   map[string]string{"src/main.go": "package src\n"},
-		branch: "main",
-		change: rbEdit("src/main.go", "package src\n\n// changed\n"),
-		want: rbWant{full: true, running: []string{"custom-path", "no-checkout"},
-			emitted: []string{"custom-path", "no-checkout", "smarter-impact-map", "smarter-gate"}, gate: []string{"custom-path", "no-checkout"}},
-	})
-	doc := rbDoc(t, res.Config)
-	if got, want := rbSteps(t, rbJob(t, doc, "custom-path")["steps"]), []string{"checkout", rbReset, "run"}; !slices.Equal(got, want) {
-		t.Errorf("custom-path steps = %v, want %v", got, want)
-	}
-	if got, want := rbSteps(t, rbJob(t, doc, "no-checkout")["steps"]), []string{"run"}; !slices.Equal(got, want) {
-		t.Errorf("no-checkout steps = %v, want %v", got, want)
-	}
-	if rbCount(rbSteps(t, rbEntryBody(t, doc, "ci", "custom-path")["post-steps"]), rbCollect) != 1 {
-		t.Errorf("custom-path has no single collect step")
-	}
-	if rbEntryBody(t, doc, "ci", "no-checkout")["post-steps"] != nil {
-		t.Errorf("no-checkout must not be traced")
-	}
-	if got := emittedEntry(t, res, "ci", planner.ImpactMapJob).Requires; !slices.Equal(got, []string{"custom-path"}) {
-		t.Errorf("the map job requires %v", got)
-	}
 }
 
 // Case 15: YAML anchors and aliases survive the emit. An anchored filter of a
@@ -1466,61 +1346,6 @@ func TestRobustness_AnchorUsedByAnotherWorkflowSurvivesPrune(t *testing.T) {
 	}
 }
 
-// Expected: each traced entry carries exactly one collect step, also when it inherits another entry's arguments.
-func TestRobustness_TraceDoesNotDuplicateSharedArgs(t *testing.T) {
-	cfg := rbFixture(t, "merge_traced.yml")
-	res := rbRun(t, rbCase{
-		cfg:    cfg,
-		base:   map[string]string{"services/api/main.go": "package api\n"},
-		branch: "main",
-		change: rbEdit("services/api/main.go", "package api\n\n// changed\n"),
-		want: rbWant{full: true, running: []string{"lint", "test"},
-			emitted: []string{"lint", "test", "smarter-impact-map", "smarter-gate"}, gate: []string{"lint", "test"}},
-	})
-	doc := rbDoc(t, res.Config)
-	for _, name := range []string{"lint", "test"} {
-		if n := rbCount(rbSteps(t, rbEntryBody(t, doc, "ci", name)["post-steps"]), rbCollect); n != 1 {
-			t.Errorf("%s has %d collect steps, want 1", name, n)
-		}
-	}
-	if got := rbEntryBody(t, doc, "ci", "test")["context"]; got != "shared-ctx" {
-		t.Errorf("test context = %v, want the inherited shared-ctx", got)
-	}
-}
-
-// Expected: a job outside the traced workflow keeps its definition, even when it shares steps with a traced job.
-func TestRobustness_TraceLeavesUntracedJobsAlone(t *testing.T) {
-	cfg := rbFixture(t, "shared_steps.yml")
-	res := rbRun(t, rbCase{
-		cfg:    cfg,
-		base:   map[string]string{"services/api/main.go": "package api\n"},
-		branch: "main",
-		change: rbEdit("services/api/main.go", "package api\n\n// changed\n"),
-		want: rbWant{full: true, running: []string{"lint"},
-			emitted: []string{"lint", "smarter-impact-map", "smarter-gate"}, gate: []string{"lint"}},
-	})
-	if got, want := rbSteps(t, rbJob(t, rbDoc(t, res.Config), "docs")["steps"]), []string{"checkout", "run"}; !slices.Equal(got, want) {
-		t.Errorf("docs (not in the traced workflow) has steps %v, want %v", got, want)
-	}
-}
-
-// Case 15 on the default branch: the map job waits for the traced jobs that run
-// before any approval, and not for the ones behind it.
-func TestRobustness_TraceAfterApprovalIsNotAwaited(t *testing.T) {
-	cfg := rbFixture(t, "approval_middle.yml")
-	res := rbRun(t, rbCase{
-		cfg:    cfg,
-		base:   map[string]string{"app/main.go": "package app\n", "deploy/run.sh": "#!/bin/sh\n"},
-		branch: "main",
-		change: rbEdit("app/main.go", "package app\n\n// changed\n"),
-		want: rbWant{full: true, running: []string{"build", "hold", "deploy"},
-			emitted: []string{"build", "hold", "deploy", "smarter-impact-map", "smarter-gate"}, gate: []string{"build"}},
-	})
-	if got := emittedEntry(t, res, "ci", planner.ImpactMapJob).Requires; !slices.Equal(got, []string{"build"}) {
-		t.Errorf("the map job requires %v, want [build]", got)
-	}
-}
-
 // Policy: the guardrail bundle still passes after pruning, repair, and a full run.
 func TestRobustness_PolicyBundleStillPasses(t *testing.T) {
 	cfg := rbFixture(t, "policy_pass.yml")
@@ -1529,7 +1354,7 @@ func TestRobustness_PolicyBundleStillPasses(t *testing.T) {
 	}
 	change := rbEdit("services/api/main.go", "package api\n\n// changed\n")
 	reads := map[string]rbReads{
-		"security-scan": {files: []string{"go.mod"}, dirs: []string{"."}},
+		"security-scan": {files: []string{"go.mod"}},
 		"lint":          {files: []string{"services/api/main.go"}, dirs: []string{"services/api"}},
 		"build":         {files: []string{"app/x.go"}, dirs: []string{"app"}},
 		"deploy":        {files: []string{"deploy/run.sh"}, dirs: []string{"deploy"}},
@@ -1548,7 +1373,7 @@ func TestRobustness_PolicyBundleStillPasses(t *testing.T) {
 	t.Run("the default branch is a full run", func(t *testing.T) {
 		rbRun(t, rbCase{cfg: cfg, base: base, change: change, reads: reads, branch: "main", checker: rbBundle(t),
 			want: rbWant{full: true, running: []string{"security-scan", "lint", "build", "hold", "deploy"},
-				emitted: []string{"security-scan", "lint", "build", "hold", "deploy", "smarter-impact-map", "smarter-gate"},
+				emitted: []string{"security-scan", "lint", "build", "hold", "deploy", "smarter-gate"},
 				gate:    []string{"security-scan", "lint", "build"}}})
 	})
 }
@@ -1640,22 +1465,12 @@ func TestRobustness_NoOpCoordinatorIsDecidedByTheClosure(t *testing.T) {
 		rbRun(t, rbCase{cfg: cfg, base: base, reads: reads, change: rbEdit("notes/readme.md", "# notes\n\nmore\n"),
 			want: rbWant{emitted: []string{"smarter-gate"}}})
 	})
-	t.Run("on the default branch it is not traced, and the map job does not wait for it", func(t *testing.T) {
+	t.Run("on the default branch every job stays", func(t *testing.T) {
 		res := rbRun(t, rbCase{cfg: cfg, base: base, reads: reads, branch: "main", change: rbEdit("deploy/run.sh", "#!/bin/sh\n# changed\n"),
 			want: rbWant{full: true, running: []string{"test-unit", "test-integration", "tests-done", "deploy"},
-				emitted: []string{"test-unit", "test-integration", "tests-done", "deploy", "smarter-impact-map", "smarter-gate"},
+				emitted: []string{"test-unit", "test-integration", "tests-done", "deploy", "smarter-gate"},
 				gate:    []string{"test-unit", "test-integration", "deploy"}}})
-		wantTraced := []string{"test-unit", "test-integration", "deploy"}
-		if got := res.Report.Trace.Jobs; !slices.Equal(got, wantTraced) {
-			t.Errorf("traced jobs = %v, want %v", got, wantTraced)
-		}
-		if got := emittedEntry(t, res, "ci", planner.ImpactMapJob).Requires; !slices.Equal(got, wantTraced) {
-			t.Errorf("the map job requires %v, want %v", got, wantTraced)
-		}
 		doc := rbDoc(t, res.Config)
-		if rbEntryHas(t, res.Config, "ci", "tests-done", "post-steps") || rbEntryHas(t, res.Config, "ci", "tests-done", "pre-steps") {
-			t.Error("the no-op job has trace steps")
-		}
 		if got := rbJob(t, doc, "tests-done"); !reflect.DeepEqual(got, map[string]any{"type": "no-op"}) {
 			t.Errorf("the no-op job's definition is %v, want it as it was", got)
 		}
@@ -1726,13 +1541,10 @@ func TestRobustness_LeafNoOpGatekeeperIsKept(t *testing.T) {
 	t.Run("on the default branch every job stays, as it was", func(t *testing.T) {
 		res := rbRun(t, rbCase{cfg: cfg, base: base, reads: reads, branch: "main", change: rbEdit("docs/guide.md", "# guide\n\nmore\n"),
 			want: rbWant{full: true, running: []string{"test-a", "test-b", "test-c", "security-scan", "all-tests-passed"},
-				emitted: []string{"test-a", "test-b", "test-c", "security-scan", "all-tests-passed", "smarter-impact-map", "smarter-gate"},
+				emitted: []string{"test-a", "test-b", "test-c", "security-scan", "all-tests-passed", "smarter-gate"},
 				gate:    []string{"test-a", "test-b", "test-c", "security-scan"}}})
 		if got := gatekeeperRequires(t, res); !slices.Equal(got, []string{"test-a", "test-b", "test-c"}) {
 			t.Errorf("all-tests-passed requires %v", got)
-		}
-		if rbEntryHas(t, res.Config, "ci", "all-tests-passed", "post-steps") {
-			t.Error("the gatekeeper has trace steps")
 		}
 	})
 	t.Run("shadow mode keeps every job and says what select mode would do", func(t *testing.T) {
@@ -1791,7 +1603,7 @@ func TestRobustness_GatekeeperAndFilters(t *testing.T) {
 	t.Run("the default branch runs everything, as it was", func(t *testing.T) {
 		res := rbRun(t, rbCase{cfg: cfg, base: base, reads: reads, branch: "main", change: rbEdit("docs/guide.md", "# guide\n\nmore\n"),
 			want: rbWant{full: true, running: []string{"lint", "publish", "release-ok", "main-ok"},
-				emitted: []string{"lint", "publish", "release-ok", "main-ok", "smarter-impact-map", "smarter-gate"}, gate: []string{"lint", "publish"}}})
+				emitted: []string{"lint", "publish", "release-ok", "main-ok", "smarter-gate"}, gate: []string{"lint", "publish"}}})
 		if got := emittedEntry(t, res, "ci", "release-ok").Requires; !slices.Equal(got, []string{"lint", "publish"}) {
 			t.Errorf("release-ok requires %v", got)
 		}
@@ -1819,19 +1631,10 @@ func TestRobustness_ApprovalDefinedUnderJobs(t *testing.T) {
 			t.Errorf("hold reasons = %v", got)
 		}
 	})
-	t.Run("on the default branch the map job waits for what runs before the approval", func(t *testing.T) {
-		res := rbRun(t, rbCase{cfg: cfg, base: base, reads: reads, branch: "main", change: rbEdit("app/main.go", "package app\n\n// changed\n"),
+	t.Run("on the default branch every job stays", func(t *testing.T) {
+		rbRun(t, rbCase{cfg: cfg, base: base, reads: reads, branch: "main", change: rbEdit("app/main.go", "package app\n\n// changed\n"),
 			want: rbWant{full: true, running: []string{"build", "hold", "deploy"},
-				emitted: []string{"build", "hold", "deploy", "smarter-impact-map", "smarter-gate"}, gate: []string{"build"}}})
-		if got := emittedEntry(t, res, "ci", planner.ImpactMapJob).Requires; !slices.Equal(got, []string{"build"}) {
-			t.Errorf("the map job requires %v, want [build]", got)
-		}
-		if got := res.Report.Trace.Jobs; !slices.Equal(got, []string{"build", "deploy"}) {
-			t.Errorf("traced jobs = %v, want [build deploy]", got)
-		}
-		if rbEntryHas(t, res.Config, "ci", "hold", "post-steps") {
-			t.Error("the approval has trace steps")
-		}
+				emitted: []string{"build", "hold", "deploy", "smarter-gate"}, gate: []string{"build"}}})
 	})
 }
 
@@ -1868,23 +1671,11 @@ func TestRobustness_ReleaseJobFollowsItsDeploy(t *testing.T) {
 		rbRun(t, rbCase{cfg: cfg, base: base, reads: reads, change: rbEdit("docs/guide.md", "# guide\n"),
 			want: rbWant{emitted: []string{"smarter-gate"}}})
 	})
-	t.Run("on the default branch no release job is traced", func(t *testing.T) {
-		res := rbRun(t, rbCase{cfg: cfg, base: base, reads: reads, branch: "main", change: rbEdit("app/main.go", "package app\n\n// changed\n"),
+	t.Run("on the default branch every job stays", func(t *testing.T) {
+		rbRun(t, rbCase{cfg: cfg, base: base, reads: reads, branch: "main", change: rbEdit("app/main.go", "package app\n\n// changed\n"),
 			want: rbWant{full: true, running: []string{"lint", "deploy-api", "release-api", "deploy-web", "release-web"},
-				emitted: []string{"lint", "deploy-api", "release-api", "deploy-web", "release-web", "smarter-impact-map", "smarter-gate"},
+				emitted: []string{"lint", "deploy-api", "release-api", "deploy-web", "release-web", "smarter-gate"},
 				gate:    []string{"lint", "deploy-api", "release-api", "deploy-web", "release-web"}}})
-		wantTraced := []string{"lint", "deploy-api", "deploy-web"}
-		if got := res.Report.Trace.Jobs; !slices.Equal(got, wantTraced) {
-			t.Errorf("traced jobs = %v, want %v", got, wantTraced)
-		}
-		if got := emittedEntry(t, res, "ci", planner.ImpactMapJob).Requires; !slices.Equal(got, wantTraced) {
-			t.Errorf("the map job requires %v, want %v", got, wantTraced)
-		}
-		for _, name := range []string{"release-api", "release-web"} {
-			if rbEntryHas(t, res.Config, "ci", name, "post-steps") {
-				t.Errorf("%s has trace steps", name)
-			}
-		}
 	})
 }
 
@@ -1938,18 +1729,11 @@ func TestRobustness_JobGroupIsAnOpaqueUnitThatAlwaysRuns(t *testing.T) {
 				emitted: []string{"lint", "build", "deploy-and-verify", "notify", "smarter-gate"}, gate: []string{"lint", "build", "deploy-and-verify", "notify"}}})
 		checkUnit(t, res)
 	})
-	t.Run("on the default branch it is not traced, and the map job does not wait for it", func(t *testing.T) {
+	t.Run("on the default branch every job stays", func(t *testing.T) {
 		res := rbRun(t, rbCase{cfg: cfg, base: base, reads: reads, branch: "main", change: rbEdit("docs/guide.md", "# guide\n\nmore\n"),
 			want: rbWant{full: true, running: []string{"lint", "build", "deploy-and-verify", "notify"},
-				emitted: []string{"lint", "build", "deploy-and-verify", "notify", "smarter-impact-map", "smarter-gate"},
+				emitted: []string{"lint", "build", "deploy-and-verify", "notify", "smarter-gate"},
 				gate:    []string{"lint", "build", "deploy-and-verify", "notify"}}})
-		wantTraced := []string{"lint", "build", "notify"}
-		if got := res.Report.Trace.Jobs; !slices.Equal(got, wantTraced) {
-			t.Errorf("traced jobs = %v, want %v", got, wantTraced)
-		}
-		if got := emittedEntry(t, res, "ci", planner.ImpactMapJob).Requires; !slices.Equal(got, wantTraced) {
-			t.Errorf("the map job requires %v, want %v", got, wantTraced)
-		}
 		checkUnit(t, res)
 	})
 }
@@ -1978,7 +1762,7 @@ func TestRobustness_JobGroupInvokedTwiceAndFiltered(t *testing.T) {
 	t.Run("on the default branch", func(t *testing.T) {
 		res := rbRun(t, rbCase{cfg: cfg, base: base, reads: reads, branch: "main", change: change,
 			want: rbWant{full: true, running: []string{"lint", "deploy-staging", "deploy-production", "notify"},
-				emitted: []string{"lint", "deploy-staging", "deploy-production", "notify", "smarter-impact-map", "smarter-gate"},
+				emitted: []string{"lint", "deploy-staging", "deploy-production", "notify", "smarter-gate"},
 				gate:    []string{"lint", "deploy-staging", "deploy-production", "notify"}}})
 		doc := rbDoc(t, res.Config)
 		for name, want := range map[string]string{"deploy-staging": "<< pipeline.project.slug >>/staging", "deploy-production": "<< pipeline.project.slug >>/production"} {
@@ -2020,16 +1804,11 @@ func TestRobustness_SerialGroupSurvivesTheEmit(t *testing.T) {
 			want: rbWant{running: []string{"lint", "build"}, emitted: []string{"lint", "build", "smarter-gate"}, gate: []string{"lint", "build"}}})
 		check(t, res, "build")
 	})
-	t.Run("a traced full run", func(t *testing.T) {
+	t.Run("a full run on the default branch", func(t *testing.T) {
 		res := rbRun(t, rbCase{cfg: cfg, base: base, reads: reads, branch: "main", change: rbEdit("docs/guide.md", "# guide\n\nmore\n"),
 			want: rbWant{full: true, running: []string{"lint", "build", "deploy"},
-				emitted: []string{"lint", "build", "deploy", "smarter-impact-map", "smarter-gate"}, gate: []string{"lint", "build", "deploy"}}})
+				emitted: []string{"lint", "build", "deploy", "smarter-gate"}, gate: []string{"lint", "build", "deploy"}}})
 		check(t, res, "build", "deploy")
-		// The trace steps are added next to the key, in the same entry.
-		doc := rbDoc(t, res.Config)
-		if rbCount(rbSteps(t, rbEntryBody(t, doc, "ci", "build")["post-steps"]), rbCollect) != 1 {
-			t.Error("build has no single collect step")
-		}
 	})
 }
 
@@ -2052,7 +1831,7 @@ func TestRobustness_PolicyBundleReadsAnApprovalDefinedUnderJobs(t *testing.T) {
 	t.Run("on the default branch", func(t *testing.T) {
 		res := rbRun(t, rbCase{cfg: cfg, base: base, reads: reads, branch: "main", change: change, mandatory: []string{"security-scan"}, checker: rbBundle(t),
 			want: rbWant{full: true, running: []string{"security-scan", "build", "hold", "deploy"},
-				emitted: []string{"security-scan", "build", "hold", "deploy", "smarter-impact-map", "smarter-gate"}, gate: []string{"security-scan", "build"}}})
+				emitted: []string{"security-scan", "build", "hold", "deploy", "smarter-gate"}, gate: []string{"security-scan", "build"}}})
 		if res.GuardrailsFailed || res.Report.Guardrails.Status != "PASS" {
 			t.Errorf("guardrails failed = %v, status = %s: the deploy is behind an approval", res.GuardrailsFailed, res.Report.Guardrails.Status)
 		}

@@ -8,9 +8,9 @@ The tool has to be easy to adopt in production if product teams like it. The `ci
 
 ## Decision
 
-Ship a single static Go binary, `circleci-smarter`, that can be called directly or as `circleci smarter`. It embeds the trace collector script, and links `circle-policy-agent` for the pre-flight. The orb downloads a pinned, checksummed release. Until releases exist, it builds from source.
+Ship a single static Go binary, `circleci-smarter`, that can be called directly or as `circleci smarter`. It links `circle-policy-agent` for the pre-flight. The orb downloads a pinned, checksummed release. Until releases exist, it builds from source.
 
 ## Consequences
 
 - One language and one binary, with no runtime dependencies in the planner job.
-- The trace collector stays a small POSIX shell script, so jobs need no extra binary.
+- Impact maps are built by `analyze` in the setup job, not by steps injected into customer jobs (ADR 8).

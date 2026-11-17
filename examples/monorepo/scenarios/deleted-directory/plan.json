@@ -21,7 +21,7 @@
       "name": "lint",
       "run": true,
       "reasons": [
-        "lists ., where directory scripts is gone"
+        "reads scripts/deploy.sh"
       ]
     },
     {
@@ -29,7 +29,7 @@
       "run": true,
       "reasons": [
         "mandatory job",
-        "lists ., where directory scripts is gone"
+        "reads scripts/deploy.sh"
       ]
     },
     {

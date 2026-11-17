@@ -325,31 +325,10 @@ fi
 
 # --- one scenario ----------------------------------------------------------------
 
-# map_ready SETUP PLANNED: whether the pipeline of the base commit on main has
-# built its impact map (the smarter-impact-map job of the planned workflow
-# succeeded). Prints why not, and returns 1, when it has not (yet).
+# map_ready SETUP PLANNED: v0.3 no longer builds an impact map from CI traces.
 map_ready() {
-  local ids id wfs wf jobs_json st
-  ids=$(cci "api/v2/project/$project/pipeline?branch=main" |
-    jq -r --arg sha "$base_sha" '.items[] | select((.trigger_parameters.git.checkout_sha // "") == $sha) | .id') || ids=
-  for id in $ids; do
-    wfs=$(cci "api/v2/pipeline/$id/workflow") || continue
-    jq -e --arg n "$1" '.items[] | select(.name == $n)' <<< "$wfs" > /dev/null || continue
-    wf=$(jq -r --arg n "$2" '[.items[] | select(.name == $n)][0].id // ""' <<< "$wfs")
-    if [ -z "$wf" ]; then
-      echo "the pipeline of the base commit has no $2 workflow yet"
-      return 1
-    fi
-    jobs_json=$(cci "api/v2/workflow/$wf/job") || return 1
-    st=$(jq -r '[.items[] | select(.name == "smarter-impact-map")][0].status // "absent"' <<< "$jobs_json")
-    if [ "$st" = success ]; then
-      return 0
-    fi
-    echo "the smarter-impact-map job of the base commit is $st"
-    return 1
-  done
-  echo "no pipeline of this definition for the base commit on main"
-  return 1
+  echo "impact maps are not produced by a trace job in the pipeline anymore"
+  return 0
 }
 
 # check_conclusion SHA NAME: success, failure, ... or pending or missing.
@@ -572,7 +551,7 @@ run_scenario() {
   if [ -n "$planned_wf" ]; then
     wf_jobs_json=$(cci "api/v2/workflow/$planned_wf/job" || echo '{"items":[]}')
     actual_all=$(jq -r '.items[] | select(.type != "approval") | .name' <<< "$wf_jobs_json" | sort)
-    actual=$(grep -vxE 'smarter-gate|smarter-impact-map' <<< "$actual_all" || true)
+    actual=$(grep -vxE 'smarter-gate' <<< "$actual_all" || true)
     bad=$(jq -r '.items[] | select(.type != "approval" and .status != "success") | .name + " (" + .status + ")"' <<< "$wf_jobs_json")
     ran=$(tr '\n' ' ' <<< "$actual" | sed 's/ $//')
     echo "  ran: ${ran:-nothing} (+ smarter-gate)"

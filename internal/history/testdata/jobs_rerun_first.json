@@ -1,0 +1,10 @@
+{
+  "items": [
+    {
+      "name": "unit-test",
+      "type": "build",
+      "status": "failed",
+      "duration": 120000
+    }
+  ]
+}

@@ -42,7 +42,8 @@ required_job_names := {"security-scan"}
 
 # restricted_contexts: contexts that only some jobs may use. For each context:
 #   jobs              job definitions (the key under `jobs:`, or `orb/job`) that
-#                     may use it
+#                     may use it (for example smarter-workflows-ci on go-test and
+#                     orb-validate, smarter-workflows-release on release jobs)
 #   branches          the branches those jobs must be limited to with
 #                     `filters.branches.only`; compared as written, so a regex
 #                     filter is allowed only if it is listed verbatim
@@ -60,6 +61,14 @@ context_restrictions := {
 		"branches": {"main"},
 		"allow_tags": true,
 		"require_approval": false,
+	},
+	# CircleCI token for `circleci config validate` in CI (variable CIRCLE_TOKEN).
+	"smarter-workflows-ci": {
+		"jobs": {"go-test", "orb-validate"},
+	},
+	# API tokens for history fetch, learn, and benchmark (CIRCLECI_TOKEN, optional AI key).
+	"smarter-workflows-ai": {
+		"jobs": {"benchmark", "learn"},
 	},
 }
 
@@ -112,10 +121,12 @@ restricted_contexts[msg] {
 	)
 }
 
-# The job can run on branches other than the listed ones.
+# The job can run on branches other than the listed ones. Omit `branches` in a
+# context entry to allow any branch (for jobs that run on every branch).
 restricted_contexts[msg] {
 	restricted_context_uses[[wf, name, ref, cfg, context]]
 	branches := object.get(context_restrictions[context], "branches", set())
+	count(branches) > 0
 	not limited_to_branches(cfg, branches)
 	msg := sprintf(
 		"workflow %q: job %s uses the restricted context %q and must be limited to the branches [%s] (filters.branches.only)",
