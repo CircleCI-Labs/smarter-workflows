@@ -21,7 +21,8 @@ type Report struct {
 	EstimatedCostUSD float64      `json:"estimated_cost_usd"`
 	PriceNote        string       `json:"price_note"`
 	Warnings         []string     `json:"warnings,omitempty"`
-	Truth            *TruthReport `json:"truth,omitempty"`
+	Truth               *TruthReport  `json:"truth,omitempty"`
+	HistoryCorrections  []Correction  `json:"history_corrections,omitempty"`
 }
 
 // JobReport is one job's completeness and input provenance.

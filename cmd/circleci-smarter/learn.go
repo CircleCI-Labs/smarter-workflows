@@ -104,8 +104,14 @@ func runLearn(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "circleci-smarter learn: warning: %s\n", w)
 	}
 	if res.BacktestAfter != nil {
-		fmt.Fprintf(stdout, "circleci-smarter learn: recall %.1f%%, savings %.1f%% (%d commits)\n",
-			100*res.BacktestAfter.Summary.Recall, res.BacktestAfter.Summary.SavingsPercent, res.BacktestAfter.Commits)
+		denom := res.BacktestAfter.Summary.CaughtFailures + res.BacktestAfter.Summary.Misses
+		if denom == 0 {
+			fmt.Fprintf(stdout, "circleci-smarter learn: recall n/a (no failing jobs), savings %.1f%% (%d commits)\n",
+				res.BacktestAfter.Summary.SavingsPercent, res.BacktestAfter.Commits)
+		} else {
+			fmt.Fprintf(stdout, "circleci-smarter learn: recall %.1f%%, savings %.1f%% (%d commits)\n",
+				100*res.BacktestAfter.Summary.Recall, res.BacktestAfter.Summary.SavingsPercent, res.BacktestAfter.Commits)
+		}
 	}
 	if !res.RecallOK(*minRecall) {
 		return learnExitLowRecall

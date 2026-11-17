@@ -166,7 +166,7 @@ func Run(ctx context.Context, opts Options, fetch HistoryFetcher, log io.Writer)
 		After:         btAfter,
 		Analyze:       afterAnalyze,
 		AnalyzeBefore: beforeAnalyze,
-		Corrections:   countNewCorrections(beforeAnalyze, afterAnalyze),
+		Corrections:   PathCorrectionsFromAnalyze(afterAnalyze),
 		Warnings:      warnings,
 		History:       history,
 	})
@@ -256,33 +256,13 @@ func copyFile(src, dst string) error {
 	return os.WriteFile(dst, in, 0o640)
 }
 
-func countNewCorrections(before, after *analyze.Report) int {
-	if before == nil || after == nil {
-		return 0
-	}
-	b := signalCount(before, analyze.SignalHistory)
-	a := signalCount(after, analyze.SignalHistory)
-	if a > b {
-		return a - b
-	}
-	return 0
-}
-
-func signalCount(rep *analyze.Report, signal string) int {
-	n := 0
-	for _, j := range rep.Jobs {
-		for k, paths := range j.InputsBySignal {
-			if strings.HasPrefix(k, signal) {
-				n += len(paths)
-			}
-		}
-	}
-	return n
-}
-
 // RecallOK reports whether after backtest recall meets minRecall (when set).
 func (r *Result) RecallOK(min float64) bool {
 	if min <= 0 || r.BacktestAfter == nil {
+		return true
+	}
+	denom := r.BacktestAfter.Summary.CaughtFailures + r.BacktestAfter.Summary.Misses
+	if denom == 0 {
 		return true
 	}
 	return r.BacktestAfter.Summary.Recall >= min

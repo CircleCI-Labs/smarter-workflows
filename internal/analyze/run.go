@@ -122,7 +122,7 @@ func Run(ctx context.Context, opts RunOptions) (*impactmap.Map, *Report, *Learne
 			return nil, nil, nil, err
 		}
 	}
-	report := &Report{PriceNote: "Haiku 5.5 ≤100k input tier; prices as of " + aiPriceAsOf()}
+	report := &Report{PriceNote: "Haiku 5.5 ≤100k input tier; prices as of " + aiPriceAsOf(), HistoryCorrections: corrections}
 	var learnedOut *Learned
 	aiEnabled := aiModeEnabled(opts.AIMode)
 	aiWf := workflows[0]
