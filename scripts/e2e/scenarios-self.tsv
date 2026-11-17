@@ -8,5 +8,5 @@ self-docs-only	build docs-site-build e2e-plan go-lint security-scan	printf '\nTh
 self-internal-report	build e2e-plan go-lint go-test policy-test security-scan	sed -i 's|^// maxChangedInMarkdown is how many changed files plan\.md lists\.$|// maxChangedInMarkdown is how many changed files plan.md lists at most.|' internal/report/report.go	refactor(report): reword a comment
 self-added-file-internal-report	build e2e-plan go-lint go-test policy-test security-scan	printf '# report\n\nWrites plan.json and plan.md.\n' > internal/report/NOTES.md	docs(report): add a note on the package
 self-smarter-full-message	full:the head commit asks for a full run	printf '\nA full run is always one commit message away.\n' >> docs/limitations.md	docs: add a note [smarter full]
-self-policies	build e2e-plan go-lint policy-test security-scan	printf '# Scenario: policies bundle\n' >> policies/NOTES.md	docs(policies): add a note on the bundle
+self-policies	build e2e-plan go-lint go-test policy-test security-scan	printf '# Scenario: policies bundle\n' >> policies/NOTES.md	docs(policies): add a note on the bundle
 self-orb	build e2e-plan go-lint orb-validate security-scan	sed -i 's|still runs every job\.|still runs every job (scenario).|' orb/src/@orb.yml	docs(orb): reword the orb description
