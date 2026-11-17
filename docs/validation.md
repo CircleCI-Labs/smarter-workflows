@@ -1,14 +1,81 @@
 ---
 page-title: Validation
 page-audience: admin
-page-description: The test layers, the end-to-end scenarios, the bugs that validation found, and the compose eval of v0.1, and what is not validated yet.
+page-description: v0.3 validation on this repository and the demo monorepo, and the v0.1 test layers and end-to-end scenarios kept for history.
 ---
 
 # Validation
 
-What was tested in v0.1, and what each layer found. Unit, robustness and guardrail results are from 2026-11-14; end-to-end and backtest numbers are from 2026-11-15. Runtime tracing was removed in v0.3 (ADR 8); the trace-script layer and atime checks below are historical only and no longer gate merges.
+Measured on **this repository** and the **[demo monorepo](../examples/demo/README.md)** at **`main` commit `fdbdeac`** (**2026-11-17**), unless a section says otherwise. v0.3 uses inline `analyze` at each pipeline's head; the trace-script layer from v0.1 is historical only.
 
-## Test layers
+## v0.3 validation
+
+### Static proof
+
+`circleci-smarter analyze --ai off` at HEAD:
+
+| Target | Workflow | Jobs proven complete | Analyze time |
+| --- | --- | ---: | --- |
+| This repository | `ci` | 11 of 14 | 0.56 s (0.25 s in-process in `plan`) |
+| Demo | `demo` | 12 of 12 | 0.01 s |
+
+Incomplete on this repo: `security-scan` (a script path the analyzer cannot resolve), `orb-publish-dev` and `orb-publish-prod` (a dynamic argument to `circleci`). Against the last traced maps (truth fixtures), for jobs complete in both analyze and trace and files that still exist, every traced file is covered (`TestSelfTruthCoverage`, `TestDemoTruthCoverage`). Weighted recall including paths deleted since the trace: **96.3%** (8 jobs on self), **100%** (9 jobs on demo).
+
+### End to end
+
+[`scripts/e2e/run-scenarios.sh`](../scripts/e2e/run-scenarios.sh) ran **21** scenarios on real CircleCI pipelines (`base` `origin/main` at `fdbdeac`).
+
+- **20 of 21** ran exactly the expected jobs (besides `smarter-gate`).
+- **1** (`self-orb`) ran a **safe superset**: `go-test` and `release-dry-run` in addition to the static expectation, after the first scheduled `learn` run populated the learned layer. **No scenario skipped an expected job.**
+
+Full-run baselines for savings: demo **159 s** job seconds, this repository **668 s**. Median savings vs full run:
+
+| Target | Change | Saved |
+| --- | --- | ---: |
+| demo | docs only | 88% |
+| demo | infra only | 77% |
+| demo | worker only | 68% |
+| demo | e2e script only | 64% |
+| demo | web lockfile | 55% |
+| demo | web only | 49% |
+| demo | deleted file under web | 42% |
+| demo | api rename | 27% |
+| demo | new file under api | 14% |
+| demo | docs and api | 11% |
+| demo | shared schema | 6% |
+| demo | api only | −1% |
+| self | docs only | 81% |
+| self | orb source | 26% |
+| self | Go packages, `policies/` | ~0% (most jobs build the binary) |
+
+Full-run scenarios (`.circleci` change, `[smarter full]`) and `guardrail-blocked` behaved as designed. Per-scenario detail and medians: [Benchmarks](benchmarks.md#v03-savings).
+
+Expectations in [`scripts/e2e/scenarios-*.tsv`](../scripts/e2e/scenarios-demo.tsv) are recomputed with [`scripts/e2e/expect.sh`](../scripts/e2e/expect.sh) using the same `plan` flags as CI (`--branch`, `--base`, `--head`, and demo `--full-run-paths`).
+
+### First scheduled learn runs
+
+First `learn` jobs on the default branch (**2026-11-17 20:28 UTC**, AI on, `claude-haiku-5-5`):
+
+| Target | Commits replayed | Recall | Projected savings | Notes |
+| --- | ---: | ---: | ---: | --- |
+| This repository | 96 | 100% | 15.2% of matched job time (4246 s) | 0 misses; flaky: `go-test`, `orb-validate`; **128** history corrections (many from failures when a CI token was missing; corrections only add paths). AI: 1 call, 58k input tokens, $0.0068. |
+| Demo | 90 | n/a | 19.5% (1174 s) | No failing jobs in history. AI: 1 call, 11k tokens, $0.0019. |
+
+### Bugs that validation found and fixed in v0.3
+
+- Static analysis claimed proof without following scripts (for example `release-dry-run` building the binary): scripts are now followed, with `$0`/`dirname` idioms, assignments and positional parameters resolved; unresolvable commands stay opaque.
+- `../../policies` literals were dropped; bare words like `docs` were mistaken for paths.
+- Map root and trace-era directory semantics: directories are recursive inputs; `.` covers the repository.
+- CI environment (`CIRCLE_BRANCH=main`) leaked into `plan` tests.
+- `release-dry-run` ran out of memory compiling the Anthropic SDK on a small executor (now `medium`).
+- CircleCI requires an API token for `circleci config validate`; CI uses the `smarter-workflows-ci` context.
+- E2e harness: `map_revision` checks updated for inline analyze; `expect.sh` aligned with setup `plan` flags.
+
+## v0.1 and v0.2 validation (historical)
+
+Unit, robustness and guardrail results are from **2026-11-14**; end-to-end and backtest numbers are from **2026-11-15**. Runtime tracing was removed in v0.3 ([ADR 8](adr/0008-impact-maps-from-analysis-not-traces.md)); the trace-script layer and atime checks below are historical only.
+
+### Test layers
 
 | Layer | What | Result |
 |---|---|---|
@@ -18,7 +85,7 @@ What was tested in v0.1, and what each layer found. Unit, robustness and guardra
 | Trace scripts (v0.1 only; removed v0.3) | 43 checks on ext4, tmpfs and the `cimg/base` image; the atime reset tested on CircleCI's docker and machine executors | pass (historical) |
 | End to end | `scripts/e2e/run-scenarios.sh`: real branches, real pipelines, and an exact comparison of the jobs that ran | pass (57/63 job-set checks on first batch; two scenario definitions fixed and rerun — see below) |
 
-## End-to-end scenarios
+### End-to-end scenarios
 
 Twenty-one scenarios on two targets: the [demo monorepo](../examples/demo/README.md) (16 scenarios, 13 jobs, select mode) and this repository (5 scenarios, 8 jobs). Each scenario ran **three times** on the same base commit (**63** pipeline runs total). Every run checked the jobs that ran (besides `smarter-gate`), guardrail outcome where relevant, and the continued workflow's GitHub check conclusion.
 
@@ -63,7 +130,7 @@ The two `worker-test` matrix jobs always run on the demo target in v0.1.
 
 **Job seconds** sum each job's run time in the continued workflow. They approximate compute, not credits (resource class matters), and exclude queue time. Use `scripts/e2e/run-scenarios.sh --repeat N --csv OUT` to reproduce medians and the savings table against each target's full-run scenario.
 
-## Bugs that validation found and fixed
+### Bugs that validation found and fixed (v0.1)
 
 - A job's `requires` on a filtered-out job: the planner now follows CircleCI's documented rule. A filtered-out requirement is ignored, unless every requirement is filtered out.
 - YAML anchors, aliases and merge keys are expanded before pruning. Before the fix, they could leave dangling aliases or duplicate injected steps.
@@ -72,7 +139,7 @@ The two `worker-test` matrix jobs always run on the demo target in v0.1.
 - The gate says when it does not wait for a job with a status requirement.
 - In CI only: git's background maintenance made temp-repo cleanup flaky; the orb is now validated without an API token; some orgs' config policies allow only exact image tags, so the language images of the pipeline carry a tag and no digest.
 
-## Compose eval
+### Compose eval
 
 The [compose eval](../examples/compose-eval/README.md) asks: can an agent assemble jobs into a correct workflow? With the [composer skill](../skills/circleci-workflow-composer/SKILL.md), the docs MCP and the CLI checks, Claude Haiku 5.5 was given three cases, and [`examples/compose-eval/check.sh`](../examples/compose-eval/check.sh) graded each answer with no model involved.
 
@@ -90,22 +157,9 @@ Its full layout matches the hand-written one, with a slightly cleaner shape:
 
 The answers are in [`examples/compose-eval/answers/haiku-5-5/`](../examples/compose-eval/answers/haiku-5-5/).
 
-## Not validated yet
+### Not validated yet (v0.1)
 
 - Shadow mode on a busy real repository, for real hit and miss rates.
 - The approval and deploy path on the default branch beyond the hold.
 - Tampering with the cached map (see limitations).
 
-## v0.3 validation (in progress)
-
-Structure for post-integration results; numbers are **TBD** until orchestrator runs complete.
-
-| Layer | Metric | Target / method | Result |
-|---|---|---|---|
-| Static proof | Jobs with complete static analyze at HEAD | `analyze` report on main | TBD |
-| Truth coverage | Recall vs recorded history corrections | `learn` + backtest | TBD |
-| Learn trial | Projected recall and savings | `learn` report on schedule | TBD |
-| End to end | Job sets per scenario (analyze-based expectations) | `scripts/e2e/run-scenarios.sh` | TBD |
-| Backtests | Savings on N commits | `circleci-smarter backtest` / benchmark job | TBD |
-
-Expectations in `scripts/e2e/scenarios-*.tsv` are recomputed with [`scripts/e2e/expect.sh`](../scripts/e2e/expect.sh) against `origin/main` using inline analyze (no learned layer).
