@@ -16,7 +16,7 @@ func TestShellEnvRootFromDirname(t *testing.T) {
 		t.Fatal(err)
 	}
 	into := newInputSet()
-	op := (&Engine{}).walkShellScriptFile(root, ".", "scripts/test-release-dry-run.sh", string(body), 1, into, nil, nil, nil)
+	op := (&Engine{}).walkShellScriptFile(root, ".", "scripts/test-release-dry-run.sh", string(body), 1, into, nil, nil, nil, nil)
 	if op != "" {
 		t.Fatalf("opaque %q", op)
 	}

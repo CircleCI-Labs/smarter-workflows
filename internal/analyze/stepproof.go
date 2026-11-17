@@ -46,6 +46,7 @@ func (e *Engine) proveJob(cfg *config.Config, entry *config.Entry, into *InputSe
 			}
 		}
 	}
+	e.jobWorkspaceAt = normalizeWorkspaceRoots(cfg.CollectAttachWorkspaceAt(entry.Ref, entry.EntryArgs()), baseWD)
 	steps := cfg.CollectOutlineSteps(entry.Ref, entry.EntryArgs())
 	for _, st := range steps {
 		rec := StepRecord{Num: st.Num, Key: st.Key}

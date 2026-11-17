@@ -40,7 +40,7 @@ func (e *Engine) followScript(repoRoot, wd, script string, depth int, into *Inpu
 	if funcs != nil {
 		mergeShellFuncs(string(data), funcs)
 	}
-	op := e.walkShellScriptFile(repoRoot, wd, rel, string(data), depth+1, into, proof, pos, parentEnv)
+	op := e.walkShellScriptFile(repoRoot, wd, rel, string(data), depth+1, into, proof, pos, parentEnv, e.jobWorkspaceAt)
 	e.maybeDocsSiteScript(repoRoot, rel, into)
 	e.scanScriptLiteralFileRefs(repoRoot, rel, string(data), into)
 	return op

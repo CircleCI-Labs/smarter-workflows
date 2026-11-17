@@ -55,7 +55,7 @@ func (e *Engine) analyzeRunCommand(repoRoot, wd, cmd string, into *InputSet, pro
 		}
 		return ""
 	}
-	op := e.walkShellScript(repoRoot, wd, cmd, 0, into, proof)
+	op := e.walkShellScript(repoRoot, wd, cmd, 0, into, proof, e.jobWorkspaceAt)
 	e.scanLangCommands(repoRoot, wd, cmd, into)
 	return op
 }

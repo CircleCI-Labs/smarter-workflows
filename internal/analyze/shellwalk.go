@@ -3,6 +3,7 @@ package analyze
 import (
 	"fmt"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"mvdan.cc/sh/v3/syntax"
@@ -36,13 +37,14 @@ type shellWalk struct {
 	scriptRel   string
 	env         map[string]string
 	positional  []string
+	workspaceAt []string
 }
 
-func (e *Engine) walkShellScript(repoRoot, wd, script string, depth int, into *InputSet, proof *JobProof) string {
-	return e.walkShellScriptFile(repoRoot, wd, "", script, depth, into, proof, nil, nil)
+func (e *Engine) walkShellScript(repoRoot, wd, script string, depth int, into *InputSet, proof *JobProof, workspaceAt []string) string {
+	return e.walkShellScriptFile(repoRoot, wd, "", script, depth, into, proof, nil, nil, workspaceAt)
 }
 
-func (e *Engine) walkShellScriptFile(repoRoot, wd, scriptRel, script string, depth int, into *InputSet, proof *JobProof, positional []string, parentEnv map[string]string) string {
+func (e *Engine) walkShellScriptFile(repoRoot, wd, scriptRel, script string, depth int, into *InputSet, proof *JobProof, positional []string, parentEnv map[string]string, workspaceAt []string) string {
 	script = strings.TrimSpace(script)
 	if script == "" {
 		return ""
@@ -51,7 +53,7 @@ func (e *Engine) walkShellScriptFile(repoRoot, wd, scriptRel, script string, dep
 	if err != nil {
 		return truncateOpaque(script)
 	}
-	sw := &shellWalk{e: e, repoRoot: repoRoot, into: into, proof: proof, depth: depth, funcs: map[string][]*syntax.Stmt{}, scriptRel: scriptRel, env: cloneShellEnv(parentEnv), positional: []string{""}}
+	sw := &shellWalk{e: e, repoRoot: repoRoot, into: into, proof: proof, depth: depth, funcs: map[string][]*syntax.Stmt{}, scriptRel: scriptRel, env: cloneShellEnv(parentEnv), positional: []string{""}, workspaceAt: workspaceAt}
 	if len(positional) > 0 {
 		sw.setPositional(positional)
 	}
@@ -270,6 +272,12 @@ func (sw *shellWalk) callExpr(c *syntax.CallExpr, wds wdSet, nested bool) wdSet 
 		return wds
 	}
 	argv := parseCallArgv(c)
+	for len(argv) > 0 && !argv[0].Dynamic && argv[0].Lit == "!" {
+		argv = argv[1:]
+	}
+	if expanded, ok := sw.expandAtCommand(argv); ok {
+		argv = expanded
+	}
 	for i := range argv {
 		if !argv[i].Dynamic || argv[i].Word == nil {
 			continue
@@ -315,6 +323,18 @@ func (sw *shellWalk) callExpr(c *syntax.CallExpr, wds wdSet, nested bool) wdSet 
 				return wds
 			}
 		}
+		if len(argv) > 0 {
+			lit0 := normalizePathToken(argv[0].Lit)
+			if argv[0].Dynamic && argv[0].Word != nil {
+				if s, ok := sw.expandWord(argv[0].Word, wds); ok {
+					lit0 = normalizePathToken(s)
+				}
+			}
+			if isWorkspaceBinaryPath(lit0, sw.workspaceAt) {
+				sw.e.noteArgvRepoPaths(sw.repoRoot, wds, argv, c.Args, sw.into)
+				return wds
+			}
+		}
 		if argv[0].Dynamic && argv[0].Word != nil {
 			if s, ok := sw.expandWord(argv[0].Word, wds); ok {
 				s = normalizePathToken(s)
@@ -335,6 +355,20 @@ func (sw *shellWalk) callExpr(c *syntax.CallExpr, wds wdSet, nested bool) wdSet 
 	}
 	if name == "" {
 		return sw.callExprPartial(c, wds)
+	}
+	if name == "shift" {
+		n := 1
+		if len(argv) >= 2 && !argv[1].Dynamic {
+			if v, err := strconv.Atoi(argv[1].Lit); err == nil && v > 0 {
+				n = v
+			}
+		}
+		if len(sw.positional) > n {
+			sw.positional = append([]string{sw.positional[0]}, sw.positional[1+n:]...)
+		} else {
+			sw.positional = []string{""}
+		}
+		return wds
 	}
 	if len(c.Args) > 0 {
 		if lit := litWord(c.Args[0]); lit != "" {
@@ -394,7 +428,7 @@ func (sw *shellWalk) callExpr(c *syntax.CallExpr, wds wdSet, nested bool) wdSet 
 				}
 				return out
 			}
-			if !outsideRepoLiteralPrefix(argv[1].Word) {
+			if !dynamicArgIsBounded(argv[1].Word, sw.env) {
 				sw.fail(truncateOpaque("dynamic argument to cd"))
 				return wds
 			}
@@ -415,7 +449,9 @@ func (sw *shellWalk) callExpr(c *syntax.CallExpr, wds wdSet, nested bool) wdSet 
 			return wds
 		}
 		if argv[1].Dynamic && argv[1].Word != nil {
-			if p, ok := sw.resolveExecutable(argv[1].Word, pickWD(wds)); ok {
+			if p, ok := sw.expandWord(argv[1].Word, wds); ok {
+				argv[1] = ArgWord{Lit: p, Dynamic: false, Word: argv[1].Word}
+			} else if p, ok := sw.resolveExecutable(argv[1].Word, pickWD(wds)); ok {
 				argv[1] = ArgWord{Lit: p, Dynamic: false, Word: argv[1].Word}
 			}
 		}

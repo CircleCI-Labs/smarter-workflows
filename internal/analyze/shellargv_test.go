@@ -33,7 +33,7 @@ func TestShellDynamicArgvCases(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			into := newInputSet()
-			op := e.walkShellScript(root, ".", tc.script, 0, into, nil)
+			op := e.walkShellScript(root, ".", tc.script, 0, into, nil, nil)
 			if tc.opaque {
 				if op == "" {
 					t.Fatalf("expected opaque, got complete with inputs files=%v", into.sortedFiles())

@@ -14,11 +14,12 @@ type GoWalkFunc func(repoRoot, pkgDir string) ([]string, error)
 const maxGoWalkCalls = 64
 
 type Engine struct {
-	RepoRoot    string
-	GoWalk      GoWalkFunc
-	goCache     map[string][]string
-	goWalkCalls int
-	scriptFiles int
+	RepoRoot       string
+	GoWalk         GoWalkFunc
+	goCache        map[string][]string
+	goWalkCalls    int
+	scriptFiles    int
+	jobWorkspaceAt []string
 }
 
 // NewEngine builds an inference engine for repoRoot.
@@ -32,6 +33,7 @@ func NewEngine(repoRoot string) *Engine {
 
 func (e *Engine) resetPerJob() {
 	e.scriptFiles = 0
+	e.jobWorkspaceAt = nil
 }
 
 // InferJob collects inputs and the static step proof for one workflow entry.

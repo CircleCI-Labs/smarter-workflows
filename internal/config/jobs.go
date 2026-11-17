@@ -329,6 +329,60 @@ type WorkspaceUse struct {
 	Paths []string
 }
 
+// CollectAttachWorkspaceAt returns every attach_workspace `at` path declared on
+// jobRef (including pre/post steps and local commands), in YAML order.
+func (c *Config) CollectAttachWorkspaceAt(jobRef string, entryArgs *yaml.Node) []string {
+	def := c.jobDef(jobRef)
+	if def == nil {
+		return nil
+	}
+	sc := c.rootScope()
+	seen := map[string]bool{}
+	var out []string
+	if entryArgs != nil {
+		for _, key := range []string{"pre-steps", "post-steps"} {
+			if seq := lookup(entryArgs, key); seq != nil {
+				sc.collectAttachAt(seq, seen, 0, &out)
+			}
+		}
+	}
+	if steps := lookup(def, "steps"); steps != nil {
+		sc.collectAttachAt(steps, seen, 0, &out)
+	}
+	return out
+}
+
+func (s scope) collectAttachAt(n *yaml.Node, seen map[string]bool, depth int, out *[]string) {
+	if n == nil || depth > maxDepth {
+		return
+	}
+	switch n.Kind {
+	case yaml.MappingNode:
+		for i := 0; i+1 < len(n.Content); i += 2 {
+			k := n.Content[i]
+			body := n.Content[i+1]
+			if k.Kind == yaml.ScalarNode && k.Value == "attach_workspace" {
+				if at, ok := scalarValue(lookup(body, "at")); ok && at != "" {
+					*out = append(*out, at)
+				}
+			}
+			if cmd, isCmd := stepCommandName(n); isCmd {
+				if cmdBody := s.command(cmd); cmdBody != nil && !seen[cmd] {
+					seen[cmd] = true
+					if sub := lookup(cmdBody, "steps"); sub != nil {
+						s.collectAttachAt(sub, seen, depth+1, out)
+					}
+				}
+			}
+			s.collectAttachAt(body, seen, depth+1, out)
+		}
+	case yaml.SequenceNode:
+		for _, item := range n.Content {
+			s.collectAttachAt(item, seen, depth+1, out)
+		}
+	}
+}
+
 // EntryWorkspace is what the steps that a workflow entry carries do with
 // workspaces: its pre-steps and post-steps, and any other steps it passes to
 // the job as arguments. A job's own steps are not included (see Workspace and

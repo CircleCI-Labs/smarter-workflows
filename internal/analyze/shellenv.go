@@ -2,10 +2,13 @@ package analyze
 
 import (
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"mvdan.cc/sh/v3/syntax"
 )
+
+var singleQuotedParam = regexp.MustCompile(`'\$([A-Za-z_][A-Za-z0-9_]*)'`)
 
 func (sw *shellWalk) initEnv() {
 	if sw.env == nil {
@@ -26,6 +29,19 @@ func (sw *shellWalk) captureAssigns(assigns []*syntax.Assign, wds wdSet) {
 			delete(sw.env, name)
 		}
 	}
+}
+
+func (sw *shellWalk) expandSingleQuotedParams(s string) string {
+	return singleQuotedParam.ReplaceAllStringFunc(s, func(m string) string {
+		sub := singleQuotedParam.FindStringSubmatch(m)
+		if len(sub) < 2 {
+			return m
+		}
+		if v, ok := sw.paramValue(sub[1]); ok && v != "" {
+			return v
+		}
+		return m
+	})
 }
 
 func (sw *shellWalk) evalAssignValue(w *syntax.Word, wds wdSet) (string, bool) {
@@ -57,6 +73,12 @@ func (sw *shellWalk) expandWord(w *syntax.Word, wds wdSet) (string, bool) {
 					b.WriteString(d.Value)
 				case *syntax.ParamExp:
 					if v, ok := sw.expandParam(d, wds); ok {
+						b.WriteString(v)
+					} else {
+						dyn = true
+					}
+				case *syntax.CmdSubst:
+					if v, ok := sw.evalCmdSubst(d, wds); ok {
 						b.WriteString(v)
 					} else {
 						dyn = true
@@ -144,6 +166,10 @@ func (sw *shellWalk) evalCmdSubst(cs *syntax.CmdSubst, wds wdSet) (string, bool)
 		if bc, ok := st.Cmd.(*syntax.BinaryCmd); ok && bc.Op == syntax.AndStmt {
 			if cd, ok := bc.X.Cmd.(*syntax.CallExpr); ok && litWord(cd.Args[0]) == "cd" && len(cd.Args) >= 2 {
 				target, ok := sw.expandWord(cd.Args[1], wds)
+				if !ok && sw.scriptRel != "" && dirnameArgIsZero(cd.Args[1]) {
+					target = sw.scriptDir(wds)
+					ok = true
+				}
 				if !ok {
 					return "", false
 				}

@@ -7,24 +7,7 @@ import (
 func (e *Engine) analyzeDevTool(repoRoot string, wds wdSet, name string, argv []string, seg string, into *InputSet, needsInputs *bool) bool {
 	switch name {
 	case "git":
-		if len(argv) >= 2 && argv[1] == "grep" {
-			*needsInputs = true
-			for w := range wds {
-				for _, a := range argv[2:] {
-					a = normalizePathToken(a)
-					if a == "" || strings.HasPrefix(a, "-") || a == "--" {
-						continue
-					}
-					if strings.HasPrefix(a, ":") {
-						continue
-					}
-					if looksLikePath(a) {
-						into.addVerifiedPathOrDir(repoRoot, w, a)
-					}
-				}
-			}
-			return true
-		}
+		return e.gitTool(repoRoot, wds, argv, into, needsInputs)
 	case "circleci":
 		return e.circleciTool(repoRoot, wds, argv, into, needsInputs)
 	case "gh":

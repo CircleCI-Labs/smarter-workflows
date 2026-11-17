@@ -135,6 +135,47 @@ func (sw *shellWalk) positionalJoin() (string, bool) {
 	return strings.Join(parts, " "), true
 }
 
+func wordIsOnlyPositionalAt(w *syntax.Word) bool {
+	if w == nil {
+		return false
+	}
+	if len(w.Parts) != 1 {
+		return false
+	}
+	switch x := w.Parts[0].(type) {
+	case *syntax.ParamExp:
+		return x.Param != nil && (x.Param.Value == "@" || x.Param.Value == "*")
+	case *syntax.DblQuoted:
+		if len(x.Parts) != 1 {
+			return false
+		}
+		pe, ok := x.Parts[0].(*syntax.ParamExp)
+		return ok && pe.Param != nil && (pe.Param.Value == "@" || pe.Param.Value == "*")
+	default:
+		return false
+	}
+}
+
+func (sw *shellWalk) expandAtCommand(argv []ArgWord) ([]ArgWord, bool) {
+	if len(argv) == 0 || !argv[0].Dynamic || argv[0].Word == nil || !wordIsOnlyPositionalAt(argv[0].Word) {
+		return argv, false
+	}
+	if len(sw.positional) < 2 {
+		return argv, false
+	}
+	var out []ArgWord
+	for i := 1; i < len(sw.positional); i++ {
+		if sw.positional[i] == "" {
+			continue
+		}
+		out = append(out, ArgWord{Lit: sw.positional[i], Dynamic: false})
+	}
+	if len(out) == 0 {
+		return argv, false
+	}
+	return out, true
+}
+
 func parseScriptStepCommand(cmd string) (script string, args []ArgWord, ok bool) {
 	cmd = strings.TrimSpace(cmd)
 	if cmd == "" || strings.Contains(cmd, "\n") || strings.ContainsAny(cmd, "|&;") {
