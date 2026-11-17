@@ -1,5 +1,5 @@
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Smarter Workflows – Benchmarks</title><link>https://circleci-labs.github.io/smarter-workflows/docs/benchmarks/</link><description>Recent content in Benchmarks on Smarter Workflows</description><generator>Hugo -- gohugo.io</generator><language>en-US</language><atom:link href="https://circleci-labs.github.io/smarter-workflows/docs/benchmarks/index.xml" rel="self" type="application/rss+xml"/><item><title>Benchmarks</title><link>https://circleci-labs.github.io/smarter-workflows/docs/benchmarks/benchmarks/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://circleci-labs.github.io/smarter-workflows/docs/benchmarks/benchmarks/</guid><description>
-&lt;p&gt;Measured results for v0.1: real CircleCI pipelines for job selection, a replay of this repository&amp;rsquo;s history against today&amp;rsquo;s map, and synthetic workloads for planner and trace timing.&lt;/p&gt;
+&lt;p&gt;Measured results for v0.1: real CircleCI pipelines for job selection, a replay of this repository&amp;rsquo;s history against today&amp;rsquo;s map, and synthetic workloads for planner timing.&lt;/p&gt;
 &lt;h2 data-hextra-search-id="method"&gt;Method&lt;span class="hx:absolute hx:-mt-20" id="method"&gt;&lt;/span&gt;
 &lt;a href="#method" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;&lt;strong&gt;End to end&lt;/strong&gt; — &lt;code&gt;scripts/e2e/run-scenarios.sh&lt;/code&gt; pushes a one-commit branch per scenario, waits for the setup workflow and the continued workflow, and compares the jobs that ran with the expected set. Each scenario runs three times on the same base commit; medians use the per-target full-run scenarios as the baseline. Details: &lt;a href="https://circleci-labs.github.io/smarter-workflows/docs/validation/#end-to-end-scenarios"&gt;Validation&lt;/a&gt;.&lt;/p&gt;
 &lt;p&gt;&lt;strong&gt;Backtest&lt;/strong&gt; — &lt;code&gt;circleci-smarter backtest&lt;/code&gt; replays a JSON history file in select mode with a fixed impact map. Details: &lt;a href="https://circleci-labs.github.io/smarter-workflows/docs/benchmarks/benchmarks-backtest/"&gt;Backtest&lt;/a&gt;.&lt;/p&gt;
@@ -224,21 +224,16 @@
 &lt;td&gt;&lt;strong&gt;0.166 s&lt;/strong&gt;&lt;/td&gt;
 &lt;/tr&gt;
 &lt;tr&gt;
-&lt;td&gt;&lt;code&gt;collect-trace&lt;/code&gt; &amp;lt; 10 s at 100k tracked files&lt;/td&gt;
-&lt;td&gt;&lt;strong&gt;0.355 s&lt;/strong&gt;&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
 &lt;td&gt;v2 map &amp;lt; 20 MiB and decode &amp;lt; 0.5 s at 2000×10k&lt;/td&gt;
 &lt;td&gt;&lt;strong&gt;233 KiB&lt;/strong&gt;, &lt;strong&gt;0.25 s&lt;/strong&gt; decode&lt;/td&gt;
 &lt;/tr&gt;
 &lt;/tbody&gt;
 &lt;/table&gt;
 &lt;p&gt;Full tables and how to rerun: &lt;a href="https://circleci-labs.github.io/smarter-workflows/docs/benchmarks/benchmarks-perf/"&gt;Performance benchmarks&lt;/a&gt;.&lt;/p&gt;</description></item><item><title>Performance benchmarks</title><link>https://circleci-labs.github.io/smarter-workflows/docs/benchmarks/benchmarks-perf/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://circleci-labs.github.io/smarter-workflows/docs/benchmarks/benchmarks-perf/</guid><description>
-&lt;p&gt;Snapshot of planner, config I/O and trace-script performance on one machine. Regenerate before comparing across releases.&lt;/p&gt;
+&lt;p&gt;Snapshot of planner and config I/O performance on one machine. Regenerate before comparing across releases.&lt;/p&gt;
 &lt;h2 data-hextra-search-id="method"&gt;Method&lt;span class="hx:absolute hx:-mt-20" id="method"&gt;&lt;/span&gt;
 &lt;a href="#method" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;&lt;strong&gt;Planner (&lt;code&gt;testing.B&lt;/code&gt;)&lt;/strong&gt; — Package &lt;code&gt;internal/planner/benchgen&lt;/code&gt; builds synthetic &lt;code&gt;continue.yml&lt;/code&gt; files at 10, 100, 500 and 2000 workflow jobs in three shapes (wide fan-out, deep chain, diamond), with matrix entries and approvals every 7th / 11th job. Impact maps hold 100 or 10,000 repo-relative files per job; diffs list 1, 50 or 1000 changed paths. Benchmarks call &lt;code&gt;planner.Run&lt;/code&gt; in select mode with an in-memory repo (no git). &lt;code&gt;BenchmarkPlanLatency2000&lt;/code&gt; reports plan wall-time p95 at 2000 jobs with a 10k-file map (fan-out, 50-file diff).&lt;/p&gt;
 &lt;p&gt;&lt;strong&gt;Config (&lt;code&gt;testing.B&lt;/code&gt;)&lt;/strong&gt; — &lt;code&gt;BenchmarkConfigParse&lt;/code&gt; and &lt;code&gt;BenchmarkConfigEmit&lt;/code&gt; on the same generated YAML.&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;Trace scripts&lt;/strong&gt; — &lt;code&gt;scripts/bench/trace-bench.sh&lt;/code&gt; builds temporary git repos with 1k, 10k and 100k tracked empty files under &lt;code&gt;f/&lt;/code&gt;, runs &lt;code&gt;reset-atime.sh&lt;/code&gt; then &lt;code&gt;collect-trace.sh&lt;/code&gt;, and records wall seconds.&lt;/p&gt;
 &lt;p&gt;&lt;strong&gt;Driver&lt;/strong&gt; — &lt;code&gt;sh scripts/bench/perf.sh&lt;/code&gt; runs all of the above and prints Markdown tables.&lt;/p&gt;
 &lt;h2 data-hextra-search-id="targets-2026-11-15"&gt;Targets (2026-11-15)&lt;span class="hx:absolute hx:-mt-20" id="targets-2026-11-15"&gt;&lt;/span&gt;
 &lt;a href="#targets-2026-11-15" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;table&gt;
@@ -252,10 +247,6 @@
 &lt;tr&gt;
 &lt;td&gt;Plan p95 &amp;lt; 2 s at 2000 jobs and 10k-file maps&lt;/td&gt;
 &lt;td&gt;&lt;strong&gt;0.166 s&lt;/strong&gt; p95 (&lt;code&gt;BenchmarkPlanLatency2000&lt;/code&gt;)&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;code&gt;collect-trace&lt;/code&gt; &amp;lt; 10 s at 100k tracked files&lt;/td&gt;
-&lt;td&gt;&lt;strong&gt;0.355 s&lt;/strong&gt;&lt;/td&gt;
 &lt;/tr&gt;
 &lt;tr&gt;
 &lt;td&gt;v2 map &amp;lt; 20 MiB and decode &amp;lt; 0.5 s at 2000 jobs × 10k files&lt;/td&gt;
@@ -324,33 +315,6 @@ data-copied-label="Copied!"
 &lt;tr&gt;
 &lt;td&gt;Go&lt;/td&gt;
 &lt;td&gt;go1.27.4 linux/amd64&lt;/td&gt;
-&lt;/tr&gt;
-&lt;/tbody&gt;
-&lt;/table&gt;
-&lt;h2 data-hextra-search-id="trace-scripts-seconds"&gt;Trace scripts (seconds)&lt;span class="hx:absolute hx:-mt-20" id="trace-scripts-seconds"&gt;&lt;/span&gt;
-&lt;a href="#trace-scripts-seconds" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;table&gt;
-&lt;thead&gt;
-&lt;tr&gt;
-&lt;th style="text-align: right"&gt;Tracked files&lt;/th&gt;
-&lt;th style="text-align: right"&gt;reset-atime&lt;/th&gt;
-&lt;th style="text-align: right"&gt;collect-trace&lt;/th&gt;
-&lt;/tr&gt;
-&lt;/thead&gt;
-&lt;tbody&gt;
-&lt;tr&gt;
-&lt;td style="text-align: right"&gt;1,000&lt;/td&gt;
-&lt;td style="text-align: right"&gt;1.060&lt;/td&gt;
-&lt;td style="text-align: right"&gt;0.032&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td style="text-align: right"&gt;10,000&lt;/td&gt;
-&lt;td style="text-align: right"&gt;1.122&lt;/td&gt;
-&lt;td style="text-align: right"&gt;0.063&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td style="text-align: right"&gt;100,000&lt;/td&gt;
-&lt;td style="text-align: right"&gt;1.464&lt;/td&gt;
-&lt;td style="text-align: right"&gt;0.355&lt;/td&gt;
 &lt;/tr&gt;
 &lt;/tbody&gt;
 &lt;/table&gt;
@@ -441,20 +405,6 @@ data-copied-label="Copied!"
 &lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
 &lt;/button&gt;
 &lt;/div&gt;
-&lt;/div&gt;
-&lt;p&gt;Trace only:&lt;/p&gt;
-&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
-&lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-sh" data-lang="sh"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;sh scripts/bench/trace-bench.sh&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
-&lt;button
-class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
-title="Copy code"
-aria-label="Copy code"
-data-copied-label="Copied!"
-&gt;
-&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
-&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
-&lt;/button&gt;
-&lt;/div&gt;
 &lt;/div&gt;</description></item><item><title>Backtest</title><link>https://circleci-labs.github.io/smarter-workflows/docs/benchmarks/benchmarks-backtest/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://circleci-labs.github.io/smarter-workflows/docs/benchmarks/benchmarks-backtest/</guid><description>
 &lt;p&gt;The &lt;code&gt;backtest&lt;/code&gt; command replays historical CI runs against &lt;strong&gt;today&amp;rsquo;s&lt;/strong&gt; impact map and reports how often select mode would still have run failing jobs (recall) and how much job time it would have skipped (savings).&lt;/p&gt;
 &lt;h2 data-hextra-search-id="method"&gt;Method&lt;span class="hx:absolute hx:-mt-20" id="method"&gt;&lt;/span&gt;
@@ -514,7 +464,26 @@ data-copied-label="Copied!"
 &lt;/div&gt;
 &lt;/div&gt;
 &lt;p&gt;Optional per-commit &lt;code&gt;parameters&lt;/code&gt; overrides the &lt;code&gt;--parameters&lt;/code&gt; file for that pipeline (same semantics as &lt;code&gt;plan --parameters&lt;/code&gt;).&lt;/p&gt;
-&lt;p&gt;Build a history file with &lt;a href="https://github.com/CircleCI-Labs/smarter-workflows/blob/main/scripts/bench/fetch-history.sh" target="_blank" rel="noopener"&gt;&lt;code&gt;scripts/bench/fetch-history.sh&lt;/code&gt;&lt;/a&gt; (needs a CircleCI API token and a git clone). Fixture parsing is tested by &lt;a href="https://github.com/CircleCI-Labs/smarter-workflows/blob/main/scripts/bench/test-parse.sh" target="_blank" rel="noopener"&gt;&lt;code&gt;scripts/bench/test-parse.sh&lt;/code&gt;&lt;/a&gt;.&lt;/p&gt;
+&lt;p&gt;Build a history file with &lt;code&gt;circleci-smarter history fetch&lt;/code&gt; (or the &lt;a href="https://github.com/CircleCI-Labs/smarter-workflows/blob/main/scripts/bench/fetch-history.sh" target="_blank" rel="noopener"&gt;&lt;code&gt;fetch-history.sh&lt;/code&gt;&lt;/a&gt; wrapper). Set &lt;code&gt;CIRCLE_TOKEN&lt;/code&gt; or &lt;code&gt;CIRCLECI_TOKEN&lt;/code&gt;; optional &lt;code&gt;CIRCLECI_HOST&lt;/code&gt; for server installs. The command pages pipelines newest first, resolves job outcomes (including &lt;strong&gt;flaky&lt;/strong&gt; when a job failed then passed on a workflow rerun), and fills &lt;code&gt;base&lt;/code&gt; / &lt;code&gt;changed&lt;/code&gt; from a local &lt;code&gt;--repo&lt;/code&gt; clone. Commits missing from the clone are skipped. Fixture parsing is tested by &lt;a href="https://github.com/CircleCI-Labs/smarter-workflows/blob/main/scripts/bench/test-parse.sh" target="_blank" rel="noopener"&gt;&lt;code&gt;scripts/bench/test-parse.sh&lt;/code&gt;&lt;/a&gt; and &lt;code&gt;go test ./internal/history/...&lt;/code&gt;.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Diff base.&lt;/strong&gt; For each pipeline commit &lt;code&gt;C&lt;/code&gt;, &lt;code&gt;base&lt;/code&gt; is the newest commit on &lt;code&gt;origin/&amp;lt;default&amp;gt;&lt;/code&gt;’s &lt;strong&gt;first-parent&lt;/strong&gt; chain (cached once) such that &lt;code&gt;P ≠ C&lt;/code&gt; and &lt;code&gt;P&lt;/code&gt; is an ancestor of &lt;code&gt;C&lt;/code&gt;. A commit on that chain uses its first parent; if none applies, &lt;code&gt;base&lt;/code&gt; is empty (no &lt;code&gt;changed&lt;/code&gt; paths). Changed paths come from &lt;code&gt;git diff --name-status -M -z&lt;/code&gt; (renames are a delete plus an add). This avoids empty diffs for feature-branch SHAs that were later merged with a merge commit—older histories that used plain &lt;code&gt;merge-base&lt;/code&gt; had that bug.&lt;/p&gt;
+&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-sh" data-lang="sh"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;circleci-smarter &lt;span class="nb"&gt;history&lt;/span&gt; fetch &lt;span class="se"&gt;\
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; --project-slug circleci/org/repo &lt;span class="se"&gt;\
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; --workflow ci &lt;span class="se"&gt;\
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; --limit &lt;span class="m"&gt;200&lt;/span&gt; &lt;span class="se"&gt;\
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; --repo . &lt;span class="se"&gt;\
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; --out history.json&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
+&lt;button
+class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+title="Copy code"
+aria-label="Copy code"
+data-copied-label="Copied!"
+&gt;
+&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
 &lt;h2 data-hextra-search-id="command"&gt;Command&lt;span class="hx:absolute hx:-mt-20" id="command"&gt;&lt;/span&gt;
 &lt;a href="#command" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
 &lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-sh" data-lang="sh"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;circleci-smarter backtest &lt;span class="se"&gt;\
@@ -538,6 +507,11 @@ data-copied-label="Copied!"
 &lt;/div&gt;
 &lt;p&gt;&lt;code&gt;--parameters&lt;/code&gt; is a JSON object of pipeline parameter values, applied to every commit unless a history record carries its own &lt;code&gt;parameters&lt;/code&gt; object. Use the same file you would pass to &lt;code&gt;plan --parameters&lt;/code&gt; when the continuation config gates workflows or jobs on &lt;code&gt;&amp;lt;&amp;lt; pipeline.parameters.* &amp;gt;&amp;gt;&lt;/code&gt;.&lt;/p&gt;
 &lt;p&gt;&lt;code&gt;--format json&lt;/code&gt; writes the machine-readable report (used for golden tests).&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;--strict&lt;/code&gt; makes backtest warnings fatal (exit 1). Warnings print on stderr and at the top of the report:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;Workflow disabled:&lt;/strong&gt; when &lt;code&gt;--parameters&lt;/code&gt; turn off the workflow (&lt;code&gt;when&lt;/code&gt;/&lt;code&gt;unless&lt;/code&gt; false), recall is meaningless — every commit is treated as if the workflow did not run.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Job name drift:&lt;/strong&gt; when more than half of recorded job outcomes do not match any job in today&amp;rsquo;s workflow (renamed jobs or wrong &lt;code&gt;--workflow&lt;/code&gt;).&lt;/li&gt;
+&lt;/ul&gt;
 &lt;h2 data-hextra-search-id="scheduled-benchmark-on-main"&gt;Scheduled benchmark on main&lt;span class="hx:absolute hx:-mt-20" id="scheduled-benchmark-on-main"&gt;&lt;/span&gt;
 &lt;a href="#scheduled-benchmark-on-main" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;The &lt;code&gt;benchmark&lt;/code&gt; workflow in &lt;code&gt;.circleci/continue.yml&lt;/code&gt; runs when &lt;code&gt;pipeline.trigger.type&lt;/code&gt; is &lt;code&gt;schedule&lt;/code&gt; (the schedule is configured on the project in CircleCI, not in this file). It uses the &lt;code&gt;smarter-workflows-ai&lt;/code&gt; context so &lt;code&gt;fetch-history.sh&lt;/code&gt; can call the API with &lt;code&gt;&amp;lt;&amp;lt; pipeline.project.slug &amp;gt;&amp;gt;&lt;/code&gt; (GitHub App projects use the &lt;code&gt;circleci/org/project&lt;/code&gt; form). It restores the latest impact map cache, fetches the last 200 &lt;code&gt;ci&lt;/code&gt; pipelines, runs backtest, and stores &lt;code&gt;backtest.md&lt;/code&gt; and &lt;code&gt;backtest.json&lt;/code&gt; as artifacts.&lt;/p&gt;
 &lt;h2 data-hextra-search-id="limits-of-replay"&gt;Limits of replay&lt;span class="hx:absolute hx:-mt-20" id="limits-of-replay"&gt;&lt;/span&gt;

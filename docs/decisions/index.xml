@@ -16,13 +16,13 @@
 &lt;a href="#decision" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ol&gt;
 &lt;li&gt;Every job runs unless the planner can show that the change touches none of its inputs:
 &lt;ul&gt;
-&lt;li&gt;no changed file is among the files the job read in the last traced full run;&lt;/li&gt;
-&lt;li&gt;no added or deleted file sits in a directory the job listed.&lt;/li&gt;
+&lt;li&gt;no changed file is among the files the impact map lists for the job;&lt;/li&gt;
+&lt;li&gt;no added or deleted file sits in a directory the job lists.&lt;/li&gt;
 &lt;/ul&gt;
 &lt;/li&gt;
 &lt;li&gt;These always run:
 &lt;ul&gt;
-&lt;li&gt;jobs with no trace, or an incomplete trace;&lt;/li&gt;
+&lt;li&gt;jobs with no map entry, an incomplete entry, or inputs that fail the skip proof in ADR 8;&lt;/li&gt;
 &lt;li&gt;mandatory jobs;&lt;/li&gt;
 &lt;li&gt;every ancestor (&lt;code&gt;requires&lt;/code&gt;) of a selected job, approvals included.&lt;/li&gt;
 &lt;/ul&gt;
@@ -52,7 +52,7 @@
 &lt;li&gt;A job that does not run on the branch (its own &lt;code&gt;filters&lt;/code&gt; leave it out, or all the jobs it requires are left out) is never selected, even when it is mandatory. The planner does not edit the project&amp;rsquo;s filters or requirements to force a job. It leaves such a job out, and a mandatory one gets a warning. It drops a &lt;code&gt;requires&lt;/code&gt; name only when it names a job that does not run, which CircleCI ignores anyway.&lt;/li&gt;
 &lt;li&gt;Skipping a job on confidence alone, without proof, is out of scope until shadow-mode data shows recall of at least 99% for that job.&lt;/li&gt;
 &lt;/ul&gt;</description></item><item><title>3. Build the impact map from file-access traces of full runs on the default branch</title><link>https://circleci-labs.github.io/smarter-workflows/docs/decisions/0003-impact-map-from-traces-on-main/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://circleci-labs.github.io/smarter-workflows/docs/decisions/0003-impact-map-from-traces-on-main/</guid><description>
-&lt;p&gt;Date: 2026-11-13. Status: accepted.&lt;/p&gt;
+&lt;p&gt;Date: 2026-11-13. Status: Superseded by ADR 8.&lt;/p&gt;
 &lt;h2 data-hextra-search-id="context"&gt;Context&lt;span class="hx:absolute hx:-mt-20" id="context"&gt;&lt;/span&gt;
 &lt;a href="#context" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Smarter Testing builds an impact map on the default branch, then uses it on other branches to pick the tests a change affects. This project wants the same loop for jobs:&lt;/p&gt;
 &lt;ol&gt;
@@ -94,6 +94,37 @@ A job whose filesystem fails the probe gets an incomplete trace.&lt;/li&gt;
 &lt;ul&gt;
 &lt;li&gt;After the &lt;code&gt;checkout&lt;/code&gt; step, 43 of 44 tracked files already had atime newer than mtime, because checkout reads them.&lt;/li&gt;
 &lt;li&gt;After the reset step, a job that ran &lt;code&gt;cat README.md; ls docs&lt;/code&gt; was traced as exactly &lt;code&gt;README.md&lt;/code&gt; and &lt;code&gt;docs&lt;/code&gt;.&lt;/li&gt;
+&lt;/ul&gt;</description></item><item><title>8. Impact maps from analysis, not traces</title><link>https://circleci-labs.github.io/smarter-workflows/docs/decisions/0008-impact-maps-from-analysis-not-traces/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://circleci-labs.github.io/smarter-workflows/docs/decisions/0008-impact-maps-from-analysis-not-traces/</guid><description>
+&lt;p&gt;Date: 2026-11-16. Status: accepted.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="context"&gt;Context&lt;span class="hx:absolute hx:-mt-20" id="context"&gt;&lt;/span&gt;
+&lt;a href="#context" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Tracing needs a step injected into every job. It only works where file access times work and where the image has the tools. On a real 39-job project only 4 jobs produced complete traces: images without git, and runner or machine jobs, were never traced. Users will not edit their jobs before they know the tool is worth it. From v0.3 the impact map comes from &lt;code&gt;circleci-smarter analyze&lt;/code&gt;: static analysis of the config and the repo, an optional AI classifier, and corrections mined from past runs. Tracing goes away completely, which also takes a lot of complexity with it. v0.x allows breaking changes; the trace flags simply disappear.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="decision"&gt;Decision&lt;span class="hx:absolute hx:-mt-20" id="decision"&gt;&lt;/span&gt;
+&lt;a href="#decision" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ol&gt;
+&lt;li&gt;The map comes from &lt;code&gt;circleci-smarter analyze&lt;/code&gt;, from three sources:
+&lt;ul&gt;
+&lt;li&gt;static analysis of the config and the repo (run commands and the scripts they call, Go imports, Node and Python manifests, Dockerfile COPY, &lt;code&gt;working_directory&lt;/code&gt;, orb parameters such as &lt;code&gt;app-dir&lt;/code&gt;, cache-key checksum files, workspace data flow, path-filtering mappings);&lt;/li&gt;
+&lt;li&gt;an optional AI classifier, given the job definitions, the repo tree and the source contents, which returns inputs with a confidence;&lt;/li&gt;
+&lt;li&gt;corrections mined from past runs: a job that failed on a change its map could not see gains that change&amp;rsquo;s paths, unless the failure was flaky.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;The static part is computed fresh in the setup job. A &lt;em&gt;learned layer&lt;/em&gt; (the AI inputs and the corrections) is refreshed by a weekly &lt;code&gt;learn&lt;/code&gt; job.&lt;/li&gt;
+&lt;li&gt;No existing job is edited.&lt;/li&gt;
+&lt;li&gt;A job is skipped only when proven:
+&lt;ul&gt;
+&lt;li&gt;static analysis understood every step of the job: each command is a recognized tool, a benign builtin or a script it followed, and each input resolved to a path that exists at the revision. A step it does not understand (an unknown binary, make, an orb command outside the known table) makes the job unknown;&lt;/li&gt;
+&lt;li&gt;coverage that comes only from the AI needs a confidence of at least the threshold (0.8 by default), a job hash that matches the current job definition, and at least one valid input;&lt;/li&gt;
+&lt;li&gt;otherwise the job is unknown and runs.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;Shadow mode first, and a backtest on real history before select mode.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;h2 data-hextra-search-id="consequences"&gt;Consequences&lt;span class="hx:absolute hx:-mt-20" id="consequences"&gt;&lt;/span&gt;
+&lt;a href="#consequences" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ul&gt;
+&lt;li&gt;onboarding needs no job edits, and works on every executor and image;&lt;/li&gt;
+&lt;li&gt;the map can be built and checked locally before anything changes in CI;&lt;/li&gt;
+&lt;li&gt;static analysis misses dynamic inputs (paths built from environment variables, network fetches): the AI layer, the history corrections and shadow mode cover that;&lt;/li&gt;
+&lt;li&gt;source contents go to the AI provider when the AI is on (see the threat model);&lt;/li&gt;
+&lt;li&gt;the trace flags are gone in v0.3.&lt;/li&gt;
 &lt;/ul&gt;</description></item><item><title>7. Impact map v2: shared path tables and compact indices</title><link>https://circleci-labs.github.io/smarter-workflows/docs/decisions/0007-impact-map-v2/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://circleci-labs.github.io/smarter-workflows/docs/decisions/0007-impact-map-v2/</guid><description>
 &lt;p&gt;Date: 2026-11-15. Status: accepted.&lt;/p&gt;
 &lt;h2 data-hextra-search-id="context"&gt;Context&lt;span class="hx:absolute hx:-mt-20" id="context"&gt;&lt;/span&gt;
@@ -108,11 +139,12 @@ A job whose filesystem fails the probe gets an incomplete trace.&lt;/li&gt;
 &lt;/ul&gt;
 &lt;/li&gt;
 &lt;li&gt;&lt;strong&gt;Why delta varints instead of bitsets:&lt;/strong&gt; Indices are dense when jobs read many files but sparse when they read few; delta varints are small in the common case, need no third-party format, and decode in one pass with strict bounds. Roaring or raw bitsets win when sets are extremely sparse across a huge table; this workload is usually &amp;ldquo;many indices per job out of a shared table&amp;rdquo;, where varints are simpler and fast enough.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Writers&lt;/strong&gt; (&lt;code&gt;map build&lt;/code&gt;, the trace map job) emit v2 gzip only. &lt;strong&gt;Readers&lt;/strong&gt; accept v1 JSON (legacy cache) and v2 gzip; &lt;code&gt;plan&lt;/code&gt; tries &lt;code&gt;impact-map.json.gz&lt;/code&gt; then &lt;code&gt;impact-map.json&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Writers&lt;/strong&gt; (&lt;code&gt;circleci-smarter analyze&lt;/code&gt; and &lt;code&gt;map build&lt;/code&gt;) emit v2 gzip only. &lt;strong&gt;Readers&lt;/strong&gt; accept v1 JSON (legacy cache) and v2 gzip; &lt;code&gt;plan&lt;/code&gt; tries &lt;code&gt;impact-map.json.gz&lt;/code&gt; then &lt;code&gt;impact-map.json&lt;/code&gt;.&lt;/li&gt;
 &lt;li&gt;&lt;strong&gt;Caps&lt;/strong&gt; (oversize or malformed → full run): compressed file ≤ 64 MiB; decompressed JSON ≤ 256 MiB; when compressed size &amp;lt; 64 KiB, decompressed must be ≤ 32× compressed (zip-bomb guard); ≤ 4096 jobs; ≤ 200_000 file table entries; ≤ 50_000 dir table entries; ≤ 100_000 indices per job per table; job names ≤ 256 chars. v1 maps keep the former 16 MiB uncompressed cap.&lt;/li&gt;
 &lt;/ol&gt;
 &lt;h2 data-hextra-search-id="consequences"&gt;Consequences&lt;span class="hx:absolute hx:-mt-20" id="consequences"&gt;&lt;/span&gt;
 &lt;a href="#consequences" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ul&gt;
+&lt;li&gt;From v0.3, planner input dirs are recursive: a dir input covers the whole subtree (repository root &lt;code&gt;.&lt;/code&gt; covers every path).&lt;/li&gt;
 &lt;li&gt;Monorepo-sized maps fit in cache and decode in sub-second time on developer hardware (see &lt;code&gt;docs/benchmarks-perf.md&lt;/code&gt;).&lt;/li&gt;
 &lt;li&gt;Path tables must stay sorted and deduplicated; corrupt index blobs fail closed at parse time.&lt;/li&gt;
 &lt;li&gt;Cache artifacts change extension; operators with only v1 files still work until the next default-branch map build.&lt;/li&gt;
@@ -143,11 +175,11 @@ A job whose filesystem fails the probe gets an incomplete trace.&lt;/li&gt;
 &lt;h2 data-hextra-search-id="context"&gt;Context&lt;span class="hx:absolute hx:-mt-20" id="context"&gt;&lt;/span&gt;
 &lt;a href="#context" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;The tool has to be easy to adopt in production if product teams like it. The &lt;code&gt;circleci&lt;/code&gt; CLI dispatches &lt;code&gt;circleci &amp;lt;name&amp;gt;&lt;/code&gt; to a binary named &lt;code&gt;circleci-&amp;lt;name&amp;gt;&lt;/code&gt;; Smarter Testing&amp;rsquo;s &lt;code&gt;testsuite&lt;/code&gt; is one such extension. CircleCI&amp;rsquo;s policy engine is a public Go library (&lt;code&gt;circle-policy-agent&lt;/code&gt;), so a Go binary can evaluate policies exactly the way the service does.&lt;/p&gt;
 &lt;h2 data-hextra-search-id="decision"&gt;Decision&lt;span class="hx:absolute hx:-mt-20" id="decision"&gt;&lt;/span&gt;
-&lt;a href="#decision" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Ship a single static Go binary, &lt;code&gt;circleci-smarter&lt;/code&gt;, that can be called directly or as &lt;code&gt;circleci smarter&lt;/code&gt;. It embeds the trace collector script, and links &lt;code&gt;circle-policy-agent&lt;/code&gt; for the pre-flight. The orb downloads a pinned, checksummed release. Until releases exist, it builds from source.&lt;/p&gt;
+&lt;a href="#decision" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Ship a single static Go binary, &lt;code&gt;circleci-smarter&lt;/code&gt;, that can be called directly or as &lt;code&gt;circleci smarter&lt;/code&gt;. It links &lt;code&gt;circle-policy-agent&lt;/code&gt; for the pre-flight. The orb downloads a pinned, checksummed release. Until releases exist, it builds from source.&lt;/p&gt;
 &lt;h2 data-hextra-search-id="consequences"&gt;Consequences&lt;span class="hx:absolute hx:-mt-20" id="consequences"&gt;&lt;/span&gt;
 &lt;a href="#consequences" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ul&gt;
 &lt;li&gt;One language and one binary, with no runtime dependencies in the planner job.&lt;/li&gt;
-&lt;li&gt;The trace collector stays a small POSIX shell script, so jobs need no extra binary.&lt;/li&gt;
+&lt;li&gt;Impact maps are built by &lt;code&gt;analyze&lt;/code&gt; in the setup job, not by steps injected into customer jobs (ADR 8).&lt;/li&gt;
 &lt;/ul&gt;</description></item><item><title>6. Every plan passes the guardrails before it continues: check, repair, or fall back</title><link>https://circleci-labs.github.io/smarter-workflows/docs/decisions/0006-preflight-repair-then-full/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://circleci-labs.github.io/smarter-workflows/docs/decisions/0006-preflight-repair-then-full/</guid><description>
 &lt;p&gt;Date: 2026-11-13. Status: accepted.&lt;/p&gt;
 &lt;h2 data-hextra-search-id="context"&gt;Context&lt;span class="hx:absolute hx:-mt-20" id="context"&gt;&lt;/span&gt;

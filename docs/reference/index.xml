@@ -1,7 +1,7 @@
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Smarter Workflows – Reference</title><link>https://circleci-labs.github.io/smarter-workflows/docs/reference/</link><description>Recent content in Reference on Smarter Workflows</description><generator>Hugo -- gohugo.io</generator><language>en-US</language><atom:link href="https://circleci-labs.github.io/smarter-workflows/docs/reference/index.xml" rel="self" type="application/rss+xml"/><item><title>Spec v0.1</title><link>https://circleci-labs.github.io/smarter-workflows/docs/reference/spec/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://circleci-labs.github.io/smarter-workflows/docs/reference/spec/</guid><description>
 &lt;p&gt;Status: building. Decisions: &lt;a href="https://circleci-labs.github.io/smarter-workflows/docs/decisions/"&gt;docs/adr/&lt;/a&gt;. Words: &lt;a href="https://circleci-labs.github.io/smarter-workflows/docs/reference/glossary/"&gt;Glossary&lt;/a&gt;.&lt;/p&gt;
 &lt;h2 data-hextra-search-id="goal"&gt;Goal&lt;span class="hx:absolute hx:-mt-20" id="goal"&gt;&lt;/span&gt;
-&lt;a href="#goal" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;A setup workflow runs the &lt;code&gt;circleci-smarter&lt;/code&gt; planner. For a branch, the planner prunes the planned workflow of &lt;code&gt;.circleci/continue.yml&lt;/code&gt; down to the jobs the change can reach. It checks the result against the guardrails and continues the pipeline. On the default branch it runs everything, traces each job&amp;rsquo;s file reads, and rebuilds the impact map.&lt;/p&gt;
+&lt;a href="#goal" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;A setup workflow runs the &lt;code&gt;circleci-smarter&lt;/code&gt; planner. For a branch, the planner prunes the planned workflow of &lt;code&gt;.circleci/continue.yml&lt;/code&gt; down to the jobs the change can reach. It checks the result against the guardrails and continues the pipeline. From v0.3 the impact map comes from &lt;code&gt;circleci-smarter analyze&lt;/code&gt; (ADR 8); the trace-based map build described below is historical v0.1 behaviour.&lt;/p&gt;
 &lt;h2 data-hextra-search-id="not-in-v01"&gt;Not in v0.1&lt;span class="hx:absolute hx:-mt-20" id="not-in-v01"&gt;&lt;/span&gt;
 &lt;a href="#not-in-v01" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ul&gt;
 &lt;li&gt;History mining and learned rules.&lt;/li&gt;
@@ -24,7 +24,7 @@ internal/planner/ the selection algorithm, plan, the gate and the trace/map job 
 internal/catalog/ the catalog JSON of a workflow (`catalog`)
 internal/pipelineparams/ JSON pipeline parameter files for plan and continue
 internal/report/ plan.json and plan.md
-internal/tracescript/ the embedded collect-trace.sh (go:embed)
+internal/analyze/ static impact-map inference (v0.3, separate command)
 internal/policy/ local evaluation with circle-policy-agent; repair codes
 internal/continuation/ POST /api/v2/pipeline/continue
 policies/ the Rego guardrail bundle &amp;#43; tests
@@ -499,7 +499,10 @@ data-copied-label="Copied!"
 &lt;a href="#version" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;Prints the version: &lt;code&gt;dev-&amp;lt;sha&amp;gt;&lt;/code&gt; when built from source, otherwise the release tag.&lt;/p&gt;
 &lt;h2 data-hextra-search-id="file-formats"&gt;File formats&lt;span class="hx:absolute hx:-mt-20" id="file-formats"&gt;&lt;/span&gt;
 &lt;a href="#file-formats" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;h3 data-hextra-search-id="trace-tsv"&gt;Trace TSV&lt;span class="hx:absolute hx:-mt-20" id="trace-tsv"&gt;&lt;/span&gt;
-&lt;a href="#trace-tsv" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;The collector writes one file per job node: &lt;code&gt;&amp;lt;traces-dir&amp;gt;/&amp;lt;first 16 hex of sha256(job name)&amp;gt;.&amp;lt;node index&amp;gt;.tsv&lt;/code&gt;.&lt;/p&gt;
+&lt;a href="#trace-tsv" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h3&gt;&lt;blockquote&gt;
+&lt;p&gt;&lt;strong&gt;Superseded by &lt;a href="https://circleci-labs.github.io/smarter-workflows/docs/decisions/0008-impact-maps-from-analysis-not-traces/"&gt;ADR 8&lt;/a&gt;.&lt;/strong&gt; v0.3 does not use trace TSV. This section documents the removed v0.1 collector format.&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;The collector writes one file per job node: &lt;code&gt;&amp;lt;traces-dir&amp;gt;/&amp;lt;first 16 hex of sha256(job name)&amp;gt;.&amp;lt;node index&amp;gt;.tsv&lt;/code&gt;.&lt;/p&gt;
 &lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
 &lt;div&gt;&lt;pre&gt;&lt;code&gt;# smarter-trace v1
 job &amp;lt;workflow job name, i.e. $CIRCLE_JOB&amp;gt;
@@ -707,7 +710,7 @@ When &lt;code&gt;when&lt;/code&gt;/&lt;code&gt;unless&lt;/code&gt; can be evalua
 &lt;/ul&gt;
 &lt;/li&gt;
 &lt;li&gt;
-&lt;p&gt;&lt;strong&gt;Trace&lt;/strong&gt; (full runs on the default branch, when &lt;code&gt;--trace&lt;/code&gt; resolves to on):&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Trace&lt;/strong&gt; (full runs on the default branch, when &lt;code&gt;--trace&lt;/code&gt; resolves to on) — &lt;strong&gt;superseded by &lt;a href="https://circleci-labs.github.io/smarter-workflows/docs/decisions/0008-impact-maps-from-analysis-not-traces/"&gt;ADR 8&lt;/a&gt;&lt;/strong&gt;; removed in v0.3:&lt;/p&gt;
 &lt;ol&gt;
 &lt;li&gt;On every entry of W that is a local Linux job (docker, or machine with a Linux image), append &lt;code&gt;post-steps&lt;/code&gt;. An approval, a no-op job, a release job, a job group and a matrix entry get none. Orb jobs are included only with &lt;code&gt;--trace-orb-jobs&lt;/code&gt;; without it, an orb entry gets no &lt;code&gt;pre-steps&lt;/code&gt; and no &lt;code&gt;post-steps&lt;/code&gt;. A &lt;code&gt;pre-steps&lt;/code&gt; or &lt;code&gt;post-steps&lt;/code&gt; key with no value is an empty list. An entry whose &lt;code&gt;pre-steps&lt;/code&gt; or &lt;code&gt;post-steps&lt;/code&gt; is not a list gets no trace, with a warning: the others are traced, and since it has no map entry, later plans always run it.
 &lt;ul&gt;
@@ -810,11 +813,11 @@ When &lt;code&gt;when&lt;/code&gt;/&lt;code&gt;unless&lt;/code&gt; can be evalua
 &lt;dt&gt;&lt;strong&gt;Full run&lt;/strong&gt;&lt;/dt&gt;
 &lt;dd&gt;A pipeline that runs every job. The default branch, scheduled pipelines, changes to the pipeline definition, and any case the planner is unsure about all get a full run.&lt;/dd&gt;
 &lt;dt&gt;&lt;strong&gt;Impact map&lt;/strong&gt;&lt;/dt&gt;
-&lt;dd&gt;For each job, the files it read and the directories it listed during the last full run on the default branch. It is rebuilt after every green full run, and branches use it to see which jobs a change can affect.&lt;/dd&gt;
-&lt;dt&gt;&lt;strong&gt;Trace&lt;/strong&gt;&lt;/dt&gt;
-&lt;dd&gt;The record of the files one job read, taken at the end of the job. The impact map is built from traces.&lt;/dd&gt;
+&lt;dd&gt;For each job, the repo files and directories the planner treats as its inputs. &lt;code&gt;circleci-smarter analyze&lt;/code&gt; builds it from the continuation config and the repository. Branches use the map to see which jobs a change can affect.&lt;/dd&gt;
 &lt;dt&gt;&lt;strong&gt;Inputs (of a job)&lt;/strong&gt;&lt;/dt&gt;
-&lt;dd&gt;The files and directories in a job&amp;rsquo;s trace. A job whose inputs a change does not touch is a candidate to skip.&lt;/dd&gt;
+&lt;dd&gt;The files and directories listed for a job in the impact map. Exact &lt;code&gt;files&lt;/code&gt; match only that path; each &lt;code&gt;input dir&lt;/code&gt; covers every path under it recursively; &lt;code&gt;.&lt;/code&gt; is the repository root and covers the whole tree. Any change status uses the same rule. A job whose inputs a change does not touch is a candidate to skip.&lt;/dd&gt;
+&lt;dt&gt;&lt;strong&gt;Input dir&lt;/strong&gt;&lt;/dt&gt;
+&lt;dd&gt;A directory entry in a job&amp;rsquo;s impact map. It includes every file and subdirectory under that path, not only direct children.&lt;/dd&gt;
 &lt;dt&gt;&lt;strong&gt;Shadow mode&lt;/strong&gt;&lt;/dt&gt;
 &lt;dd&gt;The planner makes and reports a plan, but every job still runs. Shadow mode measures what select mode would save, and what it would miss.&lt;/dd&gt;
 &lt;dt&gt;&lt;strong&gt;Select mode&lt;/strong&gt;&lt;/dt&gt;
@@ -843,4 +846,18 @@ When &lt;code&gt;when&lt;/code&gt;/&lt;code&gt;unless&lt;/code&gt; can be evalua
 &lt;dd&gt;The credits and minutes that skipped jobs did not spend.&lt;/dd&gt;
 &lt;dt&gt;&lt;strong&gt;Catalog&lt;/strong&gt;&lt;/dt&gt;
 &lt;dd&gt;The jobs, commands, executors and orbs the planner may pick from. In select mode, the catalog is the project&amp;rsquo;s own pipeline config.&lt;/dd&gt;
+&lt;dt&gt;&lt;strong&gt;Analyze&lt;/strong&gt;&lt;/dt&gt;
+&lt;dd&gt;The &lt;code&gt;circleci-smarter analyze&lt;/code&gt; command that infers per-job repo inputs from CircleCI config and checkout sources, optionally aided by history and an AI classifier.&lt;/dd&gt;
+&lt;dt&gt;&lt;strong&gt;Job hash&lt;/strong&gt;&lt;/dt&gt;
+&lt;dd&gt;A stable SHA-256 of a job&amp;rsquo;s resolved config (body, commands, executors, pinned orbs, and workflow entry parameters). Used to reuse AI output safely in the learned layer.&lt;/dd&gt;
+&lt;dt&gt;&lt;strong&gt;Learned layer&lt;/strong&gt;&lt;/dt&gt;
+&lt;dd&gt;A versioned cache of costly analyze output: AI mappings and history corrections keyed by job name and job hash.&lt;/dd&gt;
+&lt;dt&gt;&lt;strong&gt;AI classifier&lt;/strong&gt;&lt;/dt&gt;
+&lt;dd&gt;The optional Anthropic call that suggests extra paths per job, constrained by structured JSON output and confidence.&lt;/dd&gt;
+&lt;dt&gt;&lt;strong&gt;Confidence&lt;/strong&gt;&lt;/dt&gt;
+&lt;dd&gt;The model&amp;rsquo;s 0–1 self-rating for a job&amp;rsquo;s inferred inputs. Analyze treats a job as complete from AI only when confidence meets &lt;code&gt;--min-confidence&lt;/code&gt; and the job hash matches.&lt;/dd&gt;
+&lt;dt&gt;&lt;strong&gt;Learn&lt;/strong&gt;&lt;/dt&gt;
+&lt;dd&gt;The &lt;code&gt;circleci-smarter learn&lt;/code&gt; command that fetches pipeline history, refreshes the learned layer with AI and corrections, and reports recall and projected savings.&lt;/dd&gt;
+&lt;dt&gt;&lt;strong&gt;AI review&lt;/strong&gt;&lt;/dt&gt;
+&lt;dd&gt;An optional plan-time model call that may add skipped jobs (never remove them) when a pipeline would skip work; failures leave the deterministic plan unchanged.&lt;/dd&gt;
 &lt;/dl&gt;</description></item></channel></rss>

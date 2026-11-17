@@ -9,7 +9,7 @@
 &lt;li&gt;The two layers compose: Smarter Workflows skips whole jobs, and Smarter Testing trims the tests inside the jobs that run.&lt;/li&gt;
 &lt;li&gt;The unit of everything here (impact map, plan, report) is a workflow job, never a test.&lt;/li&gt;
 &lt;/ul&gt;</description></item><item><title>Benchmarks</title><link>https://circleci-labs.github.io/smarter-workflows/docs/benchmarks/benchmarks/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://circleci-labs.github.io/smarter-workflows/docs/benchmarks/benchmarks/</guid><description>
-&lt;p&gt;Measured results for v0.1: real CircleCI pipelines for job selection, a replay of this repository&amp;rsquo;s history against today&amp;rsquo;s map, and synthetic workloads for planner and trace timing.&lt;/p&gt;
+&lt;p&gt;Measured results for v0.1: real CircleCI pipelines for job selection, a replay of this repository&amp;rsquo;s history against today&amp;rsquo;s map, and synthetic workloads for planner timing.&lt;/p&gt;
 &lt;h2 data-hextra-search-id="method"&gt;Method&lt;span class="hx:absolute hx:-mt-20" id="method"&gt;&lt;/span&gt;
 &lt;a href="#method" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;&lt;strong&gt;End to end&lt;/strong&gt; — &lt;code&gt;scripts/e2e/run-scenarios.sh&lt;/code&gt; pushes a one-commit branch per scenario, waits for the setup workflow and the continued workflow, and compares the jobs that ran with the expected set. Each scenario runs three times on the same base commit; medians use the per-target full-run scenarios as the baseline. Details: &lt;a href="https://circleci-labs.github.io/smarter-workflows/docs/validation/#end-to-end-scenarios"&gt;Validation&lt;/a&gt;.&lt;/p&gt;
 &lt;p&gt;&lt;strong&gt;Backtest&lt;/strong&gt; — &lt;code&gt;circleci-smarter backtest&lt;/code&gt; replays a JSON history file in select mode with a fixed impact map. Details: &lt;a href="https://circleci-labs.github.io/smarter-workflows/docs/benchmarks/benchmarks-backtest/"&gt;Backtest&lt;/a&gt;.&lt;/p&gt;
@@ -234,10 +234,6 @@
 &lt;td&gt;&lt;strong&gt;0.166 s&lt;/strong&gt;&lt;/td&gt;
 &lt;/tr&gt;
 &lt;tr&gt;
-&lt;td&gt;&lt;code&gt;collect-trace&lt;/code&gt; &amp;lt; 10 s at 100k tracked files&lt;/td&gt;
-&lt;td&gt;&lt;strong&gt;0.355 s&lt;/strong&gt;&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
 &lt;td&gt;v2 map &amp;lt; 20 MiB and decode &amp;lt; 0.5 s at 2000×10k&lt;/td&gt;
 &lt;td&gt;&lt;strong&gt;233 KiB&lt;/strong&gt;, &lt;strong&gt;0.25 s&lt;/strong&gt; decode&lt;/td&gt;
 &lt;/tr&gt;
@@ -446,13 +442,12 @@
 &lt;/table&gt;
 &lt;p&gt;A breaking change adds &lt;code&gt;!&lt;/code&gt; after the type or scope (&lt;code&gt;feat(plan)!: rename a flag&lt;/code&gt;), or a &lt;code&gt;BREAKING CHANGE:&lt;/code&gt; footer that says what the user has to change.&lt;/p&gt;
 &lt;h2 data-hextra-search-id="development"&gt;Development&lt;span class="hx:absolute hx:-mt-20" id="development"&gt;&lt;/span&gt;
-&lt;a href="#development" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Requirements: Go (the version in &lt;code&gt;go.mod&lt;/code&gt;), and the &lt;a href="https://circleci.com/docs/guides/toolkit/circleci-cli/" target="_blank" rel="noopener"&gt;CircleCI CLI&lt;/a&gt;, which the tests use to validate every config that the planner generates. Set &lt;code&gt;REQUIRE_CIRCLECI_CLI=1&lt;/code&gt; to make a missing CLI fail the tests instead of skipping them.&lt;/p&gt;
+&lt;a href="#development" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Requirements: Go (the version in &lt;code&gt;go.mod&lt;/code&gt;), and the &lt;a href="https://circleci.com/docs/guides/toolkit/circleci-cli/" target="_blank" rel="noopener"&gt;CircleCI CLI&lt;/a&gt;, which the tests use to validate every config that the planner generates. Config validation needs a CircleCI API token (&lt;code&gt;circleci auth login&lt;/code&gt; locally, or the &lt;code&gt;smarter-workflows-ci&lt;/code&gt; context with &lt;code&gt;CIRCLE_TOKEN&lt;/code&gt; in CI on this project). Set &lt;code&gt;REQUIRE_CIRCLECI_CLI=1&lt;/code&gt; to make a missing CLI or token fail the tests instead of skipping them.&lt;/p&gt;
 &lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
 &lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-bash" data-lang="bash"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;gofmt -l .
 &lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;go vet ./...
 &lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;go &lt;span class="nb"&gt;test&lt;/span&gt; ./...
-&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;circleci policy &lt;span class="nb"&gt;test&lt;/span&gt; policies
-&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;scripts/test-trace.sh&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;circleci policy &lt;span class="nb"&gt;test&lt;/span&gt; policies&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
 &lt;button
 class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
 title="Copy code"
@@ -464,7 +459,7 @@ data-copied-label="Copied!"
 &lt;/button&gt;
 &lt;/div&gt;
 &lt;/div&gt;
-&lt;p&gt;The commands check formatting (the output must be empty), vet, the Go tests, the Rego tests of the guardrail bundle, and the trace scripts. The trace tests need git, GNU find and GNU touch, and &lt;code&gt;REQUIRE_ATIME=1&lt;/code&gt; makes a filesystem without access times fail them instead of skipping them. CI also runs &lt;code&gt;shellcheck -s sh internal/tracescript/*.sh scripts/*.sh&lt;/code&gt;. The golden files of the example monorepo change with &lt;code&gt;go test ./examples/monorepo -update&lt;/code&gt;: read the diff before you commit it.&lt;/p&gt;
+&lt;p&gt;The commands check formatting (the output must be empty), vet, the Go tests, and the Rego tests of the guardrail bundle. Restricted contexts in &lt;code&gt;policies/guardrails.rego&lt;/code&gt; are &lt;code&gt;deploy&lt;/code&gt;, &lt;code&gt;smarter-workflows-release&lt;/code&gt;, and &lt;code&gt;smarter-workflows-ci&lt;/code&gt; (API token for config validation on &lt;code&gt;go-test&lt;/code&gt; and &lt;code&gt;orb-validate&lt;/code&gt;). CI also runs &lt;code&gt;shellcheck -s sh scripts/*.sh&lt;/code&gt;. The golden files of the example monorepo change with &lt;code&gt;go test ./examples/monorepo -update&lt;/code&gt;: read the diff before you commit it.&lt;/p&gt;
 &lt;p&gt;&lt;a href="https://circleci-labs.github.io/smarter-workflows/docs/validation/"&gt;Validation&lt;/a&gt; lists every test layer, and &lt;code&gt;.circleci/continue.yml&lt;/code&gt; is the pipeline that runs them.&lt;/p&gt;
 &lt;p&gt;Keep the repository generic: no customer, vendor-specific or internal names, host names or links. Never print environment variables or secrets in a script, a test or a log.&lt;/p&gt;
 &lt;h2 data-hextra-search-id="documentation"&gt;Documentation&lt;span class="hx:absolute hx:-mt-20" id="documentation"&gt;&lt;/span&gt;
@@ -524,24 +519,31 @@ data-alert="note" class="hextra-alert"
 &lt;p class="hextra-alert-title"&gt;&lt;svg height=20px class="hextra-alert-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"&gt;&lt;circle cx="12" cy="12" r="10"/&gt;&lt;path d="M12 16v-4"/&gt;&lt;path d="M12 8h.01"/&gt;&lt;/svg&gt;
 &lt;span class="hextra-alert-title-text"&gt;Note&lt;/span&gt;
 &lt;/p&gt;
-&lt;div class="hextra-alert-content"&gt;&lt;p&gt;CircleCI Labs project, &lt;code&gt;0.x&lt;/code&gt;, not supported by CircleCI support. &lt;a href="https://circleci-labs.github.io/smarter-workflows/#what-is-tested"&gt;What is tested&lt;/a&gt; shows what CI checks, and &lt;a href="https://circleci-labs.github.io/smarter-workflows/docs/limitations/"&gt;Limitations&lt;/a&gt; lists what v0.1 does not do yet.&lt;/p&gt;&lt;/div&gt;
+&lt;div class="hextra-alert-content"&gt;&lt;p&gt;CircleCI Labs project, &lt;code&gt;0.x&lt;/code&gt;, not supported by CircleCI support. &lt;a href="https://circleci-labs.github.io/smarter-workflows/#what-is-tested"&gt;What is tested&lt;/a&gt; and &lt;a href="https://circleci-labs.github.io/smarter-workflows/docs/limitations/"&gt;Limitations&lt;/a&gt; describe current coverage.&lt;/p&gt;&lt;/div&gt;
 &lt;/div&gt;
-&lt;p&gt;The orb is not published yet. Once it is, adopt Smarter Workflows with one setup job from the &lt;code&gt;cci-labs/smarter-workflows&lt;/code&gt; orb (see &lt;a href="https://github.com/CircleCI-Labs/smarter-workflows/tree/main/orb/src/examples" target="_blank" rel="noopener"&gt;orb examples&lt;/a&gt; or the &lt;a href="https://circleci-labs.github.io/smarter-workflows/#quickstart"&gt;README quickstart&lt;/a&gt;). Until then, copy the inline setup job from this repository&amp;rsquo;s &lt;a href="https://github.com/CircleCI-Labs/smarter-workflows/blob/main/.circleci/config.yml" target="_blank" rel="noopener"&gt;&lt;code&gt;.circleci/config.yml&lt;/code&gt;&lt;/a&gt;; it builds the planner from source and matches what the orb job does.&lt;/p&gt;
-&lt;ol&gt;
-&lt;li&gt;&lt;strong&gt;Move your pipeline&lt;/strong&gt; (jobs, workflows, orbs, executors) to &lt;code&gt;.circleci/continue.yml&lt;/code&gt;. That file is the catalog the planner picks from. Nothing else in it changes.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Add a setup config&lt;/strong&gt; in &lt;code&gt;.circleci/config.yml&lt;/code&gt; with &lt;code&gt;setup: true&lt;/code&gt;, the orb, and one &lt;code&gt;smarter/plan&lt;/code&gt; job (see below). Turn on setup workflows under Project Settings → Advanced, if they are not on.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Start in shadow mode&lt;/strong&gt; (&lt;code&gt;mode: shadow&lt;/code&gt;). Use &lt;code&gt;source: build&lt;/code&gt; with the &lt;code&gt;go&lt;/code&gt; executor until releases exist; then use &lt;code&gt;source: release&lt;/code&gt; (the default) so the job downloads a signed binary.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Push to the default branch.&lt;/strong&gt; The first full run traces every job and saves the impact map. On later pushes, open &lt;code&gt;smarter-plan/plan.md&lt;/code&gt; in the plan job&amp;rsquo;s artifacts.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Require the planned workflow&amp;rsquo;s check&lt;/strong&gt; in branch protection (or &lt;code&gt;smarter-gate&lt;/code&gt; if you use per-job statuses). &lt;code&gt;smarter-gate&lt;/code&gt; is a no-op job and costs no credits.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Switch to select mode&lt;/strong&gt; (&lt;code&gt;mode: select&lt;/code&gt;) when shadow reports look right.&lt;/li&gt;
+&lt;h2 data-hextra-search-id="adoption-path"&gt;Adoption path&lt;span class="hx:absolute hx:-mt-20" id="adoption-path"&gt;&lt;/span&gt;
+&lt;a href="#adoption-path" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ol&gt;
+&lt;li&gt;&lt;strong&gt;Trial &lt;code&gt;learn&lt;/code&gt; locally&lt;/strong&gt; with a read-only CircleCI token or a recorded history file (&lt;code&gt;circleci-smarter learn --history FILE --learned-out …&lt;/code&gt;). Read the report’s recall and incomplete jobs.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Add the orb&lt;/strong&gt; with &lt;code&gt;plan&lt;/code&gt; on every pipeline (shadow) and &lt;code&gt;learn&lt;/code&gt; on a schedule. Attach a context with &lt;code&gt;CIRCLECI_TOKEN&lt;/code&gt; and optional &lt;code&gt;ANTHROPIC_API_KEY&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Switch to select&lt;/strong&gt; when shadow &lt;code&gt;plan.md&lt;/code&gt; and the weekly learn report agree.&lt;/li&gt;
 &lt;/ol&gt;
-&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;h3 data-hextra-search-id="schedule-trigger"&gt;Schedule trigger&lt;span class="hx:absolute hx:-mt-20" id="schedule-trigger"&gt;&lt;/span&gt;
+&lt;a href="#schedule-trigger" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h3&gt;&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;GitHub App projects:&lt;/strong&gt; Project Settings → &lt;strong&gt;Triggers&lt;/strong&gt; → &lt;strong&gt;Schedule&lt;/strong&gt; → add a weekly trigger on the default branch.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;OAuth projects:&lt;/strong&gt; use &lt;a href="https://circleci.com/docs/guides/orchestrate/schedule-triggers/" target="_blank" rel="noopener"&gt;scheduled pipelines&lt;/a&gt; (pipeline parameter or trigger type &lt;code&gt;schedule&lt;/code&gt;).&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;The orb example wires &lt;code&gt;learn&lt;/code&gt; to &lt;code&gt;pipeline.trigger.type == &amp;quot;schedule&amp;quot;&lt;/code&gt; and keeps &lt;code&gt;plan&lt;/code&gt; on other triggers (&lt;a href="https://github.com/CircleCI-Labs/smarter-workflows/blob/main/orb/src/examples/shadow-learn-schedule.yml" target="_blank" rel="noopener"&gt;&lt;code&gt;shadow-learn-schedule.yml&lt;/code&gt;&lt;/a&gt;).&lt;/p&gt;
+&lt;h2 data-hextra-search-id="setup-config-orb"&gt;Setup config (orb)&lt;span class="hx:absolute hx:-mt-20" id="setup-config-orb"&gt;&lt;/span&gt;
+&lt;a href="#setup-config-orb" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
 &lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-yaml" data-lang="yaml"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="nt"&gt;version&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="m"&gt;2.1&lt;/span&gt;&lt;span class="w"&gt;
 &lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="nt"&gt;setup&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="kc"&gt;true&lt;/span&gt;&lt;span class="w"&gt;
 &lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="nt"&gt;orbs&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt;
 &lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;smarter&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;cci-labs/smarter-workflows@1.0.0&lt;/span&gt;&lt;span class="w"&gt;
 &lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="nt"&gt;workflows&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt;
 &lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;plan&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;when&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;not&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;equal&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="l"&gt;schedule, &amp;lt;&amp;lt; pipeline.trigger.type &amp;gt;&amp;gt;]&lt;/span&gt;&lt;span class="w"&gt;
 &lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;jobs&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt;
 &lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;- &lt;span class="nt"&gt;smarter/plan&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt;
 &lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;config&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;.circleci/continue.yml&lt;/span&gt;&lt;span class="w"&gt;
@@ -549,6 +551,19 @@ data-alert="note" class="hextra-alert"
 &lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;mode&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;shadow&lt;/span&gt;&lt;span class="w"&gt;
 &lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;mandatory&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;security-scan&lt;/span&gt;&lt;span class="w"&gt;
 &lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;policy-bundle&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;policies&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;ai-review&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;shadow&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;executor&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;smarter/go&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;source&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;build&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;resource_class&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;medium&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;refresh-learned&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;when&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;equal&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="l"&gt;schedule, &amp;lt;&amp;lt; pipeline.trigger.type &amp;gt;&amp;gt;]&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;jobs&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;- &lt;span class="nt"&gt;smarter/learn&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;config&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;.circleci/continue.yml&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;workflow&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;ci&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;limit&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="m"&gt;200&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;context&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="l"&gt;your-circleci-token-context]&lt;/span&gt;&lt;span class="w"&gt;
 &lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;executor&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;smarter/go&lt;/span&gt;&lt;span class="w"&gt;
 &lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;source&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;build&lt;/span&gt;&lt;span class="w"&gt;
 &lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;resource_class&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;medium&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
@@ -563,36 +578,28 @@ data-copied-label="Copied!"
 &lt;/button&gt;
 &lt;/div&gt;
 &lt;/div&gt;
+&lt;p&gt;Until the orb is published, copy the inline jobs from this repository’s &lt;a href="https://github.com/CircleCI-Labs/smarter-workflows/blob/main/.circleci/config.yml" target="_blank" rel="noopener"&gt;&lt;code&gt;.circleci/config.yml&lt;/code&gt;&lt;/a&gt; (they build the planner from source).&lt;/p&gt;
+&lt;h2 data-hextra-search-id="catalog"&gt;Catalog&lt;span class="hx:absolute hx:-mt-20" id="catalog"&gt;&lt;/span&gt;
+&lt;a href="#catalog" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ol&gt;
+&lt;li&gt;Move jobs, workflows, orbs and executors to &lt;code&gt;.circleci/continue.yml&lt;/code&gt;. That file is the catalog; nothing Smarter-specific is required inside it.&lt;/li&gt;
+&lt;li&gt;Turn on setup workflows under &lt;strong&gt;Project Settings → Advanced&lt;/strong&gt;.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;Analyze treats mapped inputs as directory prefixes (&lt;code&gt;.&lt;/code&gt; is the whole repo). Jobs with opaque steps always run until &lt;code&gt;learn&lt;/code&gt; improves the map.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="artifacts-and-branch-protection"&gt;Artifacts and branch protection&lt;span class="hx:absolute hx:-mt-20" id="artifacts-and-branch-protection"&gt;&lt;/span&gt;
+&lt;a href="#artifacts-and-branch-protection" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ul&gt;
+&lt;li&gt;Every &lt;code&gt;plan&lt;/code&gt; run stores &lt;code&gt;smarter-plan/plan.md&lt;/code&gt;, &lt;code&gt;plan.json&lt;/code&gt;, and &lt;code&gt;analyze-report.md&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;Every &lt;code&gt;learn&lt;/code&gt; run stores &lt;code&gt;smarter-learn/learn.md&lt;/code&gt; and &lt;code&gt;learn.json&lt;/code&gt;, and updates the learned layer cache (&lt;code&gt;learned-key-prefix&lt;/code&gt;, default &lt;code&gt;smarter-learned-v1&lt;/code&gt;).&lt;/li&gt;
+&lt;li&gt;Require the continued workflow’s GitHub check, or per-job &lt;code&gt;smarter-gate&lt;/code&gt; if you use job checks.&lt;/li&gt;
+&lt;/ul&gt;
 &lt;h2 data-hextra-search-id="pipeline-parameters"&gt;Pipeline parameters&lt;span class="hx:absolute hx:-mt-20" id="pipeline-parameters"&gt;&lt;/span&gt;
-&lt;a href="#pipeline-parameters" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;If the continuation config uses workflow &lt;code&gt;when&lt;/code&gt;/&lt;code&gt;unless&lt;/code&gt; on &lt;code&gt;pipeline.parameters.*&lt;/code&gt;, pass a JSON file of the values the continuation will receive: set &lt;code&gt;parameters&lt;/code&gt; on the &lt;code&gt;smarter/plan&lt;/code&gt; job to that path (for example &lt;code&gt;.circleci/pipeline-parameters.json&lt;/code&gt;). The planner uses them when selecting jobs and writes &lt;code&gt;/tmp/smarter/plan/parameters.json&lt;/code&gt; for &lt;code&gt;continue&lt;/code&gt;.&lt;/p&gt;
-&lt;h2 data-hextra-search-id="pipeline-parameters-1"&gt;Pipeline parameters&lt;span class="hx:absolute hx:-mt-20" id="pipeline-parameters-1"&gt;&lt;/span&gt;
-&lt;a href="#pipeline-parameters-1" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;If the continuation config uses workflow &lt;code&gt;when&lt;/code&gt;/&lt;code&gt;unless&lt;/code&gt; on &lt;code&gt;pipeline.parameters.*&lt;/code&gt;, pass a JSON file of the values the continuation will receive: set &lt;code&gt;parameters&lt;/code&gt; on the &lt;code&gt;smarter/plan&lt;/code&gt; job to that path (for example &lt;code&gt;.circleci/pipeline-parameters.json&lt;/code&gt;). The planner uses them when selecting jobs and writes &lt;code&gt;/tmp/smarter/plan/parameters.json&lt;/code&gt; for &lt;code&gt;continue&lt;/code&gt;.&lt;/p&gt;
-&lt;h2 data-hextra-search-id="optional-guardrails"&gt;Optional: guardrails&lt;span class="hx:absolute hx:-mt-20" id="optional-guardrails"&gt;&lt;/span&gt;
-&lt;a href="#optional-guardrails" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Copy &lt;a href="https://github.com/CircleCI-Labs/smarter-workflows/tree/main/policies" target="_blank" rel="noopener"&gt;&lt;code&gt;policies/&lt;/code&gt;&lt;/a&gt;, edit the settings at the top of &lt;code&gt;guardrails.rego&lt;/code&gt;, and pass &lt;code&gt;policy-bundle: policies&lt;/code&gt; on the plan job (or &lt;code&gt;--policy-bundle policies&lt;/code&gt; with an inline setup job). Every plan is then checked before it continues. On the Scale plan you can also push the same bundle as org policy:&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;limit it to the projects that opt in;&lt;/li&gt;
-&lt;li&gt;start with every rule in &lt;code&gt;soft_rules&lt;/code&gt;;&lt;/li&gt;
-&lt;li&gt;leave the &lt;code&gt;_test.rego&lt;/code&gt; file out of the pushed directory.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;Run the tests with &lt;code&gt;circleci policy test policies&lt;/code&gt;.&lt;/p&gt;
+&lt;a href="#pipeline-parameters" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;If &lt;code&gt;continue.yml&lt;/code&gt; uses workflow &lt;code&gt;when&lt;/code&gt;/&lt;code&gt;unless&lt;/code&gt; on &lt;code&gt;pipeline.parameters.*&lt;/code&gt;, set the &lt;code&gt;parameters&lt;/code&gt; job parameter to a JSON file of values. The planner writes &lt;code&gt;parameters.json&lt;/code&gt; under the plan report for &lt;code&gt;continue&lt;/code&gt;.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="optional-guardrails"&gt;Optional guardrails&lt;span class="hx:absolute hx:-mt-20" id="optional-guardrails"&gt;&lt;/span&gt;
+&lt;a href="#optional-guardrails" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Copy &lt;a href="https://github.com/CircleCI-Labs/smarter-workflows/tree/main/policies" target="_blank" rel="noopener"&gt;&lt;code&gt;policies/&lt;/code&gt;&lt;/a&gt;, edit settings at the top of &lt;code&gt;guardrails.rego&lt;/code&gt;, and set &lt;code&gt;policy-bundle: policies&lt;/code&gt; on &lt;code&gt;plan&lt;/code&gt;. Run &lt;code&gt;circleci policy test policies&lt;/code&gt;.&lt;/p&gt;
 &lt;h2 data-hextra-search-id="several-pipelines-in-one-project"&gt;Several pipelines in one project&lt;span class="hx:absolute hx:-mt-20" id="several-pipelines-in-one-project"&gt;&lt;/span&gt;
-&lt;a href="#several-pipelines-in-one-project" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;All pipelines of a project share its cache. Give each setup config its own &lt;code&gt;map-key-prefix&lt;/code&gt; (default &lt;code&gt;smarter-impact-v1&lt;/code&gt;) on the plan job. Restore keys match by prefix, so no prefix may start with another one followed by a dash: &lt;code&gt;smarter-impact-v1&lt;/code&gt; would restore the maps of &lt;code&gt;smarter-impact-v1-demo&lt;/code&gt;. &lt;code&gt;smarter-demo-impact-v1&lt;/code&gt; is fine.&lt;/p&gt;
-&lt;h2 data-hextra-search-id="requirements"&gt;Requirements&lt;span class="hx:absolute hx:-mt-20" id="requirements"&gt;&lt;/span&gt;
-&lt;a href="#requirements" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ul&gt;
-&lt;li&gt;&lt;strong&gt;Linux jobs&lt;/strong&gt; (docker or machine with a known Linux image) for tracing. Other jobs always run unless you declare them with &lt;code&gt;plan --trace-jobs&lt;/code&gt; (comma-separated name globs), for example self-hosted runner jobs. The plan report lists traced and untraced jobs.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h3 data-hextra-search-id="getting-the-most-out-of-tracing"&gt;Getting the most out of tracing&lt;span class="hx:absolute hx:-mt-20" id="getting-the-most-out-of-tracing"&gt;&lt;/span&gt;
-&lt;a href="#getting-the-most-out-of-tracing" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h3&gt;&lt;ul&gt;
-&lt;li&gt;Put &lt;code&gt;checkout&lt;/code&gt; in the job steps when you can. When it lives in a &lt;strong&gt;local command&lt;/strong&gt; instead, the planner still inserts the reset right after that command runs.&lt;/li&gt;
-&lt;li&gt;Prefer &lt;strong&gt;GNU-friendly&lt;/strong&gt; images (&lt;code&gt;cimg/*&lt;/code&gt;, Ubuntu machine images). &lt;strong&gt;Busybox/Alpine&lt;/strong&gt; tool images work too: the reset and collect scripts fall back to &lt;code&gt;stat&lt;/code&gt; and busybox &lt;code&gt;touch&lt;/code&gt; forms.&lt;/li&gt;
-&lt;li&gt;List &lt;strong&gt;runner or custom-executor&lt;/strong&gt; jobs with &lt;code&gt;--trace-jobs&lt;/code&gt; when the config does not pin a Linux image the planner can read.&lt;/li&gt;
-&lt;li&gt;Read &lt;strong&gt;&lt;code&gt;trace_coverage&lt;/code&gt;&lt;/strong&gt; in &lt;code&gt;plan.json&lt;/code&gt; (or the table in &lt;code&gt;plan.md&lt;/code&gt;) after a shadow run on main to see which jobs are untraced and why.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;The default branch builds regularly.&lt;/strong&gt; Maps live in the project cache, so they expire with its retention.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Approved images, if your org enforces them.&lt;/strong&gt; Some orgs&amp;rsquo; config policies allow only exact image tags, so an image pinned by digest can be rejected.&lt;/li&gt;
-&lt;/ul&gt;</description></item><item><title>Spec v0.1</title><link>https://circleci-labs.github.io/smarter-workflows/docs/reference/spec/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://circleci-labs.github.io/smarter-workflows/docs/reference/spec/</guid><description>
+&lt;a href="#several-pipelines-in-one-project" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Share one project cache but give each setup config its own &lt;code&gt;learned-key-prefix&lt;/code&gt;. No prefix may be a prefix of another (use &lt;code&gt;smarter-demo-learned-v1&lt;/code&gt; beside &lt;code&gt;smarter-learned-v1&lt;/code&gt;, not &lt;code&gt;smarter-learned-v1-demo&lt;/code&gt;).&lt;/p&gt;</description></item><item><title>Spec v0.1</title><link>https://circleci-labs.github.io/smarter-workflows/docs/reference/spec/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://circleci-labs.github.io/smarter-workflows/docs/reference/spec/</guid><description>
 &lt;p&gt;Status: building. Decisions: &lt;a href="https://circleci-labs.github.io/smarter-workflows/docs/decisions/"&gt;docs/adr/&lt;/a&gt;. Words: &lt;a href="https://circleci-labs.github.io/smarter-workflows/docs/reference/glossary/"&gt;Glossary&lt;/a&gt;.&lt;/p&gt;
 &lt;h2 data-hextra-search-id="goal"&gt;Goal&lt;span class="hx:absolute hx:-mt-20" id="goal"&gt;&lt;/span&gt;
-&lt;a href="#goal" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;A setup workflow runs the &lt;code&gt;circleci-smarter&lt;/code&gt; planner. For a branch, the planner prunes the planned workflow of &lt;code&gt;.circleci/continue.yml&lt;/code&gt; down to the jobs the change can reach. It checks the result against the guardrails and continues the pipeline. On the default branch it runs everything, traces each job&amp;rsquo;s file reads, and rebuilds the impact map.&lt;/p&gt;
+&lt;a href="#goal" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;A setup workflow runs the &lt;code&gt;circleci-smarter&lt;/code&gt; planner. For a branch, the planner prunes the planned workflow of &lt;code&gt;.circleci/continue.yml&lt;/code&gt; down to the jobs the change can reach. It checks the result against the guardrails and continues the pipeline. From v0.3 the impact map comes from &lt;code&gt;circleci-smarter analyze&lt;/code&gt; (ADR 8); the trace-based map build described below is historical v0.1 behaviour.&lt;/p&gt;
 &lt;h2 data-hextra-search-id="not-in-v01"&gt;Not in v0.1&lt;span class="hx:absolute hx:-mt-20" id="not-in-v01"&gt;&lt;/span&gt;
 &lt;a href="#not-in-v01" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ul&gt;
 &lt;li&gt;History mining and learned rules.&lt;/li&gt;
@@ -615,7 +622,7 @@ internal/planner/ the selection algorithm, plan, the gate and the trace/map job 
 internal/catalog/ the catalog JSON of a workflow (`catalog`)
 internal/pipelineparams/ JSON pipeline parameter files for plan and continue
 internal/report/ plan.json and plan.md
-internal/tracescript/ the embedded collect-trace.sh (go:embed)
+internal/analyze/ static impact-map inference (v0.3, separate command)
 internal/policy/ local evaluation with circle-policy-agent; repair codes
 internal/continuation/ POST /api/v2/pipeline/continue
 policies/ the Rego guardrail bundle &amp;#43; tests
@@ -1090,7 +1097,10 @@ data-copied-label="Copied!"
 &lt;a href="#version" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;Prints the version: &lt;code&gt;dev-&amp;lt;sha&amp;gt;&lt;/code&gt; when built from source, otherwise the release tag.&lt;/p&gt;
 &lt;h2 data-hextra-search-id="file-formats"&gt;File formats&lt;span class="hx:absolute hx:-mt-20" id="file-formats"&gt;&lt;/span&gt;
 &lt;a href="#file-formats" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;h3 data-hextra-search-id="trace-tsv"&gt;Trace TSV&lt;span class="hx:absolute hx:-mt-20" id="trace-tsv"&gt;&lt;/span&gt;
-&lt;a href="#trace-tsv" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;The collector writes one file per job node: &lt;code&gt;&amp;lt;traces-dir&amp;gt;/&amp;lt;first 16 hex of sha256(job name)&amp;gt;.&amp;lt;node index&amp;gt;.tsv&lt;/code&gt;.&lt;/p&gt;
+&lt;a href="#trace-tsv" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h3&gt;&lt;blockquote&gt;
+&lt;p&gt;&lt;strong&gt;Superseded by &lt;a href="https://circleci-labs.github.io/smarter-workflows/docs/decisions/0008-impact-maps-from-analysis-not-traces/"&gt;ADR 8&lt;/a&gt;.&lt;/strong&gt; v0.3 does not use trace TSV. This section documents the removed v0.1 collector format.&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;The collector writes one file per job node: &lt;code&gt;&amp;lt;traces-dir&amp;gt;/&amp;lt;first 16 hex of sha256(job name)&amp;gt;.&amp;lt;node index&amp;gt;.tsv&lt;/code&gt;.&lt;/p&gt;
 &lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
 &lt;div&gt;&lt;pre&gt;&lt;code&gt;# smarter-trace v1
 job &amp;lt;workflow job name, i.e. $CIRCLE_JOB&amp;gt;
@@ -1298,7 +1308,7 @@ When &lt;code&gt;when&lt;/code&gt;/&lt;code&gt;unless&lt;/code&gt; can be evalua
 &lt;/ul&gt;
 &lt;/li&gt;
 &lt;li&gt;
-&lt;p&gt;&lt;strong&gt;Trace&lt;/strong&gt; (full runs on the default branch, when &lt;code&gt;--trace&lt;/code&gt; resolves to on):&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Trace&lt;/strong&gt; (full runs on the default branch, when &lt;code&gt;--trace&lt;/code&gt; resolves to on) — &lt;strong&gt;superseded by &lt;a href="https://circleci-labs.github.io/smarter-workflows/docs/decisions/0008-impact-maps-from-analysis-not-traces/"&gt;ADR 8&lt;/a&gt;&lt;/strong&gt;; removed in v0.3:&lt;/p&gt;
 &lt;ol&gt;
 &lt;li&gt;On every entry of W that is a local Linux job (docker, or machine with a Linux image), append &lt;code&gt;post-steps&lt;/code&gt;. An approval, a no-op job, a release job, a job group and a matrix entry get none. Orb jobs are included only with &lt;code&gt;--trace-orb-jobs&lt;/code&gt;; without it, an orb entry gets no &lt;code&gt;pre-steps&lt;/code&gt; and no &lt;code&gt;post-steps&lt;/code&gt;. A &lt;code&gt;pre-steps&lt;/code&gt; or &lt;code&gt;post-steps&lt;/code&gt; key with no value is an empty list. An entry whose &lt;code&gt;pre-steps&lt;/code&gt; or &lt;code&gt;post-steps&lt;/code&gt; is not a list gets no trace, with a warning: the others are traced, and since it has no map entry, later plans always run it.
 &lt;ul&gt;
@@ -1397,13 +1407,13 @@ When &lt;code&gt;when&lt;/code&gt;/&lt;code&gt;unless&lt;/code&gt; can be evalua
 &lt;a href="#decision" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ol&gt;
 &lt;li&gt;Every job runs unless the planner can show that the change touches none of its inputs:
 &lt;ul&gt;
-&lt;li&gt;no changed file is among the files the job read in the last traced full run;&lt;/li&gt;
-&lt;li&gt;no added or deleted file sits in a directory the job listed.&lt;/li&gt;
+&lt;li&gt;no changed file is among the files the impact map lists for the job;&lt;/li&gt;
+&lt;li&gt;no added or deleted file sits in a directory the job lists.&lt;/li&gt;
 &lt;/ul&gt;
 &lt;/li&gt;
 &lt;li&gt;These always run:
 &lt;ul&gt;
-&lt;li&gt;jobs with no trace, or an incomplete trace;&lt;/li&gt;
+&lt;li&gt;jobs with no map entry, an incomplete entry, or inputs that fail the skip proof in ADR 8;&lt;/li&gt;
 &lt;li&gt;mandatory jobs;&lt;/li&gt;
 &lt;li&gt;every ancestor (&lt;code&gt;requires&lt;/code&gt;) of a selected job, approvals included.&lt;/li&gt;
 &lt;/ul&gt;
@@ -1432,7 +1442,37 @@ When &lt;code&gt;when&lt;/code&gt;/&lt;code&gt;unless&lt;/code&gt; can be evalua
 &lt;li&gt;A project may already use a no-op job that nothing requires as its one required status check (a gatekeeper, such as &lt;code&gt;all-tests-passed&lt;/code&gt;). The planner always keeps it, and cuts what it waits for to the jobs that stay, or to the gate, so its check always reports and never passes early.&lt;/li&gt;
 &lt;li&gt;A job that does not run on the branch (its own &lt;code&gt;filters&lt;/code&gt; leave it out, or all the jobs it requires are left out) is never selected, even when it is mandatory. The planner does not edit the project&amp;rsquo;s filters or requirements to force a job. It leaves such a job out, and a mandatory one gets a warning. It drops a &lt;code&gt;requires&lt;/code&gt; name only when it names a job that does not run, which CircleCI ignores anyway.&lt;/li&gt;
 &lt;li&gt;Skipping a job on confidence alone, without proof, is out of scope until shadow-mode data shows recall of at least 99% for that job.&lt;/li&gt;
-&lt;/ul&gt;</description></item><item><title>Compose eval</title><link>https://circleci-labs.github.io/smarter-workflows/docs/agents/compose-eval/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://circleci-labs.github.io/smarter-workflows/docs/agents/compose-eval/</guid><description>
+&lt;/ul&gt;</description></item><item><title>Analyze</title><link>https://circleci-labs.github.io/smarter-workflows/docs/analyze/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://circleci-labs.github.io/smarter-workflows/docs/analyze/</guid><description>
+&lt;p&gt;&lt;code&gt;circleci-smarter analyze&lt;/code&gt; infers which repository paths can reach each job. v0.3 uses this map instead of trace injection.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="what-it-reads"&gt;What it reads&lt;span class="hx:absolute hx:-mt-20" id="what-it-reads"&gt;&lt;/span&gt;
+&lt;a href="#what-it-reads" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Static signals from the config and checkout: &lt;code&gt;run&lt;/code&gt; commands and scripts they invoke, Node and Python manifests, Dockerfile &lt;code&gt;COPY&lt;/code&gt;, &lt;code&gt;working_directory&lt;/code&gt;, orb parameters such as &lt;code&gt;app-dir&lt;/code&gt;, cache-key checksum files, workspace flow, path-filtering mappings, and Go imports (&lt;code&gt;go/parser&lt;/code&gt;, including tests; module, &lt;code&gt;go.work&lt;/code&gt;, &lt;code&gt;replace&lt;/code&gt;, &lt;code&gt;//go:embed&lt;/code&gt;, and &lt;code&gt;vendor/&lt;/code&gt;).&lt;/p&gt;
+&lt;h2 data-hextra-search-id="ai-classifier"&gt;AI classifier&lt;span class="hx:absolute hx:-mt-20" id="ai-classifier"&gt;&lt;/span&gt;
+&lt;a href="#ai-classifier" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;With &lt;code&gt;--ai auto&lt;/code&gt; (default), analyze calls Anthropic when &lt;code&gt;ANTHROPIC_API_KEY&lt;/code&gt; or &lt;code&gt;ANTHROPIC_AUTH_TOKEN&lt;/code&gt; is set. Modes: &lt;code&gt;on&lt;/code&gt; (failure stops the run), &lt;code&gt;off&lt;/code&gt; (static and history only), &lt;code&gt;dry-run&lt;/code&gt; (writes request JSON under &lt;code&gt;&amp;lt;report-dir&amp;gt;/ai-requests/&lt;/code&gt; without sending).&lt;/p&gt;
+&lt;p&gt;The prompt sends job definitions, a repo tree, and trimmed file text within &lt;code&gt;--ai-max-input-tokens&lt;/code&gt; (default 90k). Structured JSON is enforced with &lt;code&gt;output_config.format&lt;/code&gt;.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Never sent:&lt;/strong&gt; paths matching &lt;code&gt;.env*&lt;/code&gt;, &lt;code&gt;*.pem&lt;/code&gt;, &lt;code&gt;*.key&lt;/code&gt;, &lt;code&gt;id_rsa*&lt;/code&gt;, credential/secret filenames, &lt;code&gt;.npmrc&lt;/code&gt;, &lt;code&gt;.pypirc&lt;/code&gt;, &lt;code&gt;.netrc&lt;/code&gt;, binaries, or files over 256 KiB (listed in the tree only).&lt;/p&gt;
+&lt;h2 data-hextra-search-id="learned-layer"&gt;Learned layer&lt;span class="hx:absolute hx:-mt-20" id="learned-layer"&gt;&lt;/span&gt;
+&lt;a href="#learned-layer" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;&lt;code&gt;--learned-out&lt;/code&gt; writes version-1 JSON: per job &lt;code&gt;job_hash&lt;/code&gt;, optional AI inputs with confidence, and history &lt;strong&gt;corrections&lt;/strong&gt; (paths added when a non-flaky failure’s changed files were outside the map). &lt;code&gt;--learned&lt;/code&gt; merges corrections forward and drops paths that no longer exist. AI may mark a job complete only when &lt;code&gt;job_hash&lt;/code&gt; matches and &lt;code&gt;confidence &amp;gt;= --min-confidence&lt;/code&gt;.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="report"&gt;Report&lt;span class="hx:absolute hx:-mt-20" id="report"&gt;&lt;/span&gt;
+&lt;a href="#report" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;&lt;code&gt;--report&lt;/code&gt; and &lt;code&gt;--report-json&lt;/code&gt; list each job’s completeness, why it is incomplete, and inputs grouped by config signal. Totals include AI call counts, token use, and estimated cost (Haiku 5.5 tier; prices as of 2026-10).&lt;/p&gt;
+&lt;h2 data-hextra-search-id="run-locally"&gt;Run locally&lt;span class="hx:absolute hx:-mt-20" id="run-locally"&gt;&lt;/span&gt;
+&lt;a href="#run-locally" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Paths such as &lt;code&gt;--config&lt;/code&gt; and &lt;code&gt;--history&lt;/code&gt; are relative to &lt;code&gt;--repo&lt;/code&gt; (the repository root you are analyzing). To analyze the demo config from this repository, run from the repo root:&lt;/p&gt;
+&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-bash" data-lang="bash"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;circleci-smarter analyze --repo . --config examples/demo/.circleci/continue.yml --workflow demo --ai off
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;circleci-smarter analyze --repo . --ai off --report analyze-report.md&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
+&lt;button
+class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+title="Copy code"
+aria-label="Copy code"
+data-copied-label="Copied!"
+&gt;
+&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;p&gt;Map output defaults to &lt;code&gt;smarter-map.json&lt;/code&gt; in the current working directory (where you run the command).&lt;/p&gt;
+&lt;p&gt;Developers can add recall/precision against a reference map with &lt;code&gt;--truth FILE&lt;/code&gt; (omitted from routine operator docs).&lt;/p&gt;
+&lt;p&gt;The weekly &lt;a href="https://circleci-labs.github.io/smarter-workflows/docs/learn/"&gt;learn&lt;/a&gt; job runs analyze with AI and history, writes the learned layer, and backtests recall. &lt;code&gt;plan&lt;/code&gt; merges that layer on every pipeline without calling the API.&lt;/p&gt;</description></item><item><title>Compose eval</title><link>https://circleci-labs.github.io/smarter-workflows/docs/agents/compose-eval/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://circleci-labs.github.io/smarter-workflows/docs/agents/compose-eval/</guid><description>
 &lt;p&gt;Can an agent with the &lt;a href="https://circleci-labs.github.io/smarter-workflows/docs/agents/composer-skill/"&gt;workflow composer skill&lt;/a&gt; assemble CircleCI jobs into a correct workflow? Each case gives it the demo&amp;rsquo;s job definitions (&lt;a href="https://github.com/CircleCI-Labs/smarter-workflows/blob/main/examples/compose-eval/jobs.yml" target="_blank" rel="noopener"&gt;jobs.yml&lt;/a&gt;, the demo&amp;rsquo;s &lt;code&gt;continue.yml&lt;/code&gt; without its workflows) and a goal. It answers with a complete config: the jobs as given, plus the &lt;code&gt;workflows:&lt;/code&gt; it composed.&lt;/p&gt;
 &lt;p&gt;&lt;a href="https://github.com/CircleCI-Labs/smarter-workflows/blob/main/examples/compose-eval/check.sh" target="_blank" rel="noopener"&gt;check.sh&lt;/a&gt; then judges each answer, with no model involved:&lt;/p&gt;
 &lt;ol&gt;
@@ -1549,11 +1589,11 @@ data-copied-label="Copied!"
 &lt;dt&gt;&lt;strong&gt;Full run&lt;/strong&gt;&lt;/dt&gt;
 &lt;dd&gt;A pipeline that runs every job. The default branch, scheduled pipelines, changes to the pipeline definition, and any case the planner is unsure about all get a full run.&lt;/dd&gt;
 &lt;dt&gt;&lt;strong&gt;Impact map&lt;/strong&gt;&lt;/dt&gt;
-&lt;dd&gt;For each job, the files it read and the directories it listed during the last full run on the default branch. It is rebuilt after every green full run, and branches use it to see which jobs a change can affect.&lt;/dd&gt;
-&lt;dt&gt;&lt;strong&gt;Trace&lt;/strong&gt;&lt;/dt&gt;
-&lt;dd&gt;The record of the files one job read, taken at the end of the job. The impact map is built from traces.&lt;/dd&gt;
+&lt;dd&gt;For each job, the repo files and directories the planner treats as its inputs. &lt;code&gt;circleci-smarter analyze&lt;/code&gt; builds it from the continuation config and the repository. Branches use the map to see which jobs a change can affect.&lt;/dd&gt;
 &lt;dt&gt;&lt;strong&gt;Inputs (of a job)&lt;/strong&gt;&lt;/dt&gt;
-&lt;dd&gt;The files and directories in a job&amp;rsquo;s trace. A job whose inputs a change does not touch is a candidate to skip.&lt;/dd&gt;
+&lt;dd&gt;The files and directories listed for a job in the impact map. Exact &lt;code&gt;files&lt;/code&gt; match only that path; each &lt;code&gt;input dir&lt;/code&gt; covers every path under it recursively; &lt;code&gt;.&lt;/code&gt; is the repository root and covers the whole tree. Any change status uses the same rule. A job whose inputs a change does not touch is a candidate to skip.&lt;/dd&gt;
+&lt;dt&gt;&lt;strong&gt;Input dir&lt;/strong&gt;&lt;/dt&gt;
+&lt;dd&gt;A directory entry in a job&amp;rsquo;s impact map. It includes every file and subdirectory under that path, not only direct children.&lt;/dd&gt;
 &lt;dt&gt;&lt;strong&gt;Shadow mode&lt;/strong&gt;&lt;/dt&gt;
 &lt;dd&gt;The planner makes and reports a plan, but every job still runs. Shadow mode measures what select mode would save, and what it would miss.&lt;/dd&gt;
 &lt;dt&gt;&lt;strong&gt;Select mode&lt;/strong&gt;&lt;/dt&gt;
@@ -1582,158 +1622,25 @@ data-copied-label="Copied!"
 &lt;dd&gt;The credits and minutes that skipped jobs did not spend.&lt;/dd&gt;
 &lt;dt&gt;&lt;strong&gt;Catalog&lt;/strong&gt;&lt;/dt&gt;
 &lt;dd&gt;The jobs, commands, executors and orbs the planner may pick from. In select mode, the catalog is the project&amp;rsquo;s own pipeline config.&lt;/dd&gt;
-&lt;/dl&gt;</description></item><item><title>How it works</title><link>https://circleci-labs.github.io/smarter-workflows/docs/how-it-works/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://circleci-labs.github.io/smarter-workflows/docs/how-it-works/</guid><description>
-&lt;h2 data-hextra-search-id="the-loop"&gt;The loop&lt;span class="hx:absolute hx:-mt-20" id="the-loop"&gt;&lt;/span&gt;
-&lt;a href="#the-loop" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
-&lt;div&gt;&lt;pre&gt;&lt;code&gt;push to main ──► setup: plan job ──► full run, every job traced ──► smarter-impact-map ──► project cache
-│
-push to a branch ──► setup: plan job ◄── impact map for the merge-base (or the newest) ◄────────┘
-│
-├─ changed files (merge-base..HEAD) × impact map → which jobs the change can reach
-├─ &amp;#43; mandatory jobs, &amp;#43; ancestors, &amp;#43; workspace consumers
-├─ guardrails pre-flight (policies/), repair or full run
-└─ continue: pruned workflow &amp;#43; smarter-gate&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
-&lt;button
-class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
-title="Copy code"
-aria-label="Copy code"
-data-copied-label="Copied!"
-&gt;
-&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
-&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
-&lt;/button&gt;
-&lt;/div&gt;
-&lt;/div&gt;
-&lt;ol&gt;
-&lt;li&gt;
-&lt;p&gt;&lt;strong&gt;The default branch always gets a full run.&lt;/strong&gt; The planner adds two steps to each job:&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;a step right after &lt;code&gt;checkout&lt;/code&gt; that resets file access times;&lt;/li&gt;
-&lt;li&gt;a post-step that records which tracked files the job read and which directories it listed.
-A last job, &lt;code&gt;smarter-impact-map&lt;/code&gt;, merges these traces into the impact map and saves it to the project cache under the commit&amp;rsquo;s SHA.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;/li&gt;
-&lt;li&gt;
-&lt;p&gt;&lt;strong&gt;A branch gets a plan.&lt;/strong&gt; The plan job:&lt;/p&gt;
-&lt;ol&gt;
-&lt;li&gt;finds the merge-base with the default branch;&lt;/li&gt;
-&lt;li&gt;restores the impact map for that commit, or the newest map;&lt;/li&gt;
-&lt;li&gt;compares the changed files with what each job read.&lt;/li&gt;
-&lt;/ol&gt;
-&lt;/li&gt;
-&lt;li&gt;
-&lt;p&gt;&lt;strong&gt;A job runs&lt;/strong&gt; when the change touches one of its inputs, or a directory it listed gains or loses a file. Mandatory jobs always run. So do:&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;the ancestors (&lt;code&gt;requires&lt;/code&gt;) of every job that runs;&lt;/li&gt;
-&lt;li&gt;jobs that consume a workspace produced by a job that runs;&lt;/li&gt;
-&lt;li&gt;jobs with no trace;&lt;/li&gt;
-&lt;li&gt;job groups: an entry that names a group under &lt;code&gt;job-groups&lt;/code&gt; runs as one unit, since v0.1 does not look inside it.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;Some entries run no steps: an approval (&lt;code&gt;type: approval&lt;/code&gt;, on the entry or in the job&amp;rsquo;s definition), a no-op job (&lt;code&gt;type: no-op&lt;/code&gt;) and a release job (&lt;code&gt;type: release&lt;/code&gt;). They are never traced and have no inputs, so the jobs around them decide. An approval or a no-op job stays when a job that runs requires it. A release job stays when a job it requires runs: it tracks that job&amp;rsquo;s release. A no-op job that nothing requires, such as an &lt;code&gt;all-tests-passed&lt;/code&gt; that you use as your required status check, always stays: it waits only for the jobs that stay, or for &lt;code&gt;smarter-gate&lt;/code&gt; when none of the jobs it waited for does, so it never passes before the selected jobs have.&lt;/p&gt;
-&lt;p&gt;A job that your own &lt;code&gt;filters&lt;/code&gt; keep off the branch, or whose required jobs they all keep off it, does not run there whatever the change is, even when it is mandatory. The plan leaves it out and says so in a warning. A requirement on a job that does not run is ignored, as in CircleCI, and the plan drops it.&lt;/p&gt;
-&lt;/li&gt;
-&lt;li&gt;
-&lt;p&gt;&lt;strong&gt;Guardrails.&lt;/strong&gt; The planner checks the config it generated against the Rego bundle in &lt;code&gt;policies/&lt;/code&gt;, using CircleCI&amp;rsquo;s own policy engine (&lt;code&gt;circle-policy-agent&lt;/code&gt;).&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;If a mandatory job is missing, it adds the job and checks again.&lt;/li&gt;
-&lt;li&gt;Any other hard violation turns the plan into a full run.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;/li&gt;
-&lt;li&gt;
-&lt;p&gt;&lt;strong&gt;The gate.&lt;/strong&gt; Every planned workflow ends with &lt;code&gt;smarter-gate&lt;/code&gt;, which waits for every selected job. The workflow always runs, even when only the gate is left.&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;The gate is a no-op job (&lt;code&gt;smarter-gate: {type: no-op}&lt;/code&gt;): no executor and no steps, so it costs no credits and starts no container. It is CircleCI&amp;rsquo;s &lt;a href="https://circleci.com/docs/guides/orchestrate/orchestration-cookbook/#simplify-github-required-status-checks-with-no-op-jobs" target="_blank" rel="noopener"&gt;gatekeeper pattern&lt;/a&gt; for one required status check. It succeeds when every job it requires succeeds.&lt;/li&gt;
-&lt;li&gt;CircleCI&amp;rsquo;s GitHub App reports one check per workflow (e.g. &lt;code&gt;ci - &amp;lt;definition&amp;gt;&lt;/code&gt;): make that check required.&lt;/li&gt;
-&lt;li&gt;If you use per-job status checks, require &lt;code&gt;smarter-gate&lt;/code&gt;.
-Either way, a PR never waits on a skipped job.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;/li&gt;
-&lt;/ol&gt;
-&lt;h2 data-hextra-search-id="when-it-runs-everything"&gt;When it runs everything&lt;span class="hx:absolute hx:-mt-20" id="when-it-runs-everything"&gt;&lt;/span&gt;
-&lt;a href="#when-it-runs-everything" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ul&gt;
-&lt;li&gt;the default branch, tags and scheduled pipelines;&lt;/li&gt;
-&lt;li&gt;a change under &lt;code&gt;.circleci/&lt;/code&gt; (or another &lt;code&gt;--full-run-paths&lt;/code&gt; glob);&lt;/li&gt;
-&lt;li&gt;no impact map, or no merge-base;&lt;/li&gt;
-&lt;li&gt;any planner error;&lt;/li&gt;
-&lt;li&gt;a head commit that contains &lt;code&gt;[smarter full]&lt;/code&gt;.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h2 data-hextra-search-id="modes"&gt;Modes&lt;span class="hx:absolute hx:-mt-20" id="modes"&gt;&lt;/span&gt;
-&lt;a href="#modes" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;table&gt;
-&lt;thead&gt;
-&lt;tr&gt;
-&lt;th&gt;Mode&lt;/th&gt;
-&lt;th&gt;What runs&lt;/th&gt;
-&lt;th&gt;Use it for&lt;/th&gt;
-&lt;/tr&gt;
-&lt;/thead&gt;
-&lt;tbody&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;code&gt;shadow&lt;/code&gt;&lt;/td&gt;
-&lt;td&gt;everything; the plan is only reported&lt;/td&gt;
-&lt;td&gt;onboarding: see what select mode would skip&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;code&gt;select&lt;/code&gt;&lt;/td&gt;
-&lt;td&gt;only the selected jobs + &lt;code&gt;smarter-gate&lt;/code&gt;&lt;/td&gt;
-&lt;td&gt;after shadow mode convinces you&lt;/td&gt;
-&lt;/tr&gt;
-&lt;/tbody&gt;
-&lt;/table&gt;
-&lt;p&gt;Each plan job stores &lt;code&gt;smarter-plan/plan.md&lt;/code&gt; and &lt;code&gt;plan.json&lt;/code&gt; as artifacts: every job, run or skip, and the reason.&lt;/p&gt;
-&lt;h2 data-hextra-search-id="results-on-this-repository-2026-11-14"&gt;Results on this repository (2026-11-14)&lt;span class="hx:absolute hx:-mt-20" id="results-on-this-repository-2026-11-14"&gt;&lt;/span&gt;
-&lt;a href="#results-on-this-repository-2026-11-14" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;From the first real impact map:&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;No job reads the docs.&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;orb-validate&lt;/code&gt; reads exactly the orb, its validation script and the two CI configs.&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;go-test&lt;/code&gt; reads 106 files.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;table&gt;
-&lt;thead&gt;
-&lt;tr&gt;
-&lt;th&gt;Branch change&lt;/th&gt;
-&lt;th&gt;Select mode runs&lt;/th&gt;
-&lt;th&gt;Why&lt;/th&gt;
-&lt;/tr&gt;
-&lt;/thead&gt;
-&lt;tbody&gt;
-&lt;tr&gt;
-&lt;td&gt;docs only&lt;/td&gt;
-&lt;td&gt;1 of 8 jobs (&lt;code&gt;security-scan&lt;/code&gt;, mandatory) + gate&lt;/td&gt;
-&lt;td&gt;nothing else reads &lt;code&gt;docs/&lt;/code&gt;&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;one Go package (&lt;code&gt;internal/report&lt;/code&gt;)&lt;/td&gt;
-&lt;td&gt;5 of 8&lt;/td&gt;
-&lt;td&gt;go-test, go-lint and build read it; e2e-plan consumes build&amp;rsquo;s workspace; security-scan is mandatory&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;code&gt;.circleci/continue.yml&lt;/code&gt;&lt;/td&gt;
-&lt;td&gt;all 8&lt;/td&gt;
-&lt;td&gt;the pipeline definition changed&lt;/td&gt;
-&lt;/tr&gt;
-&lt;/tbody&gt;
-&lt;/table&gt;
-&lt;p&gt;The docs-only branch in select mode spent 46 s of job time, against 280 s for the full run, about 84% less compute.&lt;/p&gt;
-&lt;p&gt;The numbers are from before the pipeline gained the job &lt;code&gt;docs-site-build&lt;/code&gt;, which builds the docs site and reads &lt;code&gt;docs/&lt;/code&gt;. A docs-only change now runs that job too.&lt;/p&gt;
-&lt;h2 data-hextra-search-id="tools-for-agents"&gt;Tools for agents&lt;span class="hx:absolute hx:-mt-20" id="tools-for-agents"&gt;&lt;/span&gt;
-&lt;a href="#tools-for-agents" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Two commands let an agent (or a person) read a pipeline and check a layout of it, with no plan and no impact map needed:&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;code&gt;circleci-smarter catalog --config .circleci/continue.yml --map impact-map.json.gz&lt;/code&gt; prints the jobs of a workflow as JSON: each one&amp;rsquo;s kind, executor, contexts, filters, requirements, workspace use and, with a map, how much of the repository it read.&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;circleci-smarter layout check --config composed.yml --catalog catalog.json --policy-bundle policies --mandatory security-scan --restricted-contexts deploy&lt;/code&gt; checks how the jobs of a workflow wait for each other, and reports each problem with a code and a hint on how to fix it: a &lt;code&gt;requires&lt;/code&gt; that points nowhere, a cycle, a workspace attached before it is persisted, a restricted context with no approval before it, a missing mandatory job, a gate that is not a no-op job or does not wait for every job that runs, and an approval that a branch filter can leave out. It exits 3 when there are errors. A plan the planner writes has a no-op gate and no structural problem that its input did not have.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;The &lt;a href="https://circleci-labs.github.io/smarter-workflows/docs/reference/spec/#catalog"&gt;spec&lt;/a&gt; has the formats.&lt;/p&gt;
-&lt;h2 data-hextra-search-id="read-more"&gt;Read more&lt;span class="hx:absolute hx:-mt-20" id="read-more"&gt;&lt;/span&gt;
-&lt;a href="#read-more" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ul&gt;
-&lt;li&gt;&lt;a href="https://circleci-labs.github.io/smarter-workflows/docs/get-started/quickstart/"&gt;Quickstart&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="https://circleci-labs.github.io/smarter-workflows/docs/limitations/"&gt;Limitations&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="https://circleci-labs.github.io/smarter-workflows/docs/reference/spec/"&gt;Spec&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href="https://circleci-labs.github.io/smarter-workflows/docs/decisions/"&gt;Decisions&lt;/a&gt;&lt;/li&gt;
-&lt;/ul&gt;</description></item><item><title>Performance benchmarks</title><link>https://circleci-labs.github.io/smarter-workflows/docs/benchmarks/benchmarks-perf/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://circleci-labs.github.io/smarter-workflows/docs/benchmarks/benchmarks-perf/</guid><description>
-&lt;p&gt;Snapshot of planner, config I/O and trace-script performance on one machine. Regenerate before comparing across releases.&lt;/p&gt;
+&lt;dt&gt;&lt;strong&gt;Analyze&lt;/strong&gt;&lt;/dt&gt;
+&lt;dd&gt;The &lt;code&gt;circleci-smarter analyze&lt;/code&gt; command that infers per-job repo inputs from CircleCI config and checkout sources, optionally aided by history and an AI classifier.&lt;/dd&gt;
+&lt;dt&gt;&lt;strong&gt;Job hash&lt;/strong&gt;&lt;/dt&gt;
+&lt;dd&gt;A stable SHA-256 of a job&amp;rsquo;s resolved config (body, commands, executors, pinned orbs, and workflow entry parameters). Used to reuse AI output safely in the learned layer.&lt;/dd&gt;
+&lt;dt&gt;&lt;strong&gt;Learned layer&lt;/strong&gt;&lt;/dt&gt;
+&lt;dd&gt;A versioned cache of costly analyze output: AI mappings and history corrections keyed by job name and job hash.&lt;/dd&gt;
+&lt;dt&gt;&lt;strong&gt;AI classifier&lt;/strong&gt;&lt;/dt&gt;
+&lt;dd&gt;The optional Anthropic call that suggests extra paths per job, constrained by structured JSON output and confidence.&lt;/dd&gt;
+&lt;dt&gt;&lt;strong&gt;Confidence&lt;/strong&gt;&lt;/dt&gt;
+&lt;dd&gt;The model&amp;rsquo;s 0–1 self-rating for a job&amp;rsquo;s inferred inputs. Analyze treats a job as complete from AI only when confidence meets &lt;code&gt;--min-confidence&lt;/code&gt; and the job hash matches.&lt;/dd&gt;
+&lt;dt&gt;&lt;strong&gt;Learn&lt;/strong&gt;&lt;/dt&gt;
+&lt;dd&gt;The &lt;code&gt;circleci-smarter learn&lt;/code&gt; command that fetches pipeline history, refreshes the learned layer with AI and corrections, and reports recall and projected savings.&lt;/dd&gt;
+&lt;dt&gt;&lt;strong&gt;AI review&lt;/strong&gt;&lt;/dt&gt;
+&lt;dd&gt;An optional plan-time model call that may add skipped jobs (never remove them) when a pipeline would skip work; failures leave the deterministic plan unchanged.&lt;/dd&gt;
+&lt;/dl&gt;</description></item><item><title>Performance benchmarks</title><link>https://circleci-labs.github.io/smarter-workflows/docs/benchmarks/benchmarks-perf/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://circleci-labs.github.io/smarter-workflows/docs/benchmarks/benchmarks-perf/</guid><description>
+&lt;p&gt;Snapshot of planner and config I/O performance on one machine. Regenerate before comparing across releases.&lt;/p&gt;
 &lt;h2 data-hextra-search-id="method"&gt;Method&lt;span class="hx:absolute hx:-mt-20" id="method"&gt;&lt;/span&gt;
 &lt;a href="#method" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;&lt;strong&gt;Planner (&lt;code&gt;testing.B&lt;/code&gt;)&lt;/strong&gt; — Package &lt;code&gt;internal/planner/benchgen&lt;/code&gt; builds synthetic &lt;code&gt;continue.yml&lt;/code&gt; files at 10, 100, 500 and 2000 workflow jobs in three shapes (wide fan-out, deep chain, diamond), with matrix entries and approvals every 7th / 11th job. Impact maps hold 100 or 10,000 repo-relative files per job; diffs list 1, 50 or 1000 changed paths. Benchmarks call &lt;code&gt;planner.Run&lt;/code&gt; in select mode with an in-memory repo (no git). &lt;code&gt;BenchmarkPlanLatency2000&lt;/code&gt; reports plan wall-time p95 at 2000 jobs with a 10k-file map (fan-out, 50-file diff).&lt;/p&gt;
 &lt;p&gt;&lt;strong&gt;Config (&lt;code&gt;testing.B&lt;/code&gt;)&lt;/strong&gt; — &lt;code&gt;BenchmarkConfigParse&lt;/code&gt; and &lt;code&gt;BenchmarkConfigEmit&lt;/code&gt; on the same generated YAML.&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;Trace scripts&lt;/strong&gt; — &lt;code&gt;scripts/bench/trace-bench.sh&lt;/code&gt; builds temporary git repos with 1k, 10k and 100k tracked empty files under &lt;code&gt;f/&lt;/code&gt;, runs &lt;code&gt;reset-atime.sh&lt;/code&gt; then &lt;code&gt;collect-trace.sh&lt;/code&gt;, and records wall seconds.&lt;/p&gt;
 &lt;p&gt;&lt;strong&gt;Driver&lt;/strong&gt; — &lt;code&gt;sh scripts/bench/perf.sh&lt;/code&gt; runs all of the above and prints Markdown tables.&lt;/p&gt;
 &lt;h2 data-hextra-search-id="targets-2026-11-15"&gt;Targets (2026-11-15)&lt;span class="hx:absolute hx:-mt-20" id="targets-2026-11-15"&gt;&lt;/span&gt;
 &lt;a href="#targets-2026-11-15" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;table&gt;
@@ -1747,10 +1654,6 @@ Either way, a PR never waits on a skipped job.&lt;/li&gt;
 &lt;tr&gt;
 &lt;td&gt;Plan p95 &amp;lt; 2 s at 2000 jobs and 10k-file maps&lt;/td&gt;
 &lt;td&gt;&lt;strong&gt;0.166 s&lt;/strong&gt; p95 (&lt;code&gt;BenchmarkPlanLatency2000&lt;/code&gt;)&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;&lt;code&gt;collect-trace&lt;/code&gt; &amp;lt; 10 s at 100k tracked files&lt;/td&gt;
-&lt;td&gt;&lt;strong&gt;0.355 s&lt;/strong&gt;&lt;/td&gt;
 &lt;/tr&gt;
 &lt;tr&gt;
 &lt;td&gt;v2 map &amp;lt; 20 MiB and decode &amp;lt; 0.5 s at 2000 jobs × 10k files&lt;/td&gt;
@@ -1819,33 +1722,6 @@ data-copied-label="Copied!"
 &lt;tr&gt;
 &lt;td&gt;Go&lt;/td&gt;
 &lt;td&gt;go1.27.4 linux/amd64&lt;/td&gt;
-&lt;/tr&gt;
-&lt;/tbody&gt;
-&lt;/table&gt;
-&lt;h2 data-hextra-search-id="trace-scripts-seconds"&gt;Trace scripts (seconds)&lt;span class="hx:absolute hx:-mt-20" id="trace-scripts-seconds"&gt;&lt;/span&gt;
-&lt;a href="#trace-scripts-seconds" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;table&gt;
-&lt;thead&gt;
-&lt;tr&gt;
-&lt;th style="text-align: right"&gt;Tracked files&lt;/th&gt;
-&lt;th style="text-align: right"&gt;reset-atime&lt;/th&gt;
-&lt;th style="text-align: right"&gt;collect-trace&lt;/th&gt;
-&lt;/tr&gt;
-&lt;/thead&gt;
-&lt;tbody&gt;
-&lt;tr&gt;
-&lt;td style="text-align: right"&gt;1,000&lt;/td&gt;
-&lt;td style="text-align: right"&gt;1.060&lt;/td&gt;
-&lt;td style="text-align: right"&gt;0.032&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td style="text-align: right"&gt;10,000&lt;/td&gt;
-&lt;td style="text-align: right"&gt;1.122&lt;/td&gt;
-&lt;td style="text-align: right"&gt;0.063&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td style="text-align: right"&gt;100,000&lt;/td&gt;
-&lt;td style="text-align: right"&gt;1.464&lt;/td&gt;
-&lt;td style="text-align: right"&gt;0.355&lt;/td&gt;
 &lt;/tr&gt;
 &lt;/tbody&gt;
 &lt;/table&gt;
@@ -1936,20 +1812,6 @@ data-copied-label="Copied!"
 &lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
 &lt;/button&gt;
 &lt;/div&gt;
-&lt;/div&gt;
-&lt;p&gt;Trace only:&lt;/p&gt;
-&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
-&lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-sh" data-lang="sh"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;sh scripts/bench/trace-bench.sh&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
-&lt;button
-class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
-title="Copy code"
-aria-label="Copy code"
-data-copied-label="Copied!"
-&gt;
-&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
-&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
-&lt;/button&gt;
-&lt;/div&gt;
 &lt;/div&gt;</description></item><item><title>Security policy</title><link>https://circleci-labs.github.io/smarter-workflows/docs/contribute/security/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://circleci-labs.github.io/smarter-workflows/docs/contribute/security/</guid><description>
 &lt;h2 data-hextra-search-id="reporting-a-vulnerability"&gt;Reporting a vulnerability&lt;span class="hx:absolute hx:-mt-20" id="reporting-a-vulnerability"&gt;&lt;/span&gt;
 &lt;a href="#reporting-a-vulnerability" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;&lt;strong&gt;Do not open a public issue or pull request for a security vulnerability.&lt;/strong&gt;&lt;/p&gt;
@@ -1964,11 +1826,11 @@ data-copied-label="Copied!"
 &lt;a href="#what-the-planner-does-with-your-credentials-and-your-repository" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;&lt;a href="https://circleci-labs.github.io/smarter-workflows/docs/limitations/"&gt;Limitations&lt;/a&gt; lists the known gaps in detail.&lt;/p&gt;
 &lt;ul&gt;
 &lt;li&gt;The continuation key (&lt;code&gt;CIRCLE_CONTINUATION_KEY&lt;/code&gt;) is read only by &lt;code&gt;circleci-smarter continue&lt;/code&gt;. It never prints the key or the request body, only the status code.&lt;/li&gt;
-&lt;li&gt;A trace records the paths of the tracked files that a job read and the directories it listed, not their contents. The impact map is built from those paths.&lt;/li&gt;
+&lt;li&gt;The impact map lists repo paths each job may read. It is built by &lt;code&gt;circleci-smarter analyze&lt;/code&gt;, not by extra steps in customer jobs. Optional AI classification may send source contents to the provider; see the threat model.&lt;/li&gt;
 &lt;li&gt;The impact map lives in the project cache, and any branch can write a cache entry. A forged map could make the planner skip jobs. Mandatory jobs and the guardrails do not depend on the map, and every default branch run is a full run. Signing the map on the default branch is planned.&lt;/li&gt;
 &lt;li&gt;The guardrail bundle runs locally in the setup job, against the config that the planner generated. The same bundle can be enforced org-wide as a config policy.&lt;/li&gt;
 &lt;/ul&gt;</description></item><item><title>3. Build the impact map from file-access traces of full runs on the default branch</title><link>https://circleci-labs.github.io/smarter-workflows/docs/decisions/0003-impact-map-from-traces-on-main/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://circleci-labs.github.io/smarter-workflows/docs/decisions/0003-impact-map-from-traces-on-main/</guid><description>
-&lt;p&gt;Date: 2026-11-13. Status: accepted.&lt;/p&gt;
+&lt;p&gt;Date: 2026-11-13. Status: Superseded by ADR 8.&lt;/p&gt;
 &lt;h2 data-hextra-search-id="context"&gt;Context&lt;span class="hx:absolute hx:-mt-20" id="context"&gt;&lt;/span&gt;
 &lt;a href="#context" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Smarter Testing builds an impact map on the default branch, then uses it on other branches to pick the tests a change affects. This project wants the same loop for jobs:&lt;/p&gt;
 &lt;ol&gt;
@@ -2069,7 +1931,26 @@ data-copied-label="Copied!"
 &lt;/div&gt;
 &lt;/div&gt;
 &lt;p&gt;Optional per-commit &lt;code&gt;parameters&lt;/code&gt; overrides the &lt;code&gt;--parameters&lt;/code&gt; file for that pipeline (same semantics as &lt;code&gt;plan --parameters&lt;/code&gt;).&lt;/p&gt;
-&lt;p&gt;Build a history file with &lt;a href="https://github.com/CircleCI-Labs/smarter-workflows/blob/main/scripts/bench/fetch-history.sh" target="_blank" rel="noopener"&gt;&lt;code&gt;scripts/bench/fetch-history.sh&lt;/code&gt;&lt;/a&gt; (needs a CircleCI API token and a git clone). Fixture parsing is tested by &lt;a href="https://github.com/CircleCI-Labs/smarter-workflows/blob/main/scripts/bench/test-parse.sh" target="_blank" rel="noopener"&gt;&lt;code&gt;scripts/bench/test-parse.sh&lt;/code&gt;&lt;/a&gt;.&lt;/p&gt;
+&lt;p&gt;Build a history file with &lt;code&gt;circleci-smarter history fetch&lt;/code&gt; (or the &lt;a href="https://github.com/CircleCI-Labs/smarter-workflows/blob/main/scripts/bench/fetch-history.sh" target="_blank" rel="noopener"&gt;&lt;code&gt;fetch-history.sh&lt;/code&gt;&lt;/a&gt; wrapper). Set &lt;code&gt;CIRCLE_TOKEN&lt;/code&gt; or &lt;code&gt;CIRCLECI_TOKEN&lt;/code&gt;; optional &lt;code&gt;CIRCLECI_HOST&lt;/code&gt; for server installs. The command pages pipelines newest first, resolves job outcomes (including &lt;strong&gt;flaky&lt;/strong&gt; when a job failed then passed on a workflow rerun), and fills &lt;code&gt;base&lt;/code&gt; / &lt;code&gt;changed&lt;/code&gt; from a local &lt;code&gt;--repo&lt;/code&gt; clone. Commits missing from the clone are skipped. Fixture parsing is tested by &lt;a href="https://github.com/CircleCI-Labs/smarter-workflows/blob/main/scripts/bench/test-parse.sh" target="_blank" rel="noopener"&gt;&lt;code&gt;scripts/bench/test-parse.sh&lt;/code&gt;&lt;/a&gt; and &lt;code&gt;go test ./internal/history/...&lt;/code&gt;.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Diff base.&lt;/strong&gt; For each pipeline commit &lt;code&gt;C&lt;/code&gt;, &lt;code&gt;base&lt;/code&gt; is the newest commit on &lt;code&gt;origin/&amp;lt;default&amp;gt;&lt;/code&gt;’s &lt;strong&gt;first-parent&lt;/strong&gt; chain (cached once) such that &lt;code&gt;P ≠ C&lt;/code&gt; and &lt;code&gt;P&lt;/code&gt; is an ancestor of &lt;code&gt;C&lt;/code&gt;. A commit on that chain uses its first parent; if none applies, &lt;code&gt;base&lt;/code&gt; is empty (no &lt;code&gt;changed&lt;/code&gt; paths). Changed paths come from &lt;code&gt;git diff --name-status -M -z&lt;/code&gt; (renames are a delete plus an add). This avoids empty diffs for feature-branch SHAs that were later merged with a merge commit—older histories that used plain &lt;code&gt;merge-base&lt;/code&gt; had that bug.&lt;/p&gt;
+&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-sh" data-lang="sh"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;circleci-smarter &lt;span class="nb"&gt;history&lt;/span&gt; fetch &lt;span class="se"&gt;\
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; --project-slug circleci/org/repo &lt;span class="se"&gt;\
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; --workflow ci &lt;span class="se"&gt;\
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; --limit &lt;span class="m"&gt;200&lt;/span&gt; &lt;span class="se"&gt;\
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; --repo . &lt;span class="se"&gt;\
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; --out history.json&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
+&lt;button
+class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+title="Copy code"
+aria-label="Copy code"
+data-copied-label="Copied!"
+&gt;
+&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
 &lt;h2 data-hextra-search-id="command"&gt;Command&lt;span class="hx:absolute hx:-mt-20" id="command"&gt;&lt;/span&gt;
 &lt;a href="#command" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
 &lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-sh" data-lang="sh"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;circleci-smarter backtest &lt;span class="se"&gt;\
@@ -2093,6 +1974,11 @@ data-copied-label="Copied!"
 &lt;/div&gt;
 &lt;p&gt;&lt;code&gt;--parameters&lt;/code&gt; is a JSON object of pipeline parameter values, applied to every commit unless a history record carries its own &lt;code&gt;parameters&lt;/code&gt; object. Use the same file you would pass to &lt;code&gt;plan --parameters&lt;/code&gt; when the continuation config gates workflows or jobs on &lt;code&gt;&amp;lt;&amp;lt; pipeline.parameters.* &amp;gt;&amp;gt;&lt;/code&gt;.&lt;/p&gt;
 &lt;p&gt;&lt;code&gt;--format json&lt;/code&gt; writes the machine-readable report (used for golden tests).&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;--strict&lt;/code&gt; makes backtest warnings fatal (exit 1). Warnings print on stderr and at the top of the report:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;Workflow disabled:&lt;/strong&gt; when &lt;code&gt;--parameters&lt;/code&gt; turn off the workflow (&lt;code&gt;when&lt;/code&gt;/&lt;code&gt;unless&lt;/code&gt; false), recall is meaningless — every commit is treated as if the workflow did not run.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Job name drift:&lt;/strong&gt; when more than half of recorded job outcomes do not match any job in today&amp;rsquo;s workflow (renamed jobs or wrong &lt;code&gt;--workflow&lt;/code&gt;).&lt;/li&gt;
+&lt;/ul&gt;
 &lt;h2 data-hextra-search-id="scheduled-benchmark-on-main"&gt;Scheduled benchmark on main&lt;span class="hx:absolute hx:-mt-20" id="scheduled-benchmark-on-main"&gt;&lt;/span&gt;
 &lt;a href="#scheduled-benchmark-on-main" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;The &lt;code&gt;benchmark&lt;/code&gt; workflow in &lt;code&gt;.circleci/continue.yml&lt;/code&gt; runs when &lt;code&gt;pipeline.trigger.type&lt;/code&gt; is &lt;code&gt;schedule&lt;/code&gt; (the schedule is configured on the project in CircleCI, not in this file). It uses the &lt;code&gt;smarter-workflows-ai&lt;/code&gt; context so &lt;code&gt;fetch-history.sh&lt;/code&gt; can call the API with &lt;code&gt;&amp;lt;&amp;lt; pipeline.project.slug &amp;gt;&amp;gt;&lt;/code&gt; (GitHub App projects use the &lt;code&gt;circleci/org/project&lt;/code&gt; form). It restores the latest impact map cache, fetches the last 200 &lt;code&gt;ci&lt;/code&gt; pipelines, runs backtest, and stores &lt;code&gt;backtest.md&lt;/code&gt; and &lt;code&gt;backtest.json&lt;/code&gt; as artifacts.&lt;/p&gt;
 &lt;h2 data-hextra-search-id="limits-of-replay"&gt;Limits of replay&lt;span class="hx:absolute hx:-mt-20" id="limits-of-replay"&gt;&lt;/span&gt;
@@ -2149,33 +2035,211 @@ data-copied-label="Copied!"
 &lt;/tr&gt;
 &lt;/tbody&gt;
 &lt;/table&gt;
-&lt;p&gt;History here is mostly Go and &lt;code&gt;.circleci/&lt;/code&gt; changes, which reach most jobs, so skipped time stays small. Replaying the &lt;a href="https://circleci-labs.github.io/smarter-workflows/docs/get-started/demo/"&gt;demo monorepo&lt;/a&gt; history would not measure much: those pipelines already ran in select mode when the traces were taken.&lt;/p&gt;</description></item><item><title>Limitations</title><link>https://circleci-labs.github.io/smarter-workflows/docs/limitations/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://circleci-labs.github.io/smarter-workflows/docs/limitations/</guid><description>
-&lt;p&gt;What v0.1 does not do yet. Each item is safe: where the planner cannot decide, the job runs.&lt;/p&gt;
+&lt;p&gt;History here is mostly Go and &lt;code&gt;.circleci/&lt;/code&gt; changes, which reach most jobs, so skipped time stays small. Replaying the &lt;a href="https://circleci-labs.github.io/smarter-workflows/docs/get-started/demo/"&gt;demo monorepo&lt;/a&gt; history would not measure much: those pipelines already ran in select mode when the traces were taken.&lt;/p&gt;</description></item><item><title>Learn</title><link>https://circleci-labs.github.io/smarter-workflows/docs/learn/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://circleci-labs.github.io/smarter-workflows/docs/learn/</guid><description>
+&lt;p&gt;&lt;code&gt;circleci-smarter learn&lt;/code&gt; is the scheduled job that refreshes the learned layer (AI mappings and history corrections) and estimates how select mode would behave on recent pipelines.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="command"&gt;Command&lt;span class="hx:absolute hx:-mt-20" id="command"&gt;&lt;/span&gt;
+&lt;a href="#command" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;div&gt;&lt;div class="highlight"&gt;&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-bash" data-lang="bash"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;circleci-smarter learn --project-slug gh/org/repo --workflow ci --limit &lt;span class="m"&gt;50&lt;/span&gt; &lt;span class="se"&gt;\
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; --repo . --config .circleci/continue.yml &lt;span class="se"&gt;\
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; --learned /tmp/smarter/learned.json --learned-out /tmp/smarter/learned-new.json &lt;span class="se"&gt;\
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt; --report learn.md --report-json learn.json&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
+&lt;button
+class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+title="Copy code"
+aria-label="Copy code"
+data-copied-label="Copied!"
+&gt;
+&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;p&gt;Use &lt;code&gt;--history FILE&lt;/code&gt; to skip the API and replay a saved history file (no token). &lt;code&gt;--history-out&lt;/code&gt; stores what was fetched. &lt;code&gt;--parameters FILE&lt;/code&gt; sets pipeline parameter values for every replayed commit.&lt;/p&gt;
+&lt;p&gt;AI modes match &lt;code&gt;analyze&lt;/code&gt; (&lt;code&gt;auto&lt;/code&gt;, &lt;code&gt;on&lt;/code&gt;, &lt;code&gt;off&lt;/code&gt;, &lt;code&gt;dry-run&lt;/code&gt;). &lt;code&gt;--min-recall&lt;/code&gt; exits with code 3 when projected recall is below the threshold.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="report"&gt;Report&lt;span class="hx:absolute hx:-mt-20" id="report"&gt;&lt;/span&gt;
+&lt;a href="#report" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;The Markdown and JSON reports open with what was measured: how many commits were replayed, recall and projected job-time savings, misses before and after this run&amp;rsquo;s corrections, corrections added, incomplete jobs (with reasons), and AI usage (calls, tokens, estimated cost).&lt;/p&gt;
+&lt;h2 data-hextra-search-id="local-trial"&gt;Local trial&lt;span class="hx:absolute hx:-mt-20" id="local-trial"&gt;&lt;/span&gt;
+&lt;a href="#local-trial" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Before enabling select mode in CI, run learn against your project slug or a recorded history file. Fix incomplete jobs and review misses until recall and savings meet your bar. Costs are dominated by the optional AI classifier; history fetch uses the CircleCI API only.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="costs"&gt;Costs&lt;span class="hx:absolute hx:-mt-20" id="costs"&gt;&lt;/span&gt;
+&lt;a href="#costs" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;History fetch:&lt;/strong&gt; CircleCI API calls only; no job minutes on your project.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;AI:&lt;/strong&gt; Billed per Anthropic usage when &lt;code&gt;--ai&lt;/code&gt; is not &lt;code&gt;off&lt;/code&gt;; see the report&amp;rsquo;s token and cost lines (Haiku tier, same pricing note as analyze).&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;See also &lt;a href="https://circleci-labs.github.io/smarter-workflows/docs/analyze/"&gt;Analyze&lt;/a&gt; for the learned layer format and &lt;a href="https://circleci-labs.github.io/smarter-workflows/docs/benchmarks/benchmarks-backtest/"&gt;Backtest&lt;/a&gt; for how recall is computed.&lt;/p&gt;</description></item><item><title>8. Impact maps from analysis, not traces</title><link>https://circleci-labs.github.io/smarter-workflows/docs/decisions/0008-impact-maps-from-analysis-not-traces/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://circleci-labs.github.io/smarter-workflows/docs/decisions/0008-impact-maps-from-analysis-not-traces/</guid><description>
+&lt;p&gt;Date: 2026-11-16. Status: accepted.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="context"&gt;Context&lt;span class="hx:absolute hx:-mt-20" id="context"&gt;&lt;/span&gt;
+&lt;a href="#context" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Tracing needs a step injected into every job. It only works where file access times work and where the image has the tools. On a real 39-job project only 4 jobs produced complete traces: images without git, and runner or machine jobs, were never traced. Users will not edit their jobs before they know the tool is worth it. From v0.3 the impact map comes from &lt;code&gt;circleci-smarter analyze&lt;/code&gt;: static analysis of the config and the repo, an optional AI classifier, and corrections mined from past runs. Tracing goes away completely, which also takes a lot of complexity with it. v0.x allows breaking changes; the trace flags simply disappear.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="decision"&gt;Decision&lt;span class="hx:absolute hx:-mt-20" id="decision"&gt;&lt;/span&gt;
+&lt;a href="#decision" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ol&gt;
+&lt;li&gt;The map comes from &lt;code&gt;circleci-smarter analyze&lt;/code&gt;, from three sources:
 &lt;ul&gt;
-&lt;li&gt;&lt;strong&gt;One planned workflow.&lt;/strong&gt; Other workflows in &lt;code&gt;continue.yml&lt;/code&gt; pass through with the same meaning. YAML anchors, aliases and merge keys are expanded everywhere, and formatting such as indentation may change.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;The gate is a no-op job&lt;/strong&gt;, so it runs no steps and cannot check anything itself. It only passes when the jobs it requires pass. &lt;code&gt;--gate-image&lt;/code&gt; no longer picks its image (the gate has none): it is a deprecated alias of &lt;code&gt;--map-image&lt;/code&gt;, the image of the impact-map job.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Job groups are one opaque unit.&lt;/strong&gt; An entry that names a group under &lt;code&gt;job-groups&lt;/code&gt; always runs, with everything it requires, and is not traced. Its &lt;code&gt;serial-group&lt;/code&gt; and the group are kept as written. The planner and &lt;code&gt;layout check&lt;/code&gt; do not look inside a group: a restricted context used by a job inside one is not seen, and a job outside the group cannot require a job inside it.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;A release job&lt;/strong&gt; (&lt;code&gt;type: release&lt;/code&gt;) is never traced. It stays when a job it requires runs, and then so does everything it requires.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Matrix jobs&lt;/strong&gt; always run.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Orb jobs&lt;/strong&gt; are traced only with &lt;code&gt;--trace-orb-jobs&lt;/code&gt;: it adds a &lt;code&gt;checkout&lt;/code&gt; and a reset as pre-steps, so it only suits orb jobs that check out the repo. Without it they always run.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Self-hosted runners and other opaque Linux executors&lt;/strong&gt; (&lt;code&gt;machine: true&lt;/code&gt; without an image, &lt;code&gt;namespace/resource_class&lt;/code&gt;, parameterised executors) are not traced unless you list them with &lt;code&gt;--trace-jobs&lt;/code&gt; (comma-separated name globs). Windows and macOS entries are never traced, even when listed.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Plan reports explain untraced jobs&lt;/strong&gt; in &lt;code&gt;plan.json&lt;/code&gt; (&lt;code&gt;trace_coverage&lt;/code&gt;) and &lt;code&gt;plan.md&lt;/code&gt;, so you can see unknown executors, missing checkout, job groups, matrix jobs and the like.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Expression filters&lt;/strong&gt; (string filters) are reported, and left out of the gate.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Workflow &lt;code&gt;when&lt;/code&gt;/&lt;code&gt;unless&lt;/code&gt;&lt;/strong&gt; are evaluated only when every value is known from &lt;code&gt;--parameters&lt;/code&gt;, &lt;code&gt;--branch&lt;/code&gt;, &lt;code&gt;--tag&lt;/code&gt; and &lt;code&gt;--trigger-type&lt;/code&gt;. Unsupported forms still mean a full run. When the condition is false, the workflow is not pruned and gets no gate (CircleCI skips it).&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;A job that requires only filtered-out jobs by a status&lt;/strong&gt; (&lt;code&gt;- deploy: failed&lt;/code&gt;, with &lt;code&gt;deploy&lt;/code&gt; filtered out on the branch) may or may not run, so the plan cannot leave it out or drop its requirement: it is a full run.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Inputs from outside the repo&lt;/strong&gt; are not traced: the network, time, secrets, images. Full runs on the default branch, mandatory jobs and &lt;code&gt;--extra-inputs&lt;/code&gt; cover them.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;The impact map lives in the project cache.&lt;/strong&gt; Any branch can write a cache entry, so a forged map could skip jobs. Mandatory jobs and guardrails do not depend on the map. Signing maps on the default branch is planned.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Setup job time.&lt;/strong&gt; The plan job takes about a minute here, because it builds the planner from source. A released binary would make it a few seconds.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;The report&amp;rsquo;s job count&lt;/strong&gt; includes jobs that filters exclude on the branch.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Planned next:&lt;/strong&gt;
-&lt;ul&gt;
-&lt;li&gt;history mining and learned rules;&lt;/li&gt;
-&lt;li&gt;an optional model decider (paths only by default);&lt;/li&gt;
-&lt;li&gt;compose mode (agentic);&lt;/li&gt;
-&lt;li&gt;Chunk sidecar integration (the same impact map, in the inner loop);&lt;/li&gt;
-&lt;li&gt;releases and a published orb.&lt;/li&gt;
+&lt;li&gt;static analysis of the config and the repo (run commands and the scripts they call, Go imports, Node and Python manifests, Dockerfile COPY, &lt;code&gt;working_directory&lt;/code&gt;, orb parameters such as &lt;code&gt;app-dir&lt;/code&gt;, cache-key checksum files, workspace data flow, path-filtering mappings);&lt;/li&gt;
+&lt;li&gt;an optional AI classifier, given the job definitions, the repo tree and the source contents, which returns inputs with a confidence;&lt;/li&gt;
+&lt;li&gt;corrections mined from past runs: a job that failed on a change its map could not see gains that change&amp;rsquo;s paths, unless the failure was flaky.&lt;/li&gt;
 &lt;/ul&gt;
 &lt;/li&gt;
+&lt;li&gt;The static part is computed fresh in the setup job. A &lt;em&gt;learned layer&lt;/em&gt; (the AI inputs and the corrections) is refreshed by a weekly &lt;code&gt;learn&lt;/code&gt; job.&lt;/li&gt;
+&lt;li&gt;No existing job is edited.&lt;/li&gt;
+&lt;li&gt;A job is skipped only when proven:
+&lt;ul&gt;
+&lt;li&gt;static analysis understood every step of the job: each command is a recognized tool, a benign builtin or a script it followed, and each input resolved to a path that exists at the revision. A step it does not understand (an unknown binary, make, an orb command outside the known table) makes the job unknown;&lt;/li&gt;
+&lt;li&gt;coverage that comes only from the AI needs a confidence of at least the threshold (0.8 by default), a job hash that matches the current job definition, and at least one valid input;&lt;/li&gt;
+&lt;li&gt;otherwise the job is unknown and runs.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;Shadow mode first, and a backtest on real history before select mode.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;h2 data-hextra-search-id="consequences"&gt;Consequences&lt;span class="hx:absolute hx:-mt-20" id="consequences"&gt;&lt;/span&gt;
+&lt;a href="#consequences" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ul&gt;
+&lt;li&gt;onboarding needs no job edits, and works on every executor and image;&lt;/li&gt;
+&lt;li&gt;the map can be built and checked locally before anything changes in CI;&lt;/li&gt;
+&lt;li&gt;static analysis misses dynamic inputs (paths built from environment variables, network fetches): the AI layer, the history corrections and shadow mode cover that;&lt;/li&gt;
+&lt;li&gt;source contents go to the AI provider when the AI is on (see the threat model);&lt;/li&gt;
+&lt;li&gt;the trace flags are gone in v0.3.&lt;/li&gt;
+&lt;/ul&gt;</description></item><item><title>How it works</title><link>https://circleci-labs.github.io/smarter-workflows/docs/how-it-works/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://circleci-labs.github.io/smarter-workflows/docs/how-it-works/</guid><description>
+&lt;h2 data-hextra-search-id="the-loop"&gt;The loop&lt;span class="hx:absolute hx:-mt-20" id="the-loop"&gt;&lt;/span&gt;
+&lt;a href="#the-loop" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code"&gt;
+&lt;div&gt;&lt;pre&gt;&lt;code&gt;weekly learn ──► history &amp;#43; analyze (AI &amp;#43; corrections) ──► learned layer artifact
+│
+push ──► setup: plan ──► analyze at HEAD (static &amp;#43; learned layer) ──► impact map in memory
+│ │
+├─ select &amp;#43; optional plan-time AI review (add-only)
+├─ guardrails pre-flight (policies/), repair or full run
+└─ continue: pruned workflow &amp;#43; smarter-gate&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;div class="hextra-code-copy-btn-container hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0"&gt;
+&lt;button
+class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+title="Copy code"
+aria-label="Copy code"
+data-copied-label="Copied!"
+&gt;
+&lt;div class="hextra-copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;div class="hextra-success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"&gt;&lt;/div&gt;
+&lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;ol&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;Plan builds a fresh map.&lt;/strong&gt; In each pipeline, &lt;code&gt;circleci-smarter plan&lt;/code&gt; runs static analysis at &lt;code&gt;HEAD&lt;/code&gt; through the analyze library (AI off), merging the cached learned layer when &lt;code&gt;--learned&lt;/code&gt; is set. You can still pass &lt;code&gt;--map&lt;/code&gt; to use a pre-built file. The plan report lists input counts and sources for skipped jobs.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;Learn refreshes the slow layer.&lt;/strong&gt; On a schedule, &lt;code&gt;circleci-smarter learn&lt;/code&gt; fetches recent workflow history, runs analyze with AI and history corrections, writes an updated learned layer, and backtests recall and savings. Its report is the trial run before you trust select mode.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;A branch gets a plan.&lt;/strong&gt; The plan job:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;finds the merge-base with the default branch;&lt;/li&gt;
+&lt;li&gt;builds or loads the impact map;&lt;/li&gt;
+&lt;li&gt;compares the changed files with what each job lists as inputs;&lt;/li&gt;
+&lt;li&gt;optionally asks the AI to add skipped jobs (never remove) when &lt;code&gt;--ai-review&lt;/code&gt; is &lt;code&gt;on&lt;/code&gt; or &lt;code&gt;shadow&lt;/code&gt;.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;A job runs&lt;/strong&gt; when the change touches one of its map inputs (exact files, recursive input dirs, or repository root &lt;code&gt;.&lt;/code&gt;). Added, modified, deleted, and renamed paths use the same rule. Mandatory jobs always run. So do:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;the ancestors (&lt;code&gt;requires&lt;/code&gt;) of every job that runs;&lt;/li&gt;
+&lt;li&gt;jobs that consume a workspace produced by a job that runs;&lt;/li&gt;
+&lt;li&gt;jobs with no map entry or inputs that do not meet the skip proof (ADR 8): static analysis understood every step (each command is a recognized tool, a benign builtin or a script it followed, and each input resolved to an existing path at the revision; an unknown binary, make, or an orb command outside the known table makes the job unknown), and any AI-only coverage needs confidence ≥ the threshold, a matching job hash, and at least one valid input;&lt;/li&gt;
+&lt;li&gt;job groups: an entry that names a group under &lt;code&gt;job-groups&lt;/code&gt; runs as one unit, since v0.1 does not look inside it.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Some entries run no steps: an approval (&lt;code&gt;type: approval&lt;/code&gt;, on the entry or in the job&amp;rsquo;s definition), a no-op job (&lt;code&gt;type: no-op&lt;/code&gt;) and a release job (&lt;code&gt;type: release&lt;/code&gt;). They have no inputs of their own, so the jobs around them decide. An approval or a no-op job stays when a job that runs requires it. A release job stays when a job it requires runs: it tracks that job&amp;rsquo;s release. A no-op job that nothing requires, such as an &lt;code&gt;all-tests-passed&lt;/code&gt; that you use as your required status check, always stays: it waits only for the jobs that stay, or for &lt;code&gt;smarter-gate&lt;/code&gt; when none of the jobs it waited for does, so it never passes before the selected jobs have.&lt;/p&gt;
+&lt;p&gt;A job that your own &lt;code&gt;filters&lt;/code&gt; keep off the branch, or whose required jobs they all keep off it, does not run there whatever the change is, even when it is mandatory. The plan leaves it out and says so in a warning. A requirement on a job that does not run is ignored, as in CircleCI, and the plan drops it.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;Guardrails.&lt;/strong&gt; The planner checks the config it generated against the Rego bundle in &lt;code&gt;policies/&lt;/code&gt;, using CircleCI&amp;rsquo;s own policy engine (&lt;code&gt;circle-policy-agent&lt;/code&gt;).&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;If a mandatory job is missing, it adds the job and checks again.&lt;/li&gt;
+&lt;li&gt;Any other hard violation turns the plan into a full run.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;The gate.&lt;/strong&gt; Every planned workflow ends with &lt;code&gt;smarter-gate&lt;/code&gt;, which waits for every selected job. The workflow always runs, even when only the gate is left.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;The gate is a no-op job (&lt;code&gt;smarter-gate: {type: no-op}&lt;/code&gt;): no executor and no steps, so it costs no credits and starts no container. It is CircleCI&amp;rsquo;s &lt;a href="https://circleci.com/docs/guides/orchestrate/orchestration-cookbook/#simplify-github-required-status-checks-with-no-op-jobs" target="_blank" rel="noopener"&gt;gatekeeper pattern&lt;/a&gt; for one required status check. It succeeds when every job it requires succeeds.&lt;/li&gt;
+&lt;li&gt;CircleCI&amp;rsquo;s GitHub App reports one check per workflow (e.g. &lt;code&gt;ci - &amp;lt;definition&amp;gt;&lt;/code&gt;): make that check required.&lt;/li&gt;
+&lt;li&gt;If you use per-job status checks, require &lt;code&gt;smarter-gate&lt;/code&gt;.
+Either way, a PR never waits on a skipped job.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;h2 data-hextra-search-id="when-it-runs-everything"&gt;When it runs everything&lt;span class="hx:absolute hx:-mt-20" id="when-it-runs-everything"&gt;&lt;/span&gt;
+&lt;a href="#when-it-runs-everything" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ul&gt;
+&lt;li&gt;the default branch, tags and scheduled pipelines;&lt;/li&gt;
+&lt;li&gt;a change under &lt;code&gt;.circleci/&lt;/code&gt; (or another &lt;code&gt;--full-run-paths&lt;/code&gt; glob);&lt;/li&gt;
+&lt;li&gt;no impact map, or no merge-base;&lt;/li&gt;
+&lt;li&gt;any planner error;&lt;/li&gt;
+&lt;li&gt;a head commit that contains &lt;code&gt;[smarter full]&lt;/code&gt;.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 data-hextra-search-id="modes"&gt;Modes&lt;span class="hx:absolute hx:-mt-20" id="modes"&gt;&lt;/span&gt;
+&lt;a href="#modes" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;Mode&lt;/th&gt;
+&lt;th&gt;What runs&lt;/th&gt;
+&lt;th&gt;Use it for&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;shadow&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;everything; the plan is only reported&lt;/td&gt;
+&lt;td&gt;onboarding: see what select mode would skip&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;select&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;only the selected jobs + &lt;code&gt;smarter-gate&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;after shadow mode convinces you&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;Each plan job stores &lt;code&gt;smarter-plan/plan.md&lt;/code&gt; and &lt;code&gt;plan.json&lt;/code&gt; as artifacts: every job, run or skip, and the reason.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="results-on-this-repository-2026-11-14"&gt;Results on this repository (2026-11-14)&lt;span class="hx:absolute hx:-mt-20" id="results-on-this-repository-2026-11-14"&gt;&lt;/span&gt;
+&lt;a href="#results-on-this-repository-2026-11-14" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;From the first real impact map:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;No job reads the docs.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;orb-validate&lt;/code&gt; reads exactly the orb, its validation script and the two CI configs.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;go-test&lt;/code&gt; reads 106 files.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;Branch change&lt;/th&gt;
+&lt;th&gt;Select mode runs&lt;/th&gt;
+&lt;th&gt;Why&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;docs only&lt;/td&gt;
+&lt;td&gt;1 of 8 jobs (&lt;code&gt;security-scan&lt;/code&gt;, mandatory) + gate&lt;/td&gt;
+&lt;td&gt;nothing else reads &lt;code&gt;docs/&lt;/code&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;one Go package (&lt;code&gt;internal/report&lt;/code&gt;)&lt;/td&gt;
+&lt;td&gt;5 of 8&lt;/td&gt;
+&lt;td&gt;go-test, go-lint and build read it; e2e-plan consumes build&amp;rsquo;s workspace; security-scan is mandatory&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;&lt;code&gt;.circleci/continue.yml&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;all 8&lt;/td&gt;
+&lt;td&gt;the pipeline definition changed&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;The docs-only branch in select mode spent 46 s of job time, against 280 s for the full run, about 84% less compute.&lt;/p&gt;
+&lt;p&gt;The numbers are from before the pipeline gained the job &lt;code&gt;docs-site-build&lt;/code&gt;, which builds the docs site and reads &lt;code&gt;docs/&lt;/code&gt;. A docs-only change now runs that job too.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="tools-for-agents"&gt;Tools for agents&lt;span class="hx:absolute hx:-mt-20" id="tools-for-agents"&gt;&lt;/span&gt;
+&lt;a href="#tools-for-agents" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Two commands let an agent (or a person) read a pipeline and check a layout of it, with no plan and no impact map needed:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;circleci-smarter catalog --config .circleci/continue.yml --map impact-map.json.gz&lt;/code&gt; prints the jobs of a workflow as JSON: each one&amp;rsquo;s kind, executor, contexts, filters, requirements, workspace use and, with a map, how much of the repository it read.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;circleci-smarter layout check --config composed.yml --catalog catalog.json --policy-bundle policies --mandatory security-scan --restricted-contexts deploy&lt;/code&gt; checks how the jobs of a workflow wait for each other, and reports each problem with a code and a hint on how to fix it: a &lt;code&gt;requires&lt;/code&gt; that points nowhere, a cycle, a workspace attached before it is persisted, a restricted context with no approval before it, a missing mandatory job, a gate that is not a no-op job or does not wait for every job that runs, and an approval that a branch filter can leave out. It exits 3 when there are errors. A plan the planner writes has a no-op gate and no structural problem that its input did not have.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;The &lt;a href="https://circleci-labs.github.io/smarter-workflows/docs/reference/spec/#catalog"&gt;spec&lt;/a&gt; has the formats.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="read-more"&gt;Read more&lt;span class="hx:absolute hx:-mt-20" id="read-more"&gt;&lt;/span&gt;
+&lt;a href="#read-more" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a href="https://circleci-labs.github.io/smarter-workflows/docs/get-started/quickstart/"&gt;Quickstart&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://circleci-labs.github.io/smarter-workflows/docs/limitations/"&gt;Limitations&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://circleci-labs.github.io/smarter-workflows/docs/reference/spec/"&gt;Spec&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://circleci-labs.github.io/smarter-workflows/docs/decisions/"&gt;Decisions&lt;/a&gt;&lt;/li&gt;
 &lt;/ul&gt;</description></item><item><title>7. Impact map v2: shared path tables and compact indices</title><link>https://circleci-labs.github.io/smarter-workflows/docs/decisions/0007-impact-map-v2/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://circleci-labs.github.io/smarter-workflows/docs/decisions/0007-impact-map-v2/</guid><description>
 &lt;p&gt;Date: 2026-11-15. Status: accepted.&lt;/p&gt;
 &lt;h2 data-hextra-search-id="context"&gt;Context&lt;span class="hx:absolute hx:-mt-20" id="context"&gt;&lt;/span&gt;
@@ -2190,101 +2254,40 @@ data-copied-label="Copied!"
 &lt;/ul&gt;
 &lt;/li&gt;
 &lt;li&gt;&lt;strong&gt;Why delta varints instead of bitsets:&lt;/strong&gt; Indices are dense when jobs read many files but sparse when they read few; delta varints are small in the common case, need no third-party format, and decode in one pass with strict bounds. Roaring or raw bitsets win when sets are extremely sparse across a huge table; this workload is usually &amp;ldquo;many indices per job out of a shared table&amp;rdquo;, where varints are simpler and fast enough.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Writers&lt;/strong&gt; (&lt;code&gt;map build&lt;/code&gt;, the trace map job) emit v2 gzip only. &lt;strong&gt;Readers&lt;/strong&gt; accept v1 JSON (legacy cache) and v2 gzip; &lt;code&gt;plan&lt;/code&gt; tries &lt;code&gt;impact-map.json.gz&lt;/code&gt; then &lt;code&gt;impact-map.json&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Writers&lt;/strong&gt; (&lt;code&gt;circleci-smarter analyze&lt;/code&gt; and &lt;code&gt;map build&lt;/code&gt;) emit v2 gzip only. &lt;strong&gt;Readers&lt;/strong&gt; accept v1 JSON (legacy cache) and v2 gzip; &lt;code&gt;plan&lt;/code&gt; tries &lt;code&gt;impact-map.json.gz&lt;/code&gt; then &lt;code&gt;impact-map.json&lt;/code&gt;.&lt;/li&gt;
 &lt;li&gt;&lt;strong&gt;Caps&lt;/strong&gt; (oversize or malformed → full run): compressed file ≤ 64 MiB; decompressed JSON ≤ 256 MiB; when compressed size &amp;lt; 64 KiB, decompressed must be ≤ 32× compressed (zip-bomb guard); ≤ 4096 jobs; ≤ 200_000 file table entries; ≤ 50_000 dir table entries; ≤ 100_000 indices per job per table; job names ≤ 256 chars. v1 maps keep the former 16 MiB uncompressed cap.&lt;/li&gt;
 &lt;/ol&gt;
 &lt;h2 data-hextra-search-id="consequences"&gt;Consequences&lt;span class="hx:absolute hx:-mt-20" id="consequences"&gt;&lt;/span&gt;
 &lt;a href="#consequences" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ul&gt;
+&lt;li&gt;From v0.3, planner input dirs are recursive: a dir input covers the whole subtree (repository root &lt;code&gt;.&lt;/code&gt; covers every path).&lt;/li&gt;
 &lt;li&gt;Monorepo-sized maps fit in cache and decode in sub-second time on developer hardware (see &lt;code&gt;docs/benchmarks-perf.md&lt;/code&gt;).&lt;/li&gt;
 &lt;li&gt;Path tables must stay sorted and deduplicated; corrupt index blobs fail closed at parse time.&lt;/li&gt;
 &lt;li&gt;Cache artifacts change extension; operators with only v1 files still work until the next default-branch map build.&lt;/li&gt;
 &lt;/ul&gt;
 &lt;h2 data-hextra-search-id="verification-2026-11-15"&gt;Verification (2026-11-15)&lt;span class="hx:absolute hx:-mt-20" id="verification-2026-11-15"&gt;&lt;/span&gt;
-&lt;a href="#verification-2026-11-15" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;&lt;code&gt;go test ./internal/impactmap -run TestBenchMapV2FitsTarget&lt;/code&gt; on this branch: synthetic 2000 jobs × 10k files each, v2 gzip under 20 MiB and decode under 0.5 s.&lt;/p&gt;</description></item><item><title>Threat model (v0.1)</title><link>https://circleci-labs.github.io/smarter-workflows/docs/threat-model/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://circleci-labs.github.io/smarter-workflows/docs/threat-model/</guid><description>
-&lt;p&gt;Smarter Workflows runs inside a customer’s CircleCI project: a setup workflow plans which jobs to run on a branch, then continues the pipeline. This page is generic; it does not describe any one org’s policies.&lt;/p&gt;
-&lt;h2 data-hextra-search-id="assets"&gt;Assets&lt;span class="hx:absolute hx:-mt-20" id="assets"&gt;&lt;/span&gt;
-&lt;a href="#assets" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ul&gt;
-&lt;li&gt;&lt;strong&gt;Repository source&lt;/strong&gt; — integrity and confidentiality as for any CI job.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Continuation config&lt;/strong&gt; — defines the jobs that run after setup; may reference contexts and images.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Continuation key&lt;/strong&gt; — secret that authorizes continuing the pipeline (environment variable).&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Impact map&lt;/strong&gt; — gzip JSON (v2) or legacy JSON (v1) in the project cache describing which files each job read on a past full run.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Plan report&lt;/strong&gt; — &lt;code&gt;plan.json&lt;/code&gt; / &lt;code&gt;plan.md&lt;/code&gt; with job decisions and diffs.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Trace scripts&lt;/strong&gt; — shell embedded in customer job configs (&lt;code&gt;reset-atime.sh&lt;/code&gt;, &lt;code&gt;collect-trace.sh&lt;/code&gt;).&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Policy bundle&lt;/strong&gt; — Rego guardrails evaluated before continuation.&lt;/li&gt;
+&lt;a href="#verification-2026-11-15" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;&lt;code&gt;go test ./internal/impactmap -run TestBenchMapV2FitsTarget&lt;/code&gt; on this branch: synthetic 2000 jobs × 10k files each, v2 gzip under 20 MiB and decode under 0.5 s.&lt;/p&gt;</description></item><item><title>Limitations</title><link>https://circleci-labs.github.io/smarter-workflows/docs/limitations/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://circleci-labs.github.io/smarter-workflows/docs/limitations/</guid><description>
+&lt;p&gt;Where the planner cannot decide, the job runs.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="static-analysis-and-dynamic-inputs"&gt;Static analysis and dynamic inputs&lt;span class="hx:absolute hx:-mt-20" id="static-analysis-and-dynamic-inputs"&gt;&lt;/span&gt;
+&lt;a href="#static-analysis-and-dynamic-inputs" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Mapped paths are directory prefixes: &lt;code&gt;internal/foo&lt;/code&gt; matches any file under it, and &lt;code&gt;.&lt;/code&gt; means the repository root (every change). Paths built from environment variables, runtime downloads, or opaque shell are invisible unless the learned layer or history adds them. &lt;strong&gt;Make&lt;/strong&gt;, unknown binaries, and orb commands outside the known table mark a job &lt;strong&gt;unknown&lt;/strong&gt; (it always runs).&lt;/p&gt;
+&lt;h2 data-hextra-search-id="opaque-or-unfamiliar-jobs"&gt;Opaque or unfamiliar jobs&lt;span class="hx:absolute hx:-mt-20" id="opaque-or-unfamiliar-jobs"&gt;&lt;/span&gt;
+&lt;a href="#opaque-or-unfamiliar-jobs" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Orb jobs, self-hosted images, and steps the analyzer cannot follow stay unknown until AI or history completes the map. &lt;strong&gt;Shadow mode&lt;/strong&gt; shows what select would do before you trust it.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="ai-is-optional"&gt;AI is optional&lt;span class="hx:absolute hx:-mt-20" id="ai-is-optional"&gt;&lt;/span&gt;
+&lt;a href="#ai-is-optional" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;&lt;code&gt;learn&lt;/code&gt; and &lt;code&gt;analyze&lt;/code&gt; can run with &lt;code&gt;--ai off&lt;/code&gt;. Without AI, coverage depends on static signals and history corrections only. Plan-time &lt;code&gt;--ai-review&lt;/code&gt; adds jobs only; it never removes static proof.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="learned-layer-timing"&gt;Learned layer timing&lt;span class="hx:absolute hx:-mt-20" id="learned-layer-timing"&gt;&lt;/span&gt;
+&lt;a href="#learned-layer-timing" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;&lt;code&gt;plan&lt;/code&gt; merges the learned layer from cache on every pipeline. Until the first scheduled &lt;code&gt;learn&lt;/code&gt; completes, maps are &lt;strong&gt;static only&lt;/strong&gt; (more conservative). First pipelines after onboarding may run more jobs than after learn.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="costs"&gt;Costs&lt;span class="hx:absolute hx:-mt-20" id="costs"&gt;&lt;/span&gt;
+&lt;a href="#costs" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;learn&lt;/code&gt;:&lt;/strong&gt; CircleCI API calls for history; optional Anthropic usage during classify (see the report’s token and cost lines).&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;plan&lt;/code&gt;:&lt;/strong&gt; Inline analyze each run (no AI by default); optional &lt;code&gt;--ai-review&lt;/code&gt; calls Anthropic when enabled.&lt;/li&gt;
 &lt;/ul&gt;
-&lt;h2 data-hextra-search-id="trust-boundaries"&gt;Trust boundaries&lt;span class="hx:absolute hx:-mt-20" id="trust-boundaries"&gt;&lt;/span&gt;
-&lt;a href="#trust-boundaries" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;table&gt;
-&lt;thead&gt;
-&lt;tr&gt;
-&lt;th&gt;Actor&lt;/th&gt;
-&lt;th&gt;Trust&lt;/th&gt;
-&lt;th&gt;Reaches&lt;/th&gt;
-&lt;/tr&gt;
-&lt;/thead&gt;
-&lt;tbody&gt;
-&lt;tr&gt;
-&lt;td&gt;Default-branch full run&lt;/td&gt;
-&lt;td&gt;Semi-trusted&lt;/td&gt;
-&lt;td&gt;Writes traces and impact map to cache&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;Feature branch / fork PR&lt;/td&gt;
-&lt;td&gt;Untrusted for map&lt;/td&gt;
-&lt;td&gt;May restore a cache entry from any branch&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;Planner binary (setup job)&lt;/td&gt;
-&lt;td&gt;Trusted by operator&lt;/td&gt;
-&lt;td&gt;Reads map, config, git; writes continuation config&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;Trace collector (per job)&lt;/td&gt;
-&lt;td&gt;Trusted code, hostile repo data&lt;/td&gt;
-&lt;td&gt;Reads git checkout only; no network&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;CircleCI continuation API&lt;/td&gt;
-&lt;td&gt;Trusted endpoint&lt;/td&gt;
-&lt;td&gt;Receives key + config over HTTPS&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;Policy bundle on disk&lt;/td&gt;
-&lt;td&gt;Trusted by operator&lt;/td&gt;
-&lt;td&gt;Evaluated locally; no upload in v0.1&lt;/td&gt;
-&lt;/tr&gt;
-&lt;/tbody&gt;
-&lt;/table&gt;
-&lt;h2 data-hextra-search-id="threats-and-mitigations"&gt;Threats and mitigations&lt;span class="hx:absolute hx:-mt-20" id="threats-and-mitigations"&gt;&lt;/span&gt;
-&lt;a href="#threats-and-mitigations" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;h3 data-hextra-search-id="forged-or-hostile-impact-map"&gt;Forged or hostile impact map&lt;span class="hx:absolute hx:-mt-20" id="forged-or-hostile-impact-map"&gt;&lt;/span&gt;
-&lt;a href="#forged-or-hostile-impact-map" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;&lt;strong&gt;Threat:&lt;/strong&gt; A branch writes a cache entry claiming jobs did not read files they actually use, so the planner skips work.&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;Mitigations:&lt;/strong&gt; Mandatory jobs always run. Guardrails do not depend on the map. Unusable paths mark a job incomplete (it runs). Oversized or malformed maps are rejected (full run). v2 bounds compressed and decompressed bytes, table sizes, job count, and per-job index counts at parse time (v1 keeps a 16 MiB cap). See ADR 7.&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;Residual risk:&lt;/strong&gt; A plausible forged map can still skip optional jobs until signing on the default branch (&lt;a href="https://circleci-labs.github.io/smarter-workflows/docs/limitations/"&gt;limitations&lt;/a&gt;). Operators should treat map cache as hint data, not proof.&lt;/p&gt;
-&lt;h3 data-hextra-search-id="injection-via-config-map-or-yaml-emission"&gt;Injection via config, map, or YAML emission&lt;span class="hx:absolute hx:-mt-20" id="injection-via-config-map-or-yaml-emission"&gt;&lt;/span&gt;
-&lt;a href="#injection-via-config-map-or-yaml-emission" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;&lt;strong&gt;Threat:&lt;/strong&gt; Job names, paths, or parameters break out of generated YAML or inlined shell.&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;Mitigations:&lt;/strong&gt; Gate and map key prefixes match a safe identifier regex. Map job steps quote version and binary path for &lt;code&gt;/bin/sh&lt;/code&gt;. Trace scripts are static literals (no customer interpolation). Embedded scripts avoid tabs and CircleCI template syntax. Job names with expressions trigger a full run.&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;Residual risk:&lt;/strong&gt; Customer-authored job definitions in the catalog are unchanged; only added smarter steps are constrained.&lt;/p&gt;
-&lt;h3 data-hextra-search-id="trace-scripts-in-customer-jobs"&gt;Trace scripts in customer jobs&lt;span class="hx:absolute hx:-mt-20" id="trace-scripts-in-customer-jobs"&gt;&lt;/span&gt;
-&lt;a href="#trace-scripts-in-customer-jobs" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;&lt;strong&gt;Threat:&lt;/strong&gt; Malicious repo layout or environment breaks quoting, leaks secrets, fails the job, or exhausts resources.&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;Mitigations:&lt;/strong&gt; &lt;code&gt;set +e&lt;/code&gt;; always &lt;code&gt;exit 0&lt;/code&gt;. No network. No printing environment variables. &lt;code&gt;CIRCLE_JOB&lt;/code&gt; hashed for filenames; job text sanitized to one line in the TSV. Temp dirs under &lt;code&gt;.git&lt;/code&gt;. GNU tool probes fail closed to “unsupported trace”. Hostile path tests in &lt;code&gt;scripts/test-trace.sh&lt;/code&gt;.&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;Residual risk:&lt;/strong&gt; Very large repos cost time during find/git traversal; tracing is only on the default branch by default.&lt;/p&gt;
-&lt;h3 data-hextra-search-id="continuation-client"&gt;Continuation client&lt;span class="hx:absolute hx:-mt-20" id="continuation-client"&gt;&lt;/span&gt;
-&lt;a href="#continuation-client" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;&lt;strong&gt;Threat:&lt;/strong&gt; Key or config leaks via logs, redirects, or error messages.&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;Mitigations:&lt;/strong&gt; Errors name HTTP status only. Response body not logged. No redirect follow (key stays on intended host). HTTPS required except loopback. Config size capped at 8 MiB. Key redaction if ever present in an error string.&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;Residual risk:&lt;/strong&gt; Operator misconfiguration (HTTP to a non-loopback host) is rejected at client construction.&lt;/p&gt;
-&lt;h3 data-hextra-search-id="policy-bundle-loading"&gt;Policy bundle loading&lt;span class="hx:absolute hx:-mt-20" id="policy-bundle-loading"&gt;&lt;/span&gt;
-&lt;a href="#policy-bundle-loading" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;&lt;strong&gt;Threat:&lt;/strong&gt; Symlink or path traversal loads Rego from outside the bundle directory.&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;Mitigations:&lt;/strong&gt; Walk stays under bundle root; symlinks skipped; &lt;code&gt;*_test.rego&lt;/code&gt; ignored. Hostile YAML in config fails &lt;code&gt;Check&lt;/code&gt; without executing customer code.&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;Residual risk:&lt;/strong&gt; Evaluated config is still customer YAML interpreted by circle-policy-agent; bundle should be operator-maintained.&lt;/p&gt;
-&lt;h3 data-hextra-search-id="cli-output-paths"&gt;CLI output paths&lt;span class="hx:absolute hx:-mt-20" id="cli-output-paths"&gt;&lt;/span&gt;
-&lt;a href="#cli-output-paths" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;&lt;strong&gt;Threat:&lt;/strong&gt; Odd &lt;code&gt;--out&lt;/code&gt; / &lt;code&gt;--report-dir&lt;/code&gt; values or world-readable continuation config.&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;Mitigations:&lt;/strong&gt; Null-byte paths rejected. Continuation config written &lt;code&gt;0600&lt;/code&gt;; plan report files &lt;code&gt;0640&lt;/code&gt; in a &lt;code&gt;0750&lt;/code&gt; directory; impact map &lt;code&gt;0640&lt;/code&gt;.&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;Residual risk:&lt;/strong&gt; Paths are absolute or relative as the operator gives them; the CLI does not sandbox writes outside the workspace.&lt;/p&gt;
-&lt;h2 data-hextra-search-id="related-docs"&gt;Related docs&lt;span class="hx:absolute hx:-mt-20" id="related-docs"&gt;&lt;/span&gt;
-&lt;a href="#related-docs" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ul&gt;
-&lt;li&gt;&lt;a href="https://circleci-labs.github.io/smarter-workflows/docs/limitations/"&gt;Limitations&lt;/a&gt; — forged map and other accepted gaps&lt;/li&gt;
-&lt;li&gt;&lt;a href="https://circleci-labs.github.io/smarter-workflows/docs/how-it-works/"&gt;How it works&lt;/a&gt; — data flow&lt;/li&gt;
-&lt;li&gt;&lt;a href="https://circleci-labs.github.io/smarter-workflows/docs/reference/spec/"&gt;Spec v0.1&lt;/a&gt; — formats and algorithm&lt;/li&gt;
-&lt;/ul&gt;</description></item><item><title>4. The catalog is native CircleCI config</title><link>https://circleci-labs.github.io/smarter-workflows/docs/decisions/0004-catalog-is-native-circleci-config/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://circleci-labs.github.io/smarter-workflows/docs/decisions/0004-catalog-is-native-circleci-config/</guid><description>
+&lt;h2 data-hextra-search-id="other-v0x-limits-unchanged"&gt;Other v0.x limits (unchanged)&lt;span class="hx:absolute hx:-mt-20" id="other-v0x-limits-unchanged"&gt;&lt;/span&gt;
+&lt;a href="#other-v0x-limits-unchanged" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ul&gt;
+&lt;li&gt;One workflow is planned; others pass through.&lt;/li&gt;
+&lt;li&gt;Matrix jobs and job groups always run as units.&lt;/li&gt;
+&lt;li&gt;The learned layer is stored in the &lt;strong&gt;project cache&lt;/strong&gt; (tamper risk; see &lt;a href="https://circleci-labs.github.io/smarter-workflows/docs/threat-model/"&gt;Threat model&lt;/a&gt;).&lt;/li&gt;
+&lt;li&gt;Workflow &lt;code&gt;when&lt;/code&gt;/&lt;code&gt;unless&lt;/code&gt; need known parameter values (&lt;code&gt;--parameters&lt;/code&gt;, branch, tag, trigger type).&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Planned improvements remain in the README and ADRs (signing cached layers, richer orb coverage).&lt;/p&gt;</description></item><item><title>4. The catalog is native CircleCI config</title><link>https://circleci-labs.github.io/smarter-workflows/docs/decisions/0004-catalog-is-native-circleci-config/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://circleci-labs.github.io/smarter-workflows/docs/decisions/0004-catalog-is-native-circleci-config/</guid><description>
 &lt;p&gt;Date: 2026-11-13. Status: accepted.&lt;/p&gt;
 &lt;h2 data-hextra-search-id="context"&gt;Context&lt;span class="hx:absolute hx:-mt-20" id="context"&gt;&lt;/span&gt;
 &lt;a href="#context" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;The first idea was a new &lt;code&gt;catalog.yml&lt;/code&gt; with metadata on each job. That is one more format to learn and keep in sync. The jobs, commands, executors and orbs a team uses already live in its CircleCI config, or in orbs it shares.&lt;/p&gt;
@@ -2304,8 +2307,109 @@ data-copied-label="Copied!"
 &lt;a href="#consequences" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ul&gt;
 &lt;li&gt;Adoption means moving the pipeline into &lt;code&gt;continue.yml&lt;/code&gt; and adding one setup job. No new schema.&lt;/li&gt;
 &lt;li&gt;What the planner generates reads like the team&amp;rsquo;s own config, minus the skipped jobs, plus the gate job.&lt;/li&gt;
+&lt;/ul&gt;</description></item><item><title>Threat model (v0.3)</title><link>https://circleci-labs.github.io/smarter-workflows/docs/threat-model/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://circleci-labs.github.io/smarter-workflows/docs/threat-model/</guid><description>
+&lt;p&gt;Smarter Workflows runs inside a CircleCI project: setup jobs plan which jobs run on a branch, then continue the pipeline. This page is generic; it does not describe any one org’s policies.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="assets"&gt;Assets&lt;span class="hx:absolute hx:-mt-20" id="assets"&gt;&lt;/span&gt;
+&lt;a href="#assets" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;Repository source&lt;/strong&gt; — integrity and confidentiality as for any CI job.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Continuation config&lt;/strong&gt; — defines jobs after setup; may reference contexts and images.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Continuation key&lt;/strong&gt; — authorizes continuing the pipeline.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Learned layer&lt;/strong&gt; — JSON in the project cache (AI inputs and history corrections merged at plan time).&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Plan and analyze reports&lt;/strong&gt; — job decisions, analyze completeness, optional AI review.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Policy bundle&lt;/strong&gt; — Rego guardrails before continuation.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 data-hextra-search-id="ai-data-flow-optional"&gt;AI data flow (optional)&lt;span class="hx:absolute hx:-mt-20" id="ai-data-flow-optional"&gt;&lt;/span&gt;
+&lt;a href="#ai-data-flow-optional" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;When AI is enabled (&lt;code&gt;learn&lt;/code&gt;, &lt;code&gt;analyze --ai auto|on&lt;/code&gt;, or &lt;code&gt;plan --ai-review&lt;/code&gt;):&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;Sent&lt;/th&gt;
+&lt;th&gt;Never sent&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;Job definitions (commands, images, working directories)&lt;/td&gt;
+&lt;td&gt;Paths matching deny rules (&lt;code&gt;.env*&lt;/code&gt;, &lt;code&gt;*.pem&lt;/code&gt;, &lt;code&gt;*.key&lt;/code&gt;, &lt;code&gt;id_rsa*&lt;/code&gt;, &lt;code&gt;.npmrc&lt;/code&gt;, &lt;code&gt;.pypirc&lt;/code&gt;, &lt;code&gt;.netrc&lt;/code&gt;, …)&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Repo tree and trimmed file text within token budget&lt;/td&gt;
+&lt;td&gt;Binaries and files over 256 KiB (listed in tree only)&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Diffs for plan-time review (add-only)&lt;/td&gt;
+&lt;td&gt;Content matching deny rules&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;Keys live in &lt;strong&gt;CircleCI contexts&lt;/strong&gt; the operator attaches to &lt;code&gt;learn&lt;/code&gt; or &lt;code&gt;plan&lt;/code&gt;; they are not in the repo. The CLI never logs API keys.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="learned-layer-and-schedules"&gt;Learned layer and schedules&lt;span class="hx:absolute hx:-mt-20" id="learned-layer-and-schedules"&gt;&lt;/span&gt;
+&lt;a href="#learned-layer-and-schedules" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Only the &lt;strong&gt;default-branch scheduled &lt;code&gt;learn&lt;/code&gt; job&lt;/strong&gt; writes the learned layer to cache. Feature branches restore the newest matching prefix but do not run &lt;code&gt;learn&lt;/code&gt; in the recommended layout, so PR content cannot change what gets skipped on other branches.&lt;/p&gt;
+&lt;p&gt;Plan-time AI review can only &lt;strong&gt;add&lt;/strong&gt; jobs; it cannot remove static proof.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="cache-tampering"&gt;Cache tampering&lt;span class="hx:absolute hx:-mt-20" id="cache-tampering"&gt;&lt;/span&gt;
+&lt;a href="#cache-tampering" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;&lt;strong&gt;Threat:&lt;/strong&gt; A branch restores an old or forged learned layer claiming jobs are complete when they are not.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Mitigations:&lt;/strong&gt; Mandatory jobs always run. Jobs without static proof run. Malformed learned JSON is ignored (full run or warning). Restrict contexts (&lt;code&gt;smarter-workflows-ai&lt;/code&gt;) so only trusted jobs fetch history or call AI.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Residual risk:&lt;/strong&gt; Optional jobs could be skipped until recall checks fail; operators should read learn reports and use shadow mode first.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="trust-boundaries"&gt;Trust boundaries&lt;span class="hx:absolute hx:-mt-20" id="trust-boundaries"&gt;&lt;/span&gt;
+&lt;a href="#trust-boundaries" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;Actor&lt;/th&gt;
+&lt;th&gt;Trust&lt;/th&gt;
+&lt;th&gt;Reaches&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;Scheduled learn on default branch&lt;/td&gt;
+&lt;td&gt;Semi-trusted&lt;/td&gt;
+&lt;td&gt;Writes learned layer to cache&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Feature branch / fork PR&lt;/td&gt;
+&lt;td&gt;Untrusted for cache&lt;/td&gt;
+&lt;td&gt;May restore any cache entry&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Planner binary&lt;/td&gt;
+&lt;td&gt;Trusted by operator&lt;/td&gt;
+&lt;td&gt;Reads config, git, cache; writes continuation&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Anthropic (optional)&lt;/td&gt;
+&lt;td&gt;Third party&lt;/td&gt;
+&lt;td&gt;Sees only data the operator enables&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Policy bundle&lt;/td&gt;
+&lt;td&gt;Trusted by operator&lt;/td&gt;
+&lt;td&gt;Evaluated locally&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h2 data-hextra-search-id="other-threats-unchanged"&gt;Other threats (unchanged)&lt;span class="hx:absolute hx:-mt-20" id="other-threats-unchanged"&gt;&lt;/span&gt;
+&lt;a href="#other-threats-unchanged" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;Injection via generated YAML:&lt;/strong&gt; gate and key prefixes use safe identifier rules; customer catalog YAML is unchanged.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Continuation client:&lt;/strong&gt; HTTPS, no redirect follow, key redaction in errors.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Policy bundle loading:&lt;/strong&gt; walk stays under bundle root; symlinks skipped.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 data-hextra-search-id="related-docs"&gt;Related docs&lt;span class="hx:absolute hx:-mt-20" id="related-docs"&gt;&lt;/span&gt;
+&lt;a href="#related-docs" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a href="https://circleci-labs.github.io/smarter-workflows/docs/limitations/"&gt;Limitations&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://circleci-labs.github.io/smarter-workflows/docs/how-it-works/"&gt;How it works&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://circleci-labs.github.io/smarter-workflows/docs/analyze/"&gt;Analyze&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;</description></item><item><title>5. A Go binary that is also a circleci CLI extension</title><link>https://circleci-labs.github.io/smarter-workflows/docs/decisions/0005-go-cli-extension/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://circleci-labs.github.io/smarter-workflows/docs/decisions/0005-go-cli-extension/</guid><description>
+&lt;p&gt;Date: 2026-11-13. Status: accepted.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="context"&gt;Context&lt;span class="hx:absolute hx:-mt-20" id="context"&gt;&lt;/span&gt;
+&lt;a href="#context" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;The tool has to be easy to adopt in production if product teams like it. The &lt;code&gt;circleci&lt;/code&gt; CLI dispatches &lt;code&gt;circleci &amp;lt;name&amp;gt;&lt;/code&gt; to a binary named &lt;code&gt;circleci-&amp;lt;name&amp;gt;&lt;/code&gt;; Smarter Testing&amp;rsquo;s &lt;code&gt;testsuite&lt;/code&gt; is one such extension. CircleCI&amp;rsquo;s policy engine is a public Go library (&lt;code&gt;circle-policy-agent&lt;/code&gt;), so a Go binary can evaluate policies exactly the way the service does.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="decision"&gt;Decision&lt;span class="hx:absolute hx:-mt-20" id="decision"&gt;&lt;/span&gt;
+&lt;a href="#decision" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Ship a single static Go binary, &lt;code&gt;circleci-smarter&lt;/code&gt;, that can be called directly or as &lt;code&gt;circleci smarter&lt;/code&gt;. It links &lt;code&gt;circle-policy-agent&lt;/code&gt; for the pre-flight. The orb downloads a pinned, checksummed release. Until releases exist, it builds from source.&lt;/p&gt;
+&lt;h2 data-hextra-search-id="consequences"&gt;Consequences&lt;span class="hx:absolute hx:-mt-20" id="consequences"&gt;&lt;/span&gt;
+&lt;a href="#consequences" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ul&gt;
+&lt;li&gt;One language and one binary, with no runtime dependencies in the planner job.&lt;/li&gt;
+&lt;li&gt;Impact maps are built by &lt;code&gt;analyze&lt;/code&gt; in the setup job, not by steps injected into customer jobs (ADR 8).&lt;/li&gt;
 &lt;/ul&gt;</description></item><item><title>Validation</title><link>https://circleci-labs.github.io/smarter-workflows/docs/validation/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://circleci-labs.github.io/smarter-workflows/docs/validation/</guid><description>
-&lt;p&gt;What was tested in v0.1, and what each layer found. Unit, robustness, guardrail and trace results are from 2026-11-14; end-to-end and backtest numbers are from 2026-11-15.&lt;/p&gt;
+&lt;p&gt;What was tested in v0.1, and what each layer found. Unit, robustness and guardrail results are from 2026-11-14; end-to-end and backtest numbers are from 2026-11-15. Runtime tracing was removed in v0.3 (ADR 8); the trace-script layer and atime checks below are historical only and no longer gate merges.&lt;/p&gt;
 &lt;h2 data-hextra-search-id="test-layers"&gt;Test layers&lt;span class="hx:absolute hx:-mt-20" id="test-layers"&gt;&lt;/span&gt;
 &lt;a href="#test-layers" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;table&gt;
 &lt;thead&gt;
@@ -2332,9 +2436,9 @@ data-copied-label="Copied!"
 &lt;td&gt;pass&lt;/td&gt;
 &lt;/tr&gt;
 &lt;tr&gt;
-&lt;td&gt;Trace scripts&lt;/td&gt;
+&lt;td&gt;Trace scripts (v0.1 only; removed v0.3)&lt;/td&gt;
 &lt;td&gt;43 checks on ext4, tmpfs and the &lt;code&gt;cimg/base&lt;/code&gt; image; the atime reset tested on CircleCI&amp;rsquo;s docker and machine executors&lt;/td&gt;
-&lt;td&gt;pass&lt;/td&gt;
+&lt;td&gt;pass (historical)&lt;/td&gt;
 &lt;/tr&gt;
 &lt;tr&gt;
 &lt;td&gt;End to end&lt;/td&gt;
@@ -2485,8 +2589,8 @@ data-copied-label="Copied!"
 &lt;a href="#bugs-that-validation-found-and-fixed" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ul&gt;
 &lt;li&gt;A job&amp;rsquo;s &lt;code&gt;requires&lt;/code&gt; on a filtered-out job: the planner now follows CircleCI&amp;rsquo;s documented rule. A filtered-out requirement is ignored, unless every requirement is filtered out.&lt;/li&gt;
 &lt;li&gt;YAML anchors, aliases and merge keys are expanded before pruning. Before the fix, they could leave dangling aliases or duplicate injected steps.&lt;/li&gt;
-&lt;li&gt;A null &lt;code&gt;pre-steps&lt;/code&gt; or &lt;code&gt;post-steps&lt;/code&gt; is an empty list. Before the fix, it dropped the whole trace.&lt;/li&gt;
-&lt;li&gt;A fallback full run still gets the gate and tracing.&lt;/li&gt;
+&lt;li&gt;A null &lt;code&gt;pre-steps&lt;/code&gt; or &lt;code&gt;post-steps&lt;/code&gt; is an empty list (relevant when v0.1 injected trace steps).&lt;/li&gt;
+&lt;li&gt;A fallback full run still gets the gate.&lt;/li&gt;
 &lt;li&gt;The gate says when it does not wait for a job with a status requirement.&lt;/li&gt;
 &lt;li&gt;In CI only: git&amp;rsquo;s background maintenance made temp-repo cleanup flaky; the orb is now validated without an API token; some orgs&amp;rsquo; config policies allow only exact image tags, so the language images of the pipeline carry a tag and no digest.&lt;/li&gt;
 &lt;/ul&gt;
@@ -2530,17 +2634,52 @@ data-copied-label="Copied!"
 &lt;li&gt;Shadow mode on a busy real repository, for real hit and miss rates.&lt;/li&gt;
 &lt;li&gt;The approval and deploy path on the default branch beyond the hold.&lt;/li&gt;
 &lt;li&gt;Tampering with the cached map (see limitations).&lt;/li&gt;
-&lt;/ul&gt;</description></item><item><title>5. A Go binary that is also a circleci CLI extension</title><link>https://circleci-labs.github.io/smarter-workflows/docs/decisions/0005-go-cli-extension/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://circleci-labs.github.io/smarter-workflows/docs/decisions/0005-go-cli-extension/</guid><description>
-&lt;p&gt;Date: 2026-11-13. Status: accepted.&lt;/p&gt;
-&lt;h2 data-hextra-search-id="context"&gt;Context&lt;span class="hx:absolute hx:-mt-20" id="context"&gt;&lt;/span&gt;
-&lt;a href="#context" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;The tool has to be easy to adopt in production if product teams like it. The &lt;code&gt;circleci&lt;/code&gt; CLI dispatches &lt;code&gt;circleci &amp;lt;name&amp;gt;&lt;/code&gt; to a binary named &lt;code&gt;circleci-&amp;lt;name&amp;gt;&lt;/code&gt;; Smarter Testing&amp;rsquo;s &lt;code&gt;testsuite&lt;/code&gt; is one such extension. CircleCI&amp;rsquo;s policy engine is a public Go library (&lt;code&gt;circle-policy-agent&lt;/code&gt;), so a Go binary can evaluate policies exactly the way the service does.&lt;/p&gt;
-&lt;h2 data-hextra-search-id="decision"&gt;Decision&lt;span class="hx:absolute hx:-mt-20" id="decision"&gt;&lt;/span&gt;
-&lt;a href="#decision" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Ship a single static Go binary, &lt;code&gt;circleci-smarter&lt;/code&gt;, that can be called directly or as &lt;code&gt;circleci smarter&lt;/code&gt;. It embeds the trace collector script, and links &lt;code&gt;circle-policy-agent&lt;/code&gt; for the pre-flight. The orb downloads a pinned, checksummed release. Until releases exist, it builds from source.&lt;/p&gt;
-&lt;h2 data-hextra-search-id="consequences"&gt;Consequences&lt;span class="hx:absolute hx:-mt-20" id="consequences"&gt;&lt;/span&gt;
-&lt;a href="#consequences" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ul&gt;
-&lt;li&gt;One language and one binary, with no runtime dependencies in the planner job.&lt;/li&gt;
-&lt;li&gt;The trace collector stays a small POSIX shell script, so jobs need no extra binary.&lt;/li&gt;
-&lt;/ul&gt;</description></item><item><title>6. Every plan passes the guardrails before it continues: check, repair, or fall back</title><link>https://circleci-labs.github.io/smarter-workflows/docs/decisions/0006-preflight-repair-then-full/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://circleci-labs.github.io/smarter-workflows/docs/decisions/0006-preflight-repair-then-full/</guid><description>
+&lt;/ul&gt;
+&lt;h2 data-hextra-search-id="v03-validation-in-progress"&gt;v0.3 validation (in progress)&lt;span class="hx:absolute hx:-mt-20" id="v03-validation-in-progress"&gt;&lt;/span&gt;
+&lt;a href="#v03-validation-in-progress" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Structure for post-integration results; numbers are &lt;strong&gt;TBD&lt;/strong&gt; until orchestrator runs complete.&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;Layer&lt;/th&gt;
+&lt;th&gt;Metric&lt;/th&gt;
+&lt;th&gt;Target / method&lt;/th&gt;
+&lt;th&gt;Result&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;Static proof&lt;/td&gt;
+&lt;td&gt;Jobs with complete static analyze at HEAD&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;analyze&lt;/code&gt; report on main&lt;/td&gt;
+&lt;td&gt;TBD&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Truth coverage&lt;/td&gt;
+&lt;td&gt;Recall vs recorded history corrections&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;learn&lt;/code&gt; + backtest&lt;/td&gt;
+&lt;td&gt;TBD&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Learn trial&lt;/td&gt;
+&lt;td&gt;Projected recall and savings&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;learn&lt;/code&gt; report on schedule&lt;/td&gt;
+&lt;td&gt;TBD&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;End to end&lt;/td&gt;
+&lt;td&gt;Job sets per scenario (analyze-based expectations)&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;scripts/e2e/run-scenarios.sh&lt;/code&gt;&lt;/td&gt;
+&lt;td&gt;TBD&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Backtests&lt;/td&gt;
+&lt;td&gt;Savings on N commits&lt;/td&gt;
+&lt;td&gt;&lt;code&gt;circleci-smarter backtest&lt;/code&gt; / benchmark job&lt;/td&gt;
+&lt;td&gt;TBD&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;Expectations in &lt;code&gt;scripts/e2e/scenarios-*.tsv&lt;/code&gt; are recomputed with &lt;a href="https://github.com/CircleCI-Labs/smarter-workflows/blob/main/scripts/e2e/expect.sh" target="_blank" rel="noopener"&gt;&lt;code&gt;scripts/e2e/expect.sh&lt;/code&gt;&lt;/a&gt; against &lt;code&gt;origin/main&lt;/code&gt; using inline analyze (no learned layer).&lt;/p&gt;</description></item><item><title>6. Every plan passes the guardrails before it continues: check, repair, or fall back</title><link>https://circleci-labs.github.io/smarter-workflows/docs/decisions/0006-preflight-repair-then-full/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://circleci-labs.github.io/smarter-workflows/docs/decisions/0006-preflight-repair-then-full/</guid><description>
 &lt;p&gt;Date: 2026-11-13. Status: accepted.&lt;/p&gt;
 &lt;h2 data-hextra-search-id="context"&gt;Context&lt;span class="hx:absolute hx:-mt-20" id="context"&gt;&lt;/span&gt;
 &lt;a href="#context" class="subheading-anchor" aria-label="Permalink for this section"&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;CircleCI config policies also evaluate the continuation config. Server-side enforcement needs the Scale plan, and a continuation the server rejects fails the pipeline after the setup job has already spent its one continuation.&lt;/p&gt;
