@@ -15,18 +15,18 @@ const correctionsListLimit = 20
 
 // Report is the combined learn output.
 type Report struct {
-	Version            int              `json:"version"`
-	ProjectSlug        string           `json:"project_slug,omitempty"`
-	Workflows          []string         `json:"workflows"`
-	Commits            int              `json:"commits"`
-	Warnings           []string         `json:"warnings,omitempty"`
-	Summary            Summary          `json:"summary"`
-	MissesBefore       []JobMiss        `json:"misses_before"`
-	MissesAfter        []JobMiss        `json:"misses_after"`
-	CorrectionsAdded   []PathCorrection `json:"corrections_added"`
-	FlakyJobs          []FlakyJob       `json:"flaky_jobs"`
-	IncompleteJobs     []string         `json:"incomplete_jobs"`
-	AI                 AISection        `json:"ai"`
+	Version          int              `json:"version"`
+	ProjectSlug      string           `json:"project_slug,omitempty"`
+	Workflows        []string         `json:"workflows"`
+	Commits          int              `json:"commits"`
+	Warnings         []string         `json:"warnings,omitempty"`
+	Summary          Summary          `json:"summary"`
+	MissesBefore     []JobMiss        `json:"misses_before"`
+	MissesAfter      []JobMiss        `json:"misses_after"`
+	CorrectionsAdded []PathCorrection `json:"corrections_added"`
+	FlakyJobs        []FlakyJob       `json:"flaky_jobs"`
+	IncompleteJobs   []string         `json:"incomplete_jobs"`
+	AI               AISection        `json:"ai"`
 }
 
 // Summary holds top-level savings metrics (after corrections).
@@ -68,15 +68,15 @@ type AISection struct {
 
 // BuildInput assembles a learn report.
 type BuildInput struct {
-	ProjectSlug    string
-	Workflows      []string
-	Commits        int
-	Before, After  *backtest.Report
-	Analyze        *analyze.Report
-	AnalyzeBefore  *analyze.Report
-	Corrections    []PathCorrection
-	Warnings       []string
-	History        []backtest.CommitHistory
+	ProjectSlug   string
+	Workflows     []string
+	Commits       int
+	Before, After *backtest.Report
+	Analyze       *analyze.Report
+	AnalyzeBefore *analyze.Report
+	Corrections   []PathCorrection
+	Warnings      []string
+	History       []backtest.CommitHistory
 }
 
 // BuildReport creates the learn report from run results.

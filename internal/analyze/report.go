@@ -12,17 +12,17 @@ import (
 
 // Report summarizes one analyze run for humans and automation.
 type Report struct {
-	Jobs             []JobReport  `json:"jobs"`
-	CompleteJobs     int          `json:"complete_jobs"`
-	IncompleteJobs   int          `json:"incomplete_jobs"`
-	AICalls          int          `json:"ai_calls"`
-	InputTokens      int64        `json:"input_tokens"`
-	OutputTokens     int64        `json:"output_tokens"`
-	EstimatedCostUSD float64      `json:"estimated_cost_usd"`
-	PriceNote        string       `json:"price_note"`
-	Warnings         []string     `json:"warnings,omitempty"`
-	Truth               *TruthReport  `json:"truth,omitempty"`
-	HistoryCorrections  []Correction  `json:"history_corrections,omitempty"`
+	Jobs               []JobReport  `json:"jobs"`
+	CompleteJobs       int          `json:"complete_jobs"`
+	IncompleteJobs     int          `json:"incomplete_jobs"`
+	AICalls            int          `json:"ai_calls"`
+	InputTokens        int64        `json:"input_tokens"`
+	OutputTokens       int64        `json:"output_tokens"`
+	EstimatedCostUSD   float64      `json:"estimated_cost_usd"`
+	PriceNote          string       `json:"price_note"`
+	Warnings           []string     `json:"warnings,omitempty"`
+	Truth              *TruthReport `json:"truth,omitempty"`
+	HistoryCorrections []Correction `json:"history_corrections,omitempty"`
 }
 
 // JobReport is one job's completeness and input provenance.
