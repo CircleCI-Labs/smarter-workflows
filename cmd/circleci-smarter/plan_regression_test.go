@@ -264,7 +264,7 @@ func TestPlanRegressionDogfoodRootPlusGoLint(t *testing.T) {
 	patchFile(t, wt, "orb/src/@orb.yml", "# plan regression touch\n")
 	head := difftest.CommitFileInDir(t, wt, "orb/src/@orb.yml", "touch orb metadata")
 	runs := runPlanSelect(t, wt, "--base", base, "--head", head)
-	wantJobs(t, runs, []string{"go-lint", "security-scan"}, nil)
+	wantJobs(t, runs, []string{"go-lint", "orb-validate", "security-scan"}, nil)
 }
 
 func TestPlanRegressionDemoDocs(t *testing.T) {

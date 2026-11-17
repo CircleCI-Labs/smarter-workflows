@@ -22,16 +22,25 @@ func (into *InputSet) addVerifiedPathOrDir(repoRoot, wd, lit string) {
 	}
 }
 
-func (e *Engine) analyzeSimpleCommand(repoRoot string, wds wdSet, argv []ArgWord, args []*syntax.Word, into *InputSet, needsInputs *bool, depth int, funcs map[string][]*syntax.Stmt, env map[string]string, scriptRel string) string {
+func (e *Engine) analyzeSimpleCommand(repoRoot string, wds wdSet, argv []ArgWord, args []*syntax.Word, into *InputSet, needsInputs *bool, depth int, funcs map[string][]*syntax.Stmt, env map[string]string, scriptRel string, positional []string) string {
+	sw := &shellWalk{e: e, repoRoot: repoRoot, env: env, scriptRel: scriptRel, positional: []string{""}}
+	if len(positional) > 0 {
+		sw.setPositional(positional)
+	}
+	for i := range argv {
+		if !argv[i].Dynamic || argv[i].Word == nil {
+			continue
+		}
+		if s, ok := sw.expandWord(argv[i].Word, wds); ok {
+			argv[i] = ArgWord{Lit: s, Dynamic: false, Word: argv[i].Word}
+		}
+	}
 	name, nameErr := resolveCommandName(argv)
 	if nameErr != "" {
 		return nameErr
 	}
 	if name == "" {
 		return ""
-	}
-	if op := dynamicArgOpaque(repoRoot, name, argv); op != "" {
-		return truncateOpaque(op)
 	}
 	if len(argv) > 0 && argv[0].Word != nil &&
 		(outsideRepoLiteralPrefix(argv[0].Word) || outsideRepoPathLiteral(argv[0].Lit)) &&
@@ -42,6 +51,12 @@ func (e *Engine) analyzeSimpleCommand(repoRoot string, wds wdSet, argv []ArgWord
 	seg := argvSeg(argv)
 	litSeg := strings.Join(litArgv, " ")
 	wd := pickWD(wds)
+	if e.analyzeDevTool(repoRoot, wds, name, litArgv, litSeg, into, needsInputs) {
+		return ""
+	}
+	if op := dynamicArgOpaque(repoRoot, name, argv); op != "" {
+		return truncateOpaque(op)
+	}
 	if bashProcessSubstitution(litArgv) {
 		return truncateOpaque(seg)
 	}
@@ -54,6 +69,13 @@ func (e *Engine) analyzeSimpleCommand(repoRoot string, wds wdSet, argv []ArgWord
 	if isVersionOnlyCommand(name, litArgv, seg) {
 		return ""
 	}
+	if goBuildLineRe.MatchString(litSeg) || (name == "env" && goBuildLineRe.MatchString(litSeg)) {
+		*needsInputs = true
+		for w := range wds {
+			e.scanGoBuildLineFromArgv(repoRoot, w, argv, into, env, scriptRel)
+		}
+		return ""
+	}
 	if isDownloadArgv(name, litArgv, litSeg) {
 		return ""
 	}
@@ -62,19 +84,6 @@ func (e *Engine) analyzeSimpleCommand(repoRoot string, wds wdSet, argv []ArgWord
 		return ""
 	}
 	if base == "set" {
-		return ""
-	}
-	if e.analyzeDevTool(repoRoot, wds, name, litArgv, litSeg, into, needsInputs) {
-		return ""
-	}
-	if name == "circleci" {
-		return truncateOpaque(seg)
-	}
-	if goBuildLineRe.MatchString(litSeg) {
-		*needsInputs = true
-		for w := range wds {
-			e.scanGoBuildLineFromArgv(repoRoot, w, argv, into, env, scriptRel)
-		}
 		return ""
 	}
 	if goCmdRe.MatchString(litSeg) || npmRe.MatchString(litSeg) || yarnRe.MatchString(litSeg) || pytestRe.MatchString(litSeg) || dockerBuildCmd.MatchString(litSeg) {
@@ -98,7 +107,9 @@ func (e *Engine) analyzeSimpleCommand(repoRoot string, wds wdSet, argv []ArgWord
 			return fmt.Sprintf("script %q not found", script)
 		}
 		before := into.hasInputs()
-		e.followScript(repoRoot, wd, script, depth, into, funcs)
+		if op := e.followScript(repoRoot, wd, script, depth, into, funcs, argv[1:], env, nil); op != "" {
+			return op
+		}
 		if !into.hasInputs() && !before {
 			return fmt.Sprintf("script %q produced no inputs", script)
 		}
@@ -108,6 +119,9 @@ func (e *Engine) analyzeSimpleCommand(repoRoot string, wds wdSet, argv []ArgWord
 		e.noteLiteralWords(repoRoot, w, args, into)
 	}
 	if name == "[" || name == "test" {
+		return ""
+	}
+	if _, ok := fileReadingBuiltins[name]; ok && !argvHasDynamic(argv[1:]) {
 		return ""
 	}
 	return truncateOpaque(seg)
@@ -130,7 +144,7 @@ func bashProcessSubstitution(argv []string) bool {
 func isVersionOnlyCommand(name string, argv []string, seg string) bool {
 	low := strings.ToLower(seg)
 	switch name {
-	case "circleci", "shellcheck", "gofmt", "jq", "yamllint", "hugo", "lychee", "go", "gh", "cosign":
+	case "circleci", "circleci-smarter", "shellcheck", "gofmt", "jq", "yamllint", "hugo", "lychee", "go", "gh", "cosign":
 		if strings.Contains(low, "--version") || strings.HasSuffix(low, " version") || strings.Contains(low, "--help") {
 			return true
 		}

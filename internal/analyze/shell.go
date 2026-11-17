@@ -13,26 +13,37 @@ const (
 	maxScriptFiles = 48
 )
 
-func (e *Engine) followScript(repoRoot, wd, script string, depth int, into *InputSet, funcs map[string][]*syntax.Stmt) {
+func cloneShellEnv(parent map[string]string) map[string]string {
+	env := map[string]string{}
+	for k, v := range parent {
+		env[k] = v
+	}
+	return env
+}
+
+func (e *Engine) followScript(repoRoot, wd, script string, depth int, into *InputSet, funcs map[string][]*syntax.Stmt, callArgs []ArgWord, parentEnv map[string]string, proof *JobProof) string {
 	if e.scriptFiles >= maxScriptFiles {
-		return
+		return ""
 	}
 	e.scriptFiles++
 	rel := resolveWD(repoRoot, wd, script)
 	if !fileExists(repoRoot, rel) {
-		return
+		return ""
 	}
 	into.addVerifiedFile(repoRoot, wd, script, InputNote{Signal: SignalScript, Detail: rel})
+	e.recordScriptCallArgs(repoRoot, wd, callArgs, into)
+	pos := positionalArgsFromArgv(repoRoot, wd, callArgs)
 	data, err := os.ReadFile(filepath.Join(repoRoot, filepath.FromSlash(rel)))
 	if err != nil {
-		return
+		return ""
 	}
 	if funcs != nil {
 		mergeShellFuncs(string(data), funcs)
 	}
-	e.walkShellScriptFile(repoRoot, wd, rel, string(data), depth+1, into, nil)
+	op := e.walkShellScriptFile(repoRoot, wd, rel, string(data), depth+1, into, proof, pos, parentEnv)
 	e.maybeDocsSiteScript(repoRoot, rel, into)
 	e.scanScriptLiteralFileRefs(repoRoot, rel, string(data), into)
+	return op
 }
 
 func mergeShellFuncs(body string, funcs map[string][]*syntax.Stmt) {

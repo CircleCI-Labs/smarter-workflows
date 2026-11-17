@@ -29,6 +29,19 @@ func (e *Engine) analyzeRunCommand(repoRoot, wd, cmd string, into *InputSet, pro
 	if cmd == "" {
 		return ""
 	}
+	if script, args, ok := parseScriptStepCommand(cmd); ok {
+		rel := resolveWD(repoRoot, wd, script)
+		if !fileExists(repoRoot, rel) {
+			return fmt.Sprintf("script %q not found", script)
+		}
+		if proof != nil {
+			proof.requiresRepoInputs = true
+		}
+		if op := e.followScript(repoRoot, wd, script, 0, into, nil, args, nil, proof); op != "" {
+			return op
+		}
+		return ""
+	}
 	if script, ok := stepCommandIsScript(cmd); ok {
 		rel := resolveWD(repoRoot, wd, script)
 		if !fileExists(repoRoot, rel) {
@@ -37,7 +50,9 @@ func (e *Engine) analyzeRunCommand(repoRoot, wd, cmd string, into *InputSet, pro
 		if proof != nil {
 			proof.requiresRepoInputs = true
 		}
-		e.followScript(repoRoot, wd, script, 0, into, nil)
+		if op := e.followScript(repoRoot, wd, script, 0, into, nil, nil, nil, proof); op != "" {
+			return op
+		}
 		return ""
 	}
 	op := e.walkShellScript(repoRoot, wd, cmd, 0, into, proof)

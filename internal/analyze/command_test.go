@@ -38,6 +38,48 @@ func TestBareRelativeScriptStepFollows(t *testing.T) {
 	}
 }
 
+func TestOrbValidateIncludesOrbSrcArg(t *testing.T) {
+	root, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, rep, _, err := Run(context.Background(), RunOptions{
+		RepoRoot:   root,
+		ConfigPath: filepath.Join(root, ".circleci", "continue.yml"),
+		Workflows:  []string{"ci"},
+		AIMode:     AIModeOff,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	j := m.Jobs["orb-validate"]
+	if j == nil || !j.Complete {
+		t.Fatalf("orb-validate %+v why=%q", j, jobReason(rep, "orb-validate"))
+	}
+	if !j.ListsDir("orb/src") && !j.CoversPath("orb/src/@orb.yml") {
+		t.Fatalf("orb-validate missing orb/src; dirs=%v", j.DirPaths())
+	}
+}
+
+func TestScriptUnboundPositionalMakesOpaque(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "scripts")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := `#!/bin/sh
+cat "$1"
+`
+	if err := os.WriteFile(filepath.Join(dir, "need-arg.sh"), []byte(body), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	into := newInputSet()
+	proof := &JobProof{}
+	if op := (&Engine{}).analyzeRunCommand(root, ".", "scripts/need-arg.sh", into, proof); op == "" {
+		t.Fatal("expected opaque step when $1 is unbound")
+	}
+}
+
 func TestReleaseDryRunFollowsGoClosure(t *testing.T) {
 	root, err := filepath.Abs(filepath.Join("..", ".."))
 	if err != nil {

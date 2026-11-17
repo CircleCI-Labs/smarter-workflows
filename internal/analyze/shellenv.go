@@ -56,7 +56,7 @@ func (sw *shellWalk) expandWord(w *syntax.Word, wds wdSet) (string, bool) {
 				case *syntax.SglQuoted:
 					b.WriteString(d.Value)
 				case *syntax.ParamExp:
-					if v, ok := sw.expandParam(d); ok {
+					if v, ok := sw.expandParam(d, wds); ok {
 						b.WriteString(v)
 					} else {
 						dyn = true
@@ -66,7 +66,7 @@ func (sw *shellWalk) expandWord(w *syntax.Word, wds wdSet) (string, bool) {
 				}
 			}
 		case *syntax.ParamExp:
-			if v, ok := sw.expandParam(x); ok {
+			if v, ok := sw.expandParam(x, wds); ok {
 				b.WriteString(v)
 			} else {
 				dyn = true
@@ -91,27 +91,6 @@ func (sw *shellWalk) expandWord(w *syntax.Word, wds wdSet) (string, bool) {
 	return s, true
 }
 
-func (sw *shellWalk) expandParam(pe *syntax.ParamExp) (string, bool) {
-	if pe == nil || pe.Param == nil {
-		return "", false
-	}
-	name := pe.Param.Value
-	if name == "0" {
-		if sw.scriptRel != "" {
-			return sw.scriptRel, true
-		}
-		return "", false
-	}
-	if name == "BASH_SOURCE" {
-		if sw.scriptRel != "" {
-			return sw.scriptRel, true
-		}
-		return "", false
-	}
-	v, ok := sw.env[name]
-	return v, ok
-}
-
 func (sw *shellWalk) scriptDir(wds wdSet) string {
 	if sw.scriptRel != "" {
 		d := filepath.Dir(filepath.FromSlash(sw.scriptRel))
@@ -132,6 +111,10 @@ func (sw *shellWalk) evalCmdSubst(cs *syntax.CmdSubst, wds wdSet) (string, bool)
 			xcd, xok := bc.X.Cmd.(*syntax.CallExpr)
 			ypwd, yok := bc.Y.Cmd.(*syntax.CallExpr)
 			if xok && yok && litWord(xcd.Args[0]) == "cd" && litWord(ypwd.Args[0]) == "pwd" {
+				if target, ok := sw.expandWord(xcd.Args[1], wds); ok {
+					rel := resolveWD(sw.repoRoot, pickWD(wds), target)
+					return rel, true
+				}
 				return ".", true
 			}
 		}

@@ -27,6 +27,30 @@ func (e *Engine) analyzeDevTool(repoRoot string, wds wdSet, name string, argv []
 		}
 	case "circleci":
 		return e.circleciTool(repoRoot, wds, argv, into, needsInputs)
+	case "gh":
+		return true
+	case "cosign":
+		if len(argv) >= 2 {
+			sub := argv[1]
+			if sub == "sign-blob" || sub == "verify-blob" {
+				return true
+			}
+		}
+		return true
+	case "circleci-smarter":
+		if len(argv) >= 2 && argv[1] == "plan" {
+			*needsInputs = true
+			for w := range wds {
+				for i := 2; i < len(argv); i++ {
+					if argv[i] == "--config" && i+1 < len(argv) {
+						into.addVerifiedPathOrDir(repoRoot, w, argv[i+1])
+						i++
+					}
+				}
+			}
+			return true
+		}
+		return true
 	case "shellcheck", "jq", "yamllint", "lychee":
 		*needsInputs = true
 		for w := range wds {
@@ -64,26 +88,36 @@ func (e *Engine) circleciTool(repoRoot string, wds wdSet, argv []string, into *I
 	sub := strings.ToLower(argv[1])
 	switch sub {
 	case "config":
-		if len(argv) >= 4 && (argv[2] == "validate" || argv[2] == "process") {
+		if len(argv) >= 3 && (argv[2] == "validate" || argv[2] == "process") {
 			*needsInputs = true
-			for w := range wds {
-				into.addVerifiedPathOrDir(repoRoot, w, argv[3])
+			if len(argv) >= 4 {
+				for w := range wds {
+					into.addVerifiedPathOrDir(repoRoot, w, argv[3])
+				}
 			}
 			return true
 		}
 	case "policy":
-		if len(argv) >= 4 && argv[2] == "test" {
+		if len(argv) >= 3 && argv[2] == "test" {
 			*needsInputs = true
-			for w := range wds {
-				into.addVerifiedPathOrDir(repoRoot, w, argv[3])
+			if len(argv) >= 4 {
+				for w := range wds {
+					into.addVerifiedPathOrDir(repoRoot, w, argv[3])
+				}
 			}
 			return true
 		}
+	case "run":
+		if len(argv) >= 3 && argv[2] == "oidc" {
+			return true
+		}
 	case "orb":
-		if len(argv) >= 4 && (argv[2] == "pack" || argv[2] == "validate") {
+		if len(argv) >= 3 && (argv[2] == "pack" || argv[2] == "validate") {
 			*needsInputs = true
-			for w := range wds {
-				into.addVerifiedPathOrDir(repoRoot, w, argv[3])
+			if len(argv) >= 4 {
+				for w := range wds {
+					into.addVerifiedPathOrDir(repoRoot, w, argv[3])
+				}
 			}
 			return true
 		}

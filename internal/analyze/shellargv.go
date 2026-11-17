@@ -333,6 +333,15 @@ var fileReadingBuiltins = map[string]struct{}{
 	"cat": {}, "cp": {}, "source": {}, ".": {}, "tar": {}, "unzip": {}, "jq": {},
 }
 
+func argvHasDynamic(argv []ArgWord) bool {
+	for _, a := range argv {
+		if a.Dynamic {
+			return true
+		}
+	}
+	return false
+}
+
 func dynamicArgOpaque(repoRoot, name string, argv []ArgWord) string {
 	if len(argv) == 0 {
 		return ""
