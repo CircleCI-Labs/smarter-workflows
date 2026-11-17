@@ -41,8 +41,12 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# plan_* flags must stay in sync with the setup jobs in .circleci/config.yml and
+# examples/demo/.circleci/config.yml (select mode, mandatory, policy-bundle, etc.).
+# We pass --branch scenario/… so workflow filters match real e2e pipelines.
+
 plan_self() {
-  local wt=$1
+  local wt=$1 base=$2 branch=$3 head=$4
   (
     cd "$wt"
     mkdir -p /tmp/smarter/plan
@@ -53,6 +57,9 @@ plan_self() {
       --mode select \
       --mandatory security-scan \
       --policy-bundle policies \
+      --base "$base" \
+      --head "$head" \
+      --branch "$branch" \
       --report-dir /tmp/smarter/plan \
       --out /tmp/smarter/continue.yml
     if [ -s /tmp/smarter/learned.json ]; then
@@ -63,7 +70,7 @@ plan_self() {
 }
 
 plan_demo() {
-  local wt=$1
+  local wt=$1 base=$2 branch=$3 head=$4
   (
     cd "$wt"
     mkdir -p /tmp/smarter/plan
@@ -75,6 +82,9 @@ plan_demo() {
       --mandatory security-scan \
       --policy-bundle policies \
       --full-run-paths 'examples/demo/.circleci/**' \
+      --base "$base" \
+      --head "$head" \
+      --branch "$branch" \
       --report-dir /tmp/smarter/plan \
       --out /tmp/smarter/continue.yml
     if [ -s /tmp/smarter/learned.json ]; then
@@ -87,11 +97,11 @@ plan_demo() {
 expect_of() {
   local tgt=$1 name=$2 expect=$3 change=$4 message=$5
   local wt=$work/wt-$tgt-$name
-  local branch=expect/$tgt-$name-$$
+  local branch=scenario/$name-$$
   git worktree add -q --no-track -b "$branch" "$wt" "$base_sha"
   (
     cd "$wt"
-    bash -euo pipefail -c "$change"
+    bash -euo pipefail -c "$change" >/dev/null
     git add -A 2>/dev/null
     if [ -z "$(git status --porcelain)" ]; then
       echo "expect: $tgt/$name: change produced no diff" >&2
@@ -101,10 +111,13 @@ expect_of() {
       commit -q -m "${message:-test: expect $name}"
   )
 
+  local head branch
+  head=$(git -C "$wt" rev-parse HEAD)
+  branch=$(git -C "$wt" branch --show-current)
   local code=0 plan=/tmp/smarter/plan/plan.json
   case $tgt in
-    self) plan_self "$wt" || code=$? ;;
-    demo) plan_demo "$wt" || code=$? ;;
+    self) plan_self "$wt" "$base_sha" "$branch" "$head" || code=$? ;;
+    demo) plan_demo "$wt" "$base_sha" "$branch" "$head" || code=$? ;;
     *) echo "expect: unknown target $tgt" >&2; exit 2 ;;
   esac
 
@@ -138,7 +151,7 @@ expect_of() {
   )
   if [ "$tgt" = demo ]; then
     # CircleCI names matrix instances worker-test-<param>, not worker-test.
-    jobs=$(printf '%s' "$jobs" | sed 's/worker-test/worker-test-3.12.16 worker-test-3.13.18/g')
+    jobs=$(printf '%s' "$jobs" | sed 's/\<worker-test\>/worker-test-3.12.16 worker-test-3.13.18/g')
   fi
   printf '%s' "$jobs"
 }

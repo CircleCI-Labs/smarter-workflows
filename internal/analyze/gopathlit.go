@@ -71,6 +71,23 @@ func (e *Engine) scanGoFilePathLiterals(repoRoot, modRoot, absPath string, into 
 			}
 		}
 	}
+	for _, decl := range f.Decls {
+		gd, ok := decl.(*ast.GenDecl)
+		if !ok || (gd.Tok != token.CONST && gd.Tok != token.VAR) {
+			continue
+		}
+		for _, spec := range gd.Specs {
+			vs, ok := spec.(*ast.ValueSpec)
+			if !ok {
+				continue
+			}
+			for _, val := range vs.Values {
+				if s, ok := stringExpr(val, consts); ok && literalLooksLikePath(s) {
+					e.tryAddResolvedGoPath(repoRoot, fileDir, modRel, s, into)
+				}
+			}
+		}
+	}
 	ast.Inspect(f, func(n ast.Node) bool {
 		call, ok := n.(*ast.CallExpr)
 		if !ok {
@@ -78,6 +95,10 @@ func (e *Engine) scanGoFilePathLiterals(repoRoot, modRoot, absPath string, into 
 		}
 		if join, ok := joinStrings(call, consts); ok {
 			e.tryAddResolvedGoPath(repoRoot, fileDir, modRel, join, into)
+			return true
+		}
+		if lit, ok := filepathAbsArg(call, consts); ok {
+			e.tryAddResolvedGoPath(repoRoot, fileDir, modRel, lit, into)
 			return true
 		}
 		if lit, ok := pathIOCallArg(call, consts); ok {
@@ -145,6 +166,27 @@ var goPathIOFns = map[string][]string{
 	"fs":     {"ReadFile", "ReadDir"},
 }
 
+func filepathAbsArg(call *ast.CallExpr, consts map[string]string) (string, bool) {
+	sel, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok || sel.Sel.Name != "Abs" {
+		return "", false
+	}
+	pkg, ok := sel.X.(*ast.Ident)
+	if !ok || pkg.Name != "filepath" || len(call.Args) == 0 {
+		return "", false
+	}
+	arg0 := call.Args[0]
+	if sub, ok := arg0.(*ast.CallExpr); ok {
+		if join, ok := joinStrings(sub, consts); ok {
+			return join, true
+		}
+		if p, ok := filepathAbsArg(sub, consts); ok {
+			return p, true
+		}
+	}
+	return stringExpr(arg0, consts)
+}
+
 func pathIOCallArg(call *ast.CallExpr, consts map[string]string) (string, bool) {
 	sel, ok := call.Fun.(*ast.SelectorExpr)
 	if !ok {
@@ -172,6 +214,9 @@ func pathIOCallArg(call *ast.CallExpr, consts map[string]string) (string, bool) 
 	if sub, ok := arg0.(*ast.CallExpr); ok {
 		if join, ok := joinStrings(sub, consts); ok {
 			return join, true
+		}
+		if p, ok := filepathAbsArg(sub, consts); ok {
+			return p, true
 		}
 	}
 	return stringExpr(arg0, consts)

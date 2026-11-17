@@ -47,6 +47,45 @@ func touches() {
 	}
 }
 
+func TestGoDotDotPathResolution(t *testing.T) {
+	root := t.TempDir()
+	for _, p := range []string{"policies", "x", filepath.Join("a", "b")} {
+		if err := os.MkdirAll(filepath.Join(root, p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pkg := filepath.Join(root, "a", "b")
+	src := `package b
+
+import "path/filepath"
+
+const bundle = "../../policies"
+
+func touches() {
+	_, _ = filepath.Abs("../../x")
+	_ = bundle
+	_ = "../../../../etc"
+}
+`
+	goFile := filepath.Join(pkg, "sample.go")
+	if err := os.WriteFile(goFile, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	into := newInputSet()
+	(&Engine{}).scanGoFilePathLiterals(root, root, goFile, into)
+	if _, ok := into.dirs["policies"]; !ok {
+		t.Fatalf("want policies/ from ../../policies const, dirs=%v", into.dirs)
+	}
+	if _, ok := into.dirs["x"]; !ok {
+		t.Fatalf("want x/ from filepath.Abs, dirs=%v", into.dirs)
+	}
+	for d := range into.dirs {
+		if d == "etc" {
+			t.Fatalf("must not escape repo; dirs=%v", into.dirs)
+		}
+	}
+}
+
 func TestLiteralLooksLikePath(t *testing.T) {
 	tests := map[string]bool{
 		"docs":            false,
